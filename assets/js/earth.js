@@ -302,46 +302,50 @@ float fbm(vec3 p, float oct) {
 
 void main() {
   vec2 ndc = vP * 2.0 - 1.0;
-  vec3 dir = normalize(uRight * (ndc.x * uTanHalf * uAspect) + uUp * (ndc.y * uTanHalf) - uFwd);
+  vec3 dir = normalize(uRight * (ndc.x * uTanHalf * uAspect) + uUp * (ndc.y * uTanHalf) + uFwd);
 
   float b = dot(dir, uPole);
   vec3 perp = dir - uPole * b;
 
   /* 银盘剖面：亮脊套在宽晕里，带外迅速回到深空底色 */
-  float halo = exp(-pow(abs(b) * 4.30, 2.0));
-  float spine = exp(-pow(abs(b) * 12.0, 2.0));
-  float band = halo * 0.54 + spine * 0.72;
+  float halo = exp(-pow(abs(b) * 4.60, 2.0));
+  float spine = exp(-pow(abs(b) * 13.0, 2.0));
+  float band = halo * 0.42 + spine * 0.72;
 
   float coreAng = max(0.0, dot(dir, uCore));
-  float core = pow(coreAng, 6.0);
+  float core = pow(coreAng, 22.0);
 
   /* 域扭曲：幅度必须远小于噪声单元，否则拉出梵高式旋涡 */
   vec3 p = dir * 7.0;
   vec3 w = vec3(fbm(p + 3.1, 2.0), fbm(p + 7.7, 2.0), fbm(p + 13.3, 2.0)) - 0.49;
   vec3 q = p + w * 1.15;
 
-  /* 亮部：低频、几乎无结构 */
+  /* 亮部：低频、平缓。分辨率无关，放大不会糊，也不会有噪点 */
   float n1 = fbm(q * 1.45, uOct);
-  float glow = band * (0.52 + 0.92 * n1);
-  glow *= 0.80 + 0.58 * core;
+  float n2 = fbm(q * 3.4, 2.0);
+  float glow = band * (0.34 + 0.78 * n1 + 0.30 * n2);
+  glow *= 0.78 + 0.34 * core;
 
   /* 暗尘：在「银极 ×24 / 银盘方向 ×5」的拉伸坐标系里取样，
-     沿银盘方向变化慢、垂直方向变化快 → 得到平行于银河的细丝而不是圆斑 */
-  vec3 dq = uPole * b * 24.0 + perp * 5.0;
+     沿银盘方向变化慢、垂直方向快 → 平行于银河的细丝，而不是圆斑 */
+  vec3 dq = uPole * b * 34.0 + perp * 6.5;
   float d1 = fbm(dq + 31.0, 3.0);
-  float d2 = fbm(dq * 2.9 + 57.0, 2.0);
-  float dust = smoothstep(0.48, 0.70, d1 * 0.62 + d2 * 0.40);
-  dust *= smoothstep(0.80, 0.20, abs(b));
-  glow *= 1.0 - 0.90 * dust;
+  float d2 = fbm(dq * 3.4 + 57.0, 2.0);
+  float dust = smoothstep(0.50, 0.72, d1 * 0.62 + d2 * 0.40);
+  dust *= smoothstep(0.78, 0.18, abs(b));
+  glow *= 1.0 - 0.94 * dust;
 
-  /* 星团颗粒 */
-  float gran = vnoise(q * 30.0 + 5.0);
-  glow *= 0.84 + 0.30 * gran;
+  /* 银心：一团更亮更暖的核球辉光 */
+  glow += core * 0.16;
+
+  /* 软肩：直接把叠了三层的亮度送出去会爆成白块，
+     用指数肩压到 0.52 以内，亮部仍保留层次 */
+  glow = 0.52 * (1.0 - exp(-glow * 1.55));
 
   /* 色调：银心暖琥珀 → 外围冷蓝 */
-  vec3 cool = vec3(0.20, 0.31, 0.57);
-  vec3 warm = vec3(1.00, 0.78, 0.50);
-  vec3 col = mix(cool, warm, clamp(core * 1.35 + n1 * 0.20, 0.0, 1.0));
+  vec3 cool = vec3(0.34, 0.44, 0.68);
+  vec3 warm = vec3(1.00, 0.90, 0.76);
+  vec3 col = mix(cool, warm, clamp(core * 0.62 + n1 * 0.12, 0.0, 0.60));
   col *= glow;
 
   gl_FragColor = vec4(col, 1.0);
@@ -452,7 +456,7 @@ void main() {
 
   /* 闪烁只在亮星上可见，幅度极小 */
   float tw = 0.94 + 0.06 * sin(uTime * 0.9 + aSeed * 6.283);
-  vA = uStars * aBright * boost * tw * (0.55 + 0.45 * aSpike);
+  vA = uStars * aBright * boost * tw * (0.72 + 0.46 * aSpike);
   vC = aCol;
   vSpike = aSpike;
 }`;
@@ -625,7 +629,7 @@ export function createEarth(canvas, opts = {}) {
     /* 银道面内离视轴最近的方向，再沿银道偏 24°，避免正对球心 */
     const near = nrm([fwd[0] - pole[0] * dot3(fwd, pole), fwd[1] - pole[1] * dot3(fwd, pole), fwd[2] - pole[2] * dot3(fwd, pole)]);
     const tang = nrm(crs(pole, near));
-    const dl = 0.42;
+    const dl = 0.14;
     const core = nrm([
       near[0] * Math.cos(dl) + tang[0] * Math.sin(dl),
       near[1] * Math.cos(dl) + tang[1] * Math.sin(dl),
@@ -638,7 +642,7 @@ export function createEarth(canvas, opts = {}) {
     return { pole, core, e1, e2, cu, cv };
   })();
 
-  const starCount = mobile ? 3400 : 9000;
+  const starCount = mobile ? 9000 : 26000;
   const starDir = new Float32Array(starCount * 3);
   const starCol = new Float32Array(starCount * 3);
   const starSize = new Float32Array(starCount);
@@ -704,14 +708,14 @@ export function createEarth(canvas, opts = {}) {
     /* 星等：四级分布，亮星极少但很亮 */
     const q = Math.random();
     let size, bright;
-    if (q < 0.0035) { size = 5.0 + Math.random() * 6.0; bright = 1.00; }
-    else if (q < 0.050) { size = 2.1 + Math.random() * 2.0; bright = 0.84; }
-    else if (q < 0.280) { size = 1.15 + Math.random() * 0.85; bright = 0.60; }
-    else { size = 0.55 + Math.pow(Math.random(), 1.8) * 0.80; bright = 0.28 + Math.random() * 0.26; }
+    if (q < 0.0022) { size = 5.5 + Math.random() * 6.5; bright = 1.00; }
+    else if (q < 0.040) { size = 2.2 + Math.random() * 2.2; bright = 0.88; }
+    else if (q < 0.260) { size = 1.25 + Math.random() * 0.95; bright = 0.68; }
+    else { size = 0.70 + Math.pow(Math.random(), 1.8) * 0.95; bright = 0.34 + Math.random() * 0.30; }
 
     starSize[i] = size;
     starBright[i] = bright;
-    starSpike[i] = size > 4.4 ? 1 : 0;
+    starSpike[i] = size > 4.6 ? 1 : 0;
     starSeed[i] = Math.random();
   }
 
