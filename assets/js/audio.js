@@ -24,7 +24,10 @@ const CHORDS = [
 
 const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 
-export function createMusic({ src = 'assets/audio/theme.mp3', volume = 0.55 } = {}) {
+export function createMusic({ volume = 0.55 } = {}) {
+  /* 只有显式声明了音轨才去取外部文件，避免默认探测产生 404
+     <html data-track="assets/audio/theme.mp3"> 即可接管播放 */
+  const src = document.documentElement.dataset.track || '';
   let ctx = null, master = null, wet = null, timer = 0;
   let bar = 0, nextTime = 0;
   let started = false, muted = false;
@@ -184,6 +187,7 @@ export function createMusic({ src = 'assets/audio/theme.mp3', volume = 0.55 } = 
 
   /* ── 若存在外部音频文件，优先用它（可无缝 loop） ── */
   async function hasFile() {
+    if (!src) return false;
     try {
       const r = await fetch(src, { method: 'HEAD' });
       return r.ok && (r.headers.get('content-type') || '').startsWith('audio');
@@ -191,7 +195,7 @@ export function createMusic({ src = 'assets/audio/theme.mp3', volume = 0.55 } = 
   }
 
   /* 页面加载时就探测好，手势回调里不必再 await，保住用户激活 */
-  const fileReady = hasFile();
+  const fileReady = src ? hasFile() : Promise.resolve(false);
 
   const running = () => (ctx ? ctx.state === 'running' : !!(audioEl && !audioEl.paused && !audioEl.ended));
 

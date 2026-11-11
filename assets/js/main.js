@@ -2285,6 +2285,7 @@ function initMusic() {
     if (hint) hint.hidden = true;
   });
 
+  window.atlasMusic = music;   /* 调试/验收用只读句柄 */
   begin();
   return music;
 }

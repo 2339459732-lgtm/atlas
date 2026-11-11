@@ -75,7 +75,7 @@ export const DICT = {
     'Every place is a point on the sphere. Turn it, and watch where it falls against the light — that is the latitude you have been to.'],
   'planet.count': ['{n} 处地标', '{n} places'],
   'planet.new': ['+ 落一处新的', '+ Drop a new one'],
-  'planet.hint': ['拖动旋转 · ⌘/Ctrl + 滚轮缩放 · 点击球面落一个地标', 'Drag to rotate · ⌘/Ctrl + scroll to zoom · Click the surface to drop a pin'],
+  'planet.hint': ['拖动旋转 · 滚轮缩放 · 点击球面落一处地标', 'Drag to rotate · Scroll to zoom · Click the surface to drop a pin'],
   'planet.auto': ['自转', 'Spin'],
   'planet.reset': ['正对', 'Reset'],
   'planet.zoomIn': ['放大', 'Zoom in'],

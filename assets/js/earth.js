@@ -867,11 +867,13 @@ export function createEarth(canvas, opts = {}) {
     canvas.classList.remove('is-grab');
   });
 
-  /* 滚轮直接缩放；到达缩放上下限后不再拦截，把滚动交还页面 */
+  /* 滚轮：只有落在地球圆面上才缩放，球体之外的留白照常滚动页面；
+     缩放到达上下限后同样把滚动交还页面 */
   canvas.addEventListener('wheel', e => {
+    if (!unproject(e.offsetX, e.offsetY)) return;
     const step = e.deltaMode === 1 ? 0.06 : 0.09;
     const next = clamp(state.distTo * (e.deltaY > 0 ? 1 + step : 1 - step), MIN_DIST, MAX_DIST);
-    if (Math.abs(next - state.distTo) < 0.0005) return;   /* 已到头：放行页面滚动 */
+    if (Math.abs(next - state.distTo) < 0.0005) return;
     e.preventDefault();
     state.distTo = next;
     state.auto = false;
