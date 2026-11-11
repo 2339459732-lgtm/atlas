@@ -988,6 +988,8 @@ export function createEarth(canvas, opts = {}) {
       return state.distTo;
     },
     getZoom: () => state.distTo,
+    /* 验收用：读取当前视角，不参与渲染 */
+    _debug: () => ({ yaw: state.yaw, pitch: state.pitch, dist: state.dist, spin: state.spin }),
     isReady: () => state.ready,
     _project: (lat, lng) => {
       const eye = cameraEye();
