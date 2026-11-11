@@ -104,7 +104,7 @@ void main() {
 
   /* 法线贴图近似浮雕：把切线空间法线叠加到球面法线上 */
   vec3 nm = texture2D(uNormal, vUV).rgb * 2.0 - 1.0;
-  N = normalize(N + vec3(nm.x, nm.y, nm.z * 0.6) * 0.42);
+  N = normalize(N + vec3(nm.x, nm.y, nm.z * 0.5) * 0.18);
 
   float cloud = texture2D(uCloudTex, vUV).a;
 
@@ -116,7 +116,7 @@ void main() {
   float ocean = texture2D(uSpec, vUV).r;
 
   /* 云影：云层下方略压暗 */
-  dayC *= mix(1.0, 0.74, cloud);
+  dayC *= mix(1.0, 0.82, cloud);
 
   vec3 H = normalize(L + V);
   float spec = pow(max(dot(N, H), 0.0), 140.0) * ocean * 0.55;

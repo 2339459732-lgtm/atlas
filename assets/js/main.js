@@ -473,6 +473,7 @@ function initEarth() {
     return;
   }
   earth.setTheme(THEMES[state.theme].globe);
+  window.atlasEarth = earth;   /* 调试/验收用只读句柄 */
 }
 
 function buildMarkers() {
