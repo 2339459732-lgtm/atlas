@@ -489,7 +489,7 @@ function initEarth() {
     onReady: ({ ok }) => {
       if (!ok) {
         loader.classList.add('is-done');
-        toast('这台设备不支持 WebGL，地球未能载入', true);
+        toast(t('planet.toastNoWebgl'), true);
         return;
       }
       loader.classList.add('is-done');
@@ -2068,7 +2068,7 @@ $('#vault-form')?.addEventListener('submit', async e => {
 $('#vault-lock-btn')?.addEventListener('click', () => {
   vaultUnlocked = false;
   closeVault();
-  toast('保险库已锁定');
+  toast(t('vault.lockedToast'));
 });
 
 $('#vault-export')?.addEventListener('click', async () => {
