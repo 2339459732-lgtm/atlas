@@ -293,11 +293,18 @@ void main() {
   float lat = asin(clamp(sd.y, -1.0, 1.0));
   vec2 skyUV = vec2(lon / 6.2831853 + 0.5, lat / 3.1415926 + 0.5);
 
-  vec3 sky = texture2D(uSky, skyUV).rgb;
-  /* 轻抬暗部、保留直方图，避免幂函数把暗尘压成色块 */
-  sky = sky * 1.22 + 0.006;
-  /* 抖动：8bit 贴图在暗部容易出色带，加一点点噪声抹平 */
-  sky += (hash(uv * 2048.0) - 0.5) * 0.0022;
+  /* 星空只负责「结构」：4 次采样轻微柔化，把贴图里的星点噪声抹掉，
+     真正的星点由下面的矢量层绘制，这样无论放多大都是清晰的点。 */
+  vec2 texel = vec2(1.0 / 4096.0, 1.0 / 2048.0) * 1.6;
+  vec3 sky = texture2D(uSky, skyUV).rgb * 0.4;
+  sky += texture2D(uSky, skyUV + vec2(texel.x, 0.0)).rgb * 0.15;
+  sky += texture2D(uSky, skyUV - vec2(texel.x, 0.0)).rgb * 0.15;
+  sky += texture2D(uSky, skyUV + vec2(0.0, texel.y)).rgb * 0.15;
+  sky += texture2D(uSky, skyUV - vec2(0.0, texel.y)).rgb * 0.15;
+
+  /* 轻抬暗部，去掉放大后残留的颗粒 */
+  sky = sky * 1.05 + 0.008;
+  sky += (hash(uv * 2048.0) - 0.5) * 0.0018;
 
   vec3 base = mix(uBottom, uTop, smoothstep(0.0, 1.0, uv.y));
   vec3 col = mix(base, sky, clamp(uSkyGain, 0.0, 1.0));
@@ -353,7 +360,7 @@ void main() {
   gl_Position = vec4(clip.xy, 0.9999 * clip.w, clip.w);
   float tw = 0.86 + 0.14 * sin(uTime * 0.7 + aSeed * 6.283);
   gl_PointSize = aSize * uDpr * tw;
-  vA = uStars * tw * (0.34 + 0.40 * pow(aSeed, 0.7));
+  vA = uStars * tw * (0.42 + 0.46 * pow(aSeed, 0.7));
   vC = mix(vec3(0.74, 0.84, 1.0), vec3(1.0, 0.95, 0.86), fract(aSeed * 7.31));
   vSpike = aSpike;
 }`;
@@ -510,7 +517,7 @@ export function createEarth(canvas, opts = {}) {
       starSize[i] = 13 + Math.random() * 9;
       starSpike[i] = 1;
     } else {
-      starSize[i] = 1.05 + Math.pow(Math.random(), 2.2) * 2.7;
+      starSize[i] = 0.7 + Math.pow(Math.random(), 2.6) * 1.9;
       starSpike[i] = 0;
     }
     starSeed[i] = Math.random();
