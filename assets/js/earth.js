@@ -122,7 +122,7 @@ void main() {
   dayC *= mix(1.0, 0.82, cloud);
 
   vec3 H = normalize(L + V);
-  float spec = pow(max(dot(N, H), 0.0), 300.0) * ocean * 0.34;
+  float spec = pow(max(dot(N, H), 0.0), 900.0) * ocean * 0.30;
 
   vec3 lit = dayC * (uAmbient + max(ndl, 0.0) * 1.28);
   lit += vec3(1.0, 0.96, 0.88) * spec * smoothstep(0.05, 0.35, ndl);
