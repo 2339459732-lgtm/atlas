@@ -131,7 +131,9 @@ const state = {
   landmarks: [],
   photos: [],
   current: null,
-  params: { cell: 5.6, offsetPx: 7.3, screen: 0 }
+  params: { cell: 5.6, offsetPx: 7.3, screen: 0 },
+  site: null,
+  view: "wall"
 };
 
 const photosOf = id => state.photos.filter(p => p.landmarkId === id).sort((a, b) => b.t - a.t);
@@ -140,6 +142,284 @@ const coverOf = lm => {
   return list.find(p => p.id === lm.coverId) || list[0] || null;
 };
 const currentLandmark = () => state.landmarks.find(l => l.id === state.current);
+
+/* ══════════════════════════════════════════════════════════════════
+   site.js 片段：站点身份 · 三视图 · 索引预览 · 地图
+   （由 patch 脚本内联进 main.js）
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ───────── 站点身份 ───────── */
+const SITE_KEY = 'atlas.site.v1';
+const DEFAULT_SITE = {
+  name: 'ATLAS',
+  cn: '图册',
+  title: '去过的地方',
+  lede: '一个地标就是一本相册。先在地图上钉一个点，再把那里的照片放进去——同一座城市的片子待在一起，翻起来才像一次回来。',
+  accent: '#1B3A82'
+};
+const ACCENT_POOL = ['#1B3A82', '#B0481E', '#1F6F5C', '#E6007E', '#5C3FA8', '#1341E0', '#8A2B4E', '#C64B22'];
+
+function loadSite() {
+  try {
+    const raw = localStorage.getItem(SITE_KEY);
+    if (raw) return { ...DEFAULT_SITE, ...JSON.parse(raw) };
+  } catch (e) {}
+  return { ...DEFAULT_SITE };
+}
+
+function applySite(site) {
+  state.site = site;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('site-name', site.name);
+  set('site-cn', site.cn);
+  set('site-title', site.title);
+  set('site-lede', site.lede);
+  set('site-sig', site.name);
+  const lede = document.getElementById('site-lede');
+  if (lede) lede.hidden = !site.lede;
+  document.documentElement.style.setProperty('--site', site.accent);
+
+  document.title = site.name + ' · ' + site.cn;
+  const md = document.querySelector('meta[name="description"]');
+  if (md) md.setAttribute('content', site.lede || site.title);
+  const og = document.querySelector('meta[property="og:title"]');
+  if (og) og.setAttribute('content', site.name + ' · ' + site.cn);
+}
+
+/* ───────── 视图切换 ───────── */
+const VIEW_KEYS = ['wall', 'index', 'atlas'];
+
+function setView(v, animate = true) {
+  if (!VIEW_KEYS.includes(v)) v = 'wall';
+  state.view = v;
+  try { localStorage.setItem('atlas.view', v); } catch (e) {}
+
+  document.querySelectorAll('.views button').forEach(b => {
+    const on = b.dataset.view === v;
+    b.setAttribute('aria-selected', String(on));
+  });
+
+  VIEW_KEYS.forEach(k => {
+    const el = document.getElementById('view-' + k);
+    if (!el) return;
+    if (k === v) {
+      el.hidden = false;
+      if (animate) {
+        el.style.animation = 'none';
+        void el.offsetWidth;
+        el.style.animation = '';
+      }
+    } else {
+      el.hidden = true;
+    }
+  });
+
+  if (v === 'index') renderIndex();
+  if (v === 'atlas') renderMap();
+}
+
+/* ───────── 索引 ───────── */
+function renderIndex() {
+  const list = $('#idx-list');
+  if (!list) return;
+  list.innerHTML = '';
+
+  if (!state.landmarks.length) {
+    list.innerHTML = '<p class="idx-empty">还没有地标。点上面的「新建地标」钉第一个。</p>';
+    return;
+  }
+
+  state.landmarks.forEach((lm, i) => {
+    const photos = photosOf(lm.id);
+    const row = el('button', 'idx-row');
+    row.type = 'button';
+    row.style.setProperty('--ac', lm.inks.c);
+    row.innerHTML =
+      '<span class="idx-row__no">' + String(i + 1).padStart(2, '0') + '</span>' +
+      '<span class="idx-row__name"><i class="idx-row__dot"></i>' + esc(lm.name) + '</span>' +
+      '<span class="idx-row__coord">' + esc(lm.coord || '—') + '</span>' +
+      '<span class="idx-row__date">' + esc(lm.date || '—') + '</span>' +
+      '<span class="idx-row__count">' + photos.length + ' 张</span>' +
+      '<span class="idx-row__arrow">→</span>';
+
+    row.addEventListener('click', () => openAlbum(lm.id));
+    row.addEventListener('mouseenter', () => showPeek(lm));
+    row.addEventListener('mouseleave', hidePeek);
+    row.addEventListener('focus', () => showPeek(lm));
+    row.addEventListener('blur', hidePeek);
+    list.appendChild(row);
+  });
+}
+
+/* 跟随指针的预览 */
+const peekEl = document.createElement('div');
+peekEl.className = 'peek';
+peekEl.innerHTML = '<img alt="">';
+document.body.appendChild(peekEl);
+
+let peekOn = false;
+function showPeek(lm) {
+  const cover = coverOf(lm);
+  if (!cover) return;
+  peekEl.querySelector('img').src = cover.thumb;
+  peekEl.classList.add('is-on');
+  peekOn = true;
+}
+function hidePeek() {
+  peekEl.classList.remove('is-on');
+  peekOn = false;
+}
+document.addEventListener('mousemove', e => {
+  if (!peekOn) return;
+  const w = 190, h = 143;
+  peekEl.style.left = Math.min(e.clientX + 20, window.innerWidth - w - 20) + 'px';
+  peekEl.style.top = Math.min(Math.max(e.clientY - h * 0.55, 12), window.innerHeight - h - 20) + 'px';
+});
+
+/* ───────── 地图 ───────── */
+function parseCoord(s) {
+  if (!s) return null;
+  const m = /([\d.]+)\s*°?\s*([NS])\s*[, ]*\s*([\d.]+)\s*°?\s*([EW])/i.exec(s);
+  if (!m) return null;
+  const lat = parseFloat(m[1]) * (m[2].toUpperCase() === 'S' ? -1 : 1);
+  const lng = parseFloat(m[3]) * (m[4].toUpperCase() === 'W' ? -1 : 1);
+  if (!isFinite(lat) || !isFinite(lng)) return null;
+  return { lat, lng };
+}
+
+function renderMap() {
+  const grid = $('#map-grid');
+  const pins = $('#map-pins');
+  if (!grid || !pins) return;
+
+  grid.innerHTML = '';
+  const line = (x1, y1, x2, y2, w, o) =>
+    '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 +
+    '" stroke="rgba(233,231,224,' + o + ')" stroke-width="' + w + '"/>';
+
+  for (let lng = -180; lng <= 180; lng += 30) {
+    const x = ((lng + 180) / 360) * 100;
+    grid.innerHTML += line(x + '%', '0', x + '%', '100%', 1, lng === 0 ? 0.24 : 0.11);
+  }
+  for (let lat = -60; lat <= 60; lat += 30) {
+    const y = ((90 - lat) / 180) * 100;
+    grid.innerHTML += line('0', y + '%', '100%', y + '%', 1, lat === 0 ? 0.24 : 0.11);
+  }
+
+  pins.innerHTML = '';
+  let unlocated = 0;
+
+  state.landmarks.forEach((lm, i) => {
+    const c = parseCoord(lm.coord);
+    const n = photosOf(lm.id).length;
+    const pin = document.createElement('button');
+    pin.type = 'button';
+    pin.className = 'map__pin';
+    pin.style.setProperty('--ac', lm.inks.c);
+    pin.style.setProperty('--d', (14 + Math.min(18, n * 2.4)) + 'px');
+    pin.setAttribute('aria-label', lm.name + ' · ' + n + ' 张');
+
+    if (c) {
+      pin.style.left = (((c.lng + 180) / 360) * 100) + '%';
+      pin.style.top = (((90 - c.lat) / 180) * 100) + '%';
+    } else {
+      unlocated += 1;
+      pin.style.left = (94 - unlocated * 5) + '%';
+      pin.style.top = '93%';
+    }
+
+    pin.addEventListener('click', () => openAlbum(lm.id));
+    pins.appendChild(pin);
+
+    const lab = document.createElement('span');
+    lab.className = 'map__label';
+    lab.textContent = lm.name;
+    if (c) {
+      lab.style.left = (((c.lng + 180) / 360) * 100) + '%';
+      lab.style.top = 'calc(' + (((90 - c.lat) / 180) * 100) + '% + ' + (14 + Math.min(18, n * 2.4) / 2 + 7) + 'px)';
+      lab.style.translate = '-50% 0';
+    } else {
+      lab.style.left = (94 - unlocated * 5) + '%';
+      lab.style.top = 'calc(93% - 22px)';
+      lab.style.translate = '-50% 0';
+    }
+    pins.appendChild(lab);
+  });
+}
+
+/* ───────── 数字滚动 ───────── */
+function countTo(node, to) {
+  if (!node) return;
+  const from = Number(node.dataset.v || 0);
+  if (from === to) { node.textContent = String(to); return; }
+  node.dataset.v = String(to);
+  const t0 = performance.now();
+  const step = now => {
+    const p = Math.min(1, (now - t0) / 520);
+    const e = 1 - Math.pow(1 - p, 3);
+    node.textContent = String(Math.round(from + (to - from) * e));
+    if (p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+/* ───────── 开篇标尺 + 标题视差 ───────── */
+function paintIntroRule() {
+  const yearEl = $('#intro-year');
+  const coordEl = $('#intro-coords');
+  const now = new Date();
+  if (yearEl) yearEl.textContent = String(now.getFullYear());
+  const located = state.landmarks.filter(l => parseCoord(l.coord));
+  if (coordEl) {
+    coordEl.textContent = located.length
+      ? located.length + ' / ' + state.landmarks.length + ' 已定位'
+      : state.landmarks.length + ' 个地标';
+  }
+}
+
+let introRaf = 0;
+window.addEventListener('scroll', () => {
+  if (introRaf) return;
+  introRaf = requestAnimationFrame(() => {
+    introRaf = 0;
+    const t = document.getElementById('site-title');
+    if (!t) return;
+    const y = Math.min(window.scrollY, 620);
+    t.style.translate = '0 ' + (y * 0.07).toFixed(1) + 'px';
+    t.style.opacity = String(Math.max(0.25, 1 - y / 900));
+  });
+}, { passive: true });
+
+/* ───────── 设置对话框 ───────── */
+function openSettings() {
+  const s = state.site || DEFAULT_SITE;
+  $('#s-name').value = s.name;
+  $('#s-cn').value = s.cn;
+  $('#s-title').value = s.title;
+  $('#s-lede').value = s.lede;
+  paintSwatches(s.accent);
+  $('#dlg-site').showModal();
+  setTimeout(() => $('#s-name').focus(), 60);
+}
+
+function paintSwatches(current) {
+  const box = $('#swatches');
+  if (!box) return;
+  box.innerHTML = '';
+  ACCENT_POOL.forEach(c => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.style.background = c;
+    b.setAttribute('aria-pressed', String(c.toUpperCase() === String(current).toUpperCase()));
+    b.addEventListener('click', () => {
+      [...box.children].forEach(x => x.setAttribute('aria-pressed', 'false'));
+      b.setAttribute('aria-pressed', 'true');
+      box.dataset.pick = c;
+    });
+    box.appendChild(b);
+  });
+  box.dataset.pick = current;
+}
 
 function loadLandmarks() {
   try {
@@ -231,9 +511,13 @@ function renderShelf() {
 function syncStats() {
   const n = state.landmarks.length;
   const p = state.photos.length;
-  $('#stat-landmarks').textContent = n;
-  $('#stat-photos').textContent = p;
-  $('#colophon-stat').textContent = `${n} 个地标 · ${p} 张照片`;
+  countTo($('#stat-landmarks'), n);
+  countTo($('#stat-photos'), p);
+  const cs = $('#colophon-stat');
+  if (cs) cs.textContent = n + ' 个地标 · ' + p + ' 张照片';
+  paintIntroRule();
+  if (state.view === 'index') renderIndex();
+  if (state.view === 'atlas') renderMap();
 
 }
 
@@ -245,6 +529,9 @@ function openAlbum(id) {
   const lm = currentLandmark();
   paintAccent(lm);
 
+  const lmIdx = state.landmarks.findIndex(x => x.id === lm.id);
+  const noEl = $('#album-no');
+  if (noEl) noEl.textContent = String(lmIdx + 1).padStart(2, '0');
   $('#album-name').textContent = lm.name;
   const metaBits = [lm.coord, lm.date].filter(Boolean);
   const list = photosOf(lm.id);
@@ -889,6 +1176,32 @@ function note(msg, isError = false) {
   if (btn) btn.addEventListener('click', toggleTheme);
   const btnEx = document.getElementById('btn-export');
   if (btnEx) btnEx.addEventListener('click', () => { exportStandalone(); });
+
+  document.querySelectorAll('.views button').forEach(b => {
+    b.addEventListener('click', () => setView(b.dataset.view));
+  });
+
+  const btnSet = document.getElementById('btn-settings');
+  if (btnSet) btnSet.addEventListener('click', openSettings);
+
+  const siteForm = document.getElementById('site-form');
+  if (siteForm) siteForm.addEventListener('submit', ev2 => {
+    ev2.preventDefault();
+    const next = {
+      name: ($('#s-name').value || '').trim() || DEFAULT_SITE.name,
+      cn: ($('#s-cn').value || '').trim() || DEFAULT_SITE.cn,
+      title: ($('#s-title').value || '').trim() || DEFAULT_SITE.title,
+      lede: ($('#s-lede').value || '').trim(),
+      accent: $('#swatches').dataset.pick || DEFAULT_SITE.accent
+    };
+    applySite(next);
+    try { localStorage.setItem(SITE_KEY, JSON.stringify(next)); } catch (err) {}
+    $('#dlg-site').close();
+    note('站点设置已保存');
+  });
+
+  const siteCancel = document.getElementById('site-cancel');
+  if (siteCancel) siteCancel.addEventListener('click', () => $('#dlg-site').close());
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
     let saved = null;
     try { saved = localStorage.getItem(THEME_KEY); } catch (err) {}
@@ -899,6 +1212,9 @@ function note(msg, isError = false) {
 /* ───────── 启动 ───────── */
 async function boot() {
   initTheme();
+  state.site = loadSite();
+  applySite(state.site);
+  const savedView = (() => { try { return localStorage.getItem('atlas.view'); } catch (e) { return null; } })();
   state.landmarks = loadLandmarks();
   syncParams();
   paintAccent(state.landmarks[0]);
@@ -907,6 +1223,7 @@ async function boot() {
   catch (err) { state.photos = []; if (window.console) console.warn('[atlas] idb', err); }
 
   renderShelf();
+  setView(savedView || 'wall', false);
 }
 
 boot();
