@@ -1492,6 +1492,13 @@ body.is-dragging .dropveil { opacity: 1; }
   font-family: var(--f-disp); font-size: 1.1rem; letter-spacing: .4em;
   color: var(--ink-2); padding-right: .4em;
 }
+/* 英文名竖排会散架，改成横排居中 */
+html[data-lang="en"] .slide__empty span {
+  writing-mode: horizontal-tb; text-orientation: mixed;
+  letter-spacing: .12em; text-align: center;
+  font-family: var(--f-ui); font-size: .95rem; max-width: 84%;
+  overflow-wrap: anywhere;
+}
 
 .deck__bar {
   display: flex; align-items: center; justify-content: center;

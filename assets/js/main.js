@@ -357,7 +357,7 @@ function renderWall() {
       frame.appendChild(el('div', 'card__veil'));
       frame.appendChild(el('span', 'card__hint', t('wall.open')));
     } else {
-      frame.appendChild(el('span', 'card__ghost', esc(lm.name)));
+      frame.appendChild(el('span', 'card__ghost', esc(placeName(lm))));
     }
     if (isLocked(lm)) {
       card.classList.add('is-locked');
@@ -1794,7 +1794,7 @@ function renderDeck() {
       img.loading = i > 4 ? 'lazy' : 'eager';
       card.appendChild(img);
     } else {
-      card.appendChild(el('div', 'slide__empty', `<span>${esc(lm.name)}</span>`));
+      card.appendChild(el('div', 'slide__empty', `<span>${esc(placeName(lm))}</span>`));
     }
     if (isLocked(lm)) card.appendChild(el('div', 'slide__lock', LOCK_SVG));
     b.appendChild(card);
