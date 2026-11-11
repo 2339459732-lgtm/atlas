@@ -124,20 +124,33 @@ void main() {
   /* 4K 源图偏艳，统一压掉约 10% 饱和，让 1K/2K/4K 三档观感一致 */
   float dLum = dot(dayC, vec3(0.299, 0.587, 0.114));
   dayC = mix(vec3(dLum), dayC, 0.9);
-  /* 夜图带一点紫底色，取高次幂压掉，只留城市的灯 */
-  /* ── 夜面染色 ──
-     不再直接使用夜图的 RGB（那会让灯光带上一层青绿），而是只取亮度，
-     再用一条暖色带重新上色：核心接近白炽，边缘偏琥珀。 */
-  vec3 nightTex = texture2D(uNight, vUV).rgb;
-  float nMax = max(max(nightTex.r, nightTex.g), nightTex.b);
-  float lights = smoothstep(0.10, 0.66, nMax);   /* 主城区 */
-  float halo = smoothstep(0.02, 0.52, nMax);     /* 周边辉光 */
+  /* ── 夜面 ──
+     NASA Black Marble 是 sRGB 编码的图。旧写法把它的 RGB 当线性值直接用，
+     末端 1/2.2 伽马会把 0.05 的陆地抬成 0.26 —— 整块大陆糊成一层褐色雾，
+     海面和陆地也分不开。这里先解码回线性域，再按真实城市灯的光谱重新配光：
+     海面趋近纯黑，陆地只剩极暗的蓝灰，灯芯是钠灯的琥珀、密集区偏白。 */
+  vec3 rawN = texture2D(uNight, vUV).rgb;
+  vec3 linN = pow(rawN, vec3(2.2));
+  float nMax = max(max(rawN.r, rawN.g), rawN.b);
 
-  vec3 warmCore = vec3(1.00, 0.86, 0.60);
-  vec3 warmEdge = vec3(0.92, 0.55, 0.24);
-  vec3 lightCol = mix(warmEdge, warmCore, lights);
   /* 只让成片的水面有镜面高光，湖泊/噪点不会变成蓝点 */
   float ocean = smoothstep(0.28, 0.72, texture2D(uSpec, vUV).r);
+  float landMask = 1.0 - ocean;
+
+  /* 灯芯：这张图的"黑"并不是 0。陆地与海面的底噪集中在 0.075~0.13
+     （传感器暗电流 + JPEG 暗部），灯光从 0.16 才开始起跳。
+     阈值必须整体抬到暗场之上，否则整块大陆会被当成灯点亮成一片土黄。 */
+  float core  = smoothstep(0.150, 0.560, nMax);   /* 城区灯芯 */
+  float skirt = smoothstep(0.120, 0.235, nMax);   /* 郊区、路灯带 */
+
+  vec3 sodium = vec3(1.00, 0.56, 0.21);   /* 高压钠灯 */
+  vec3 metal  = vec3(1.00, 0.94, 0.82);   /* 白光 LED / 汞灯 */
+  vec3 lamp = mix(sodium, metal, smoothstep(0.34, 0.80, nMax));
+
+  /* mip 级采样做一次近乎免费的空间扩散，模拟大气对灯光的前向散射：
+     ISS 实拍里灯团外围那圈淡淡的光晕就是它。先减掉暗场，空地上才不会起雾。 */
+  vec3 blurN = texture2D(uNight, vUV, 3.6).rgb;
+  float bloom = max(max(max(blurN.r, blurN.g), blurN.b) - 0.128, 0.0);
 
   /* 云影：云层下方略压暗 */
   dayC *= mix(1.0, 0.82, cloud);
@@ -149,20 +162,32 @@ void main() {
   lit += vec3(1.0, 0.96, 0.88) * spec * smoothstep(0.05, 0.35, ndl);
   lit += dayC * pow(1.0 - max(dot(N, V), 0.0), 3.0) * 0.10;
 
-  /* 夜面 = 城市灯光 + 一层极弱的冷色地面。
-     地面用海陆掩码区分明暗，否则整块大陆和海洋糊成一片。 */
-  float landMask = 1.0 - ocean;
-  /* 地面亮度：抬到能辨认大陆轮廓，但仍远低于灯光 */
-  vec3 ground = vec3(0.019, 0.023, 0.031) * (0.34 + 0.66 * landMask);
+  /* 夜面 = 夜图自身的陆地微光 + 城市灯 + 大气散射出的柔光。
+     不再单独叠一层褐色"地面光"——那层光是旧版整片大陆像蒙了土的主要原因。 */
+  vec3 nightCol = linN * 1.05;
+  nightCol += lamp * pow(core, 1.25) * 2.10;
+  nightCol += lamp * pow(skirt, 2.00) * 0.42;
+  nightCol += lamp * pow(bloom, 0.78) * 0.85;
 
-  float term = smoothstep(0.08, -0.20, ndl);
-  vec3 dark = (lightCol * (lights * 1.55 + halo * 0.20) + ground) * term * uNightGain;
+  /* 海面在夜面接近纯黑，只留一丝近岸水体反光，避免大陆看起来像贴片 */
+  nightCol += vec3(0.0014, 0.0028, 0.0062) * (1.0 - landMask) * landMask * 4.0;
+  nightCol += vec3(0.0009, 0.0016, 0.0032) * (1.0 - landMask);
+
+  /* 晨昏线的暖色带：太阳刚沉下去时高层大气还亮着（瑞利散射的红端）。
+     宽度只给 4° 左右——真实地影边缘非常窄，给宽了就变成一圈土黄色包边。 */
+  float twilight = exp(-pow(ndl / 0.070, 2.0));
+  nightCol += vec3(1.00, 0.40, 0.15) * twilight * 0.020;
+
+  /* 灯只在太阳真正落下之后才亮：用比 day 更窄的窗口，白昼半球不会残留灰纱 */
+  float night = 1.0 - smoothstep(-0.10, 0.045, ndl);
+  vec3 dark = nightCol * night * uNightGain;
 
   vec3 col = mix(dark, lit, day);
 
-  /* 边缘大气 */
+  /* 边缘大气：昼侧是明亮的蓝色壳，夜侧只剩一圈极淡的气辉（实拍里始终存在） */
   float fres = pow(1.0 - max(dot(N, V), 0.0), 3.6);
-  col += uAtmo * fres * (0.12 + 0.88 * day);
+  col += uAtmo * fres * (0.10 + 0.90 * day);
+  col += vec3(0.10, 0.22, 0.42) * fres * (1.0 - day) * 0.14;
 
   col = aces(col * uExposure);
   gl_FragColor = vec4(pow(col, vec3(1.0 / 2.2)), 1.0);
@@ -211,7 +236,7 @@ varying vec3 vW;
 void main() {
   vec3 N = normalize(vN);
   vec3 V = normalize(uCam - vW);
-  float f = pow(1.0 - abs(dot(N, V)), 3.2);
+  float f = pow(1.0 - abs(dot(N, V)), 2.7);
   float sun = smoothstep(-0.45, 0.5, dot(N, normalize(uSun)));
   float a = f * uIntensity * (0.35 + 0.65 * sun);
   gl_FragColor = vec4(uAtmo * a, a);
@@ -345,7 +370,7 @@ export function createEarth(canvas, opts = {}) {
 
   const sphere = buildSphere(SEG, RINGS, 1);
   const cloudGeo = buildSphere(SEG, RINGS, 1.012);
-  const atmoGeo = buildSphere(Math.max(48, SEG / 2), Math.max(32, RINGS / 2), 1.09);
+  const atmoGeo = buildSphere(Math.max(48, SEG / 2), Math.max(32, RINGS / 2), 1.025);
 
   function buffer(data, target = gl.ARRAY_BUFFER) {
     const b = gl.createBuffer();
@@ -436,11 +461,12 @@ export function createEarth(canvas, opts = {}) {
     spec: 'earth-specular-1k.jpg',
     normal: 'earth-normal.jpg'
   };
-  /* 画质档位：1K 极速 / 2K 标准 / 4K 精细（4K 换了 3840×1920 的白昼图） */
+  /* 画质档位：1K 极速 / 2K 标准 / 4K 精细（4K 换了 3840×1920 的白昼图）
+     夜面统一来自 NASA Black Marble 8192×4096 母版，按档位降到 1024 / 2048 / 4096 */
   const TIERS = {
     '1k': { day: 'earth-day-1k.jpg', night: 'earth-night-1k.jpg', spec: 'earth-specular-1k.jpg' },
-    '2k': { day: 'earth-day.jpg', night: 'earth-night.png', spec: 'earth-specular.jpg' },
-    '4k': { day: 'earth-day-4k.jpg', night: 'earth-night.png', spec: 'earth-specular.jpg' }
+    '2k': { day: 'earth-day.jpg', night: 'earth-night-2k.jpg', spec: 'earth-specular.jpg' },
+    '4k': { day: 'earth-day-4k.jpg', night: 'earth-night-4k.jpg', spec: 'earth-specular.jpg' }
   };
   let tier = '2k';
   const textures = {};
