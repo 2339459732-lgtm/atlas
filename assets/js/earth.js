@@ -119,7 +119,7 @@ void main() {
   dayC *= mix(1.0, 0.82, cloud);
 
   vec3 H = normalize(L + V);
-  float spec = pow(max(dot(N, H), 0.0), 140.0) * ocean * 0.55;
+  float spec = pow(max(dot(N, H), 0.0), 220.0) * ocean * 0.26;
 
   vec3 lit = dayC * (uAmbient + max(ndl, 0.0) * 1.28);
   lit += vec3(1.0, 0.96, 0.88) * spec * smoothstep(0.05, 0.35, ndl);
@@ -321,7 +321,8 @@ export function createEarth(canvas, opts = {}) {
   const RINGS = mobile ? 48 : 96;
 
   const state = {
-    yaw: 0.55, pitch: 0.22, dist: 1, spin: 2.6,
+    /* 初始视角：以中国（约 105°E）为正面，俯角 23°，略偏东 */
+    yaw: 0.30, pitch: 0.40, dist: 1, spin: -2.58,
     targetYaw: null, targetPitch: null,
     velYaw: 0, velPitch: 0,
     auto: true, hovered: null, ready: false,
@@ -550,7 +551,7 @@ export function createEarth(canvas, opts = {}) {
 
     if (state.ready) {
       /* 自转 */
-      if (state.auto && !state.dragging) state.spin += dt * 0.055;
+      if (state.auto && !state.dragging) state.spin += dt * 0.018;   /* 约 1°/s，缓慢自西向东 */
 
       /* 视角阻尼 */
       if (state.targetYaw != null) {
@@ -942,10 +943,19 @@ export function createEarth(canvas, opts = {}) {
       state.velYaw = 0; state.velPitch = 0;
     },
     reset() {
-      state.targetYaw = 0.55;
-      state.targetPitch = 0.22;
+      state.targetYaw = 0.30;
+      state.targetPitch = 0.40;
       state.dist = 1;
+      state.spin = -2.58;
       state.auto = true;
+    },
+    homeView() {
+      state.yaw = 0.30;
+      state.pitch = 0.40;
+      state.spin = -2.58;
+      state.velYaw = 0; state.velPitch = 0;
+      state.targetYaw = null; state.targetPitch = null;
+      dirty = true;
     },
     setAuto(v) { state.auto = v; },
     isReady: () => state.ready,

@@ -520,6 +520,8 @@ kbd {
 }
 .marker__label {
   position: absolute; left: 18px; top: 50%; translate: 0 -50%;
+  opacity: var(--label, 1);
+  transition: opacity .4s var(--e-out), background-color .3s, border-color .3s;
   padding: 3px 8px;
   background: rgba(7, 8, 12, .6);
   border: 1px solid rgba(255,255,255,.16); border-radius: 2px;
@@ -527,6 +529,16 @@ kbd {
   font-size: 10px; letter-spacing: .1em; line-height: 1.4;
   color: #F4F1E9; white-space: nowrap;
   transition: background-color .3s, border-color .3s;
+}
+.marker.is-left .marker__label {
+  left: auto; right: 18px;
+}
+.marker.is-left .marker__label::before {
+  left: auto; right: -5px;
+}
+.marker__label::before {
+  content: ''; position: absolute; left: -5px; top: 50%;
+  width: 5px; height: 1px; background: rgba(255,255,255,.45);
 }
 .marker:hover .marker__label, .marker.is-lit .marker__label {
   background: color-mix(in oklab, var(--ac) 82%, #06070A);
