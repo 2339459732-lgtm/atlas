@@ -229,10 +229,9 @@ const FS_BG = `
 precision highp float;
 uniform vec3 uTop;
 uniform vec3 uBottom;
-uniform vec3 uGlow;
-uniform float uGlowAmt;
 uniform float uGrain;
 uniform float uNebula;
+uniform float uTime;
 varying vec2 vP;
 
 float hash(vec2 p) {
@@ -240,61 +239,94 @@ float hash(vec2 p) {
   p += dot(p, p + 34.56);
   return fract(p.x * p.y);
 }
-
 float noise(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
+  vec2 i = floor(p), f = fract(p);
   vec2 u = f * f * (3.0 - 2.0 * f);
-  float a = hash(i);
-  float b = hash(i + vec2(1.0, 0.0));
-  float c = hash(i + vec2(0.0, 1.0));
-  float d = hash(i + vec2(1.0, 1.0));
+  float a = hash(i), b = hash(i + vec2(1.0, 0.0));
+  float c = hash(i + vec2(0.0, 1.0)), d = hash(i + vec2(1.0, 1.0));
   return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
-
 float fbm(vec2 p) {
-  float v = 0.0;
-  float a = 0.5;
-  for (int i = 0; i < 4; i++) {
-    v += a * noise(p);
-    p = p * 2.03 + 11.3;
-    a *= 0.5;
-  }
+  float v = 0.0, a = 0.5;
+  for (int i = 0; i < 5; i++) { v += a * noise(p); p = p * 2.07 + 13.1; a *= 0.5; }
   return v;
+}
+
+float meteor(vec2 uv, vec2 head, vec2 dir, float len, float width) {
+  vec2 tail = head - dir * len;
+  vec2 d = uv - tail;
+  float t = clamp(dot(d, dir) / len, 0.0, 1.0);
+  vec2 closest = tail + dir * t * len;
+  float dist = length(uv - closest);
+  float w = width * (1.0 - 0.85 * t);
+  return smoothstep(w, 0.0, dist) * t * t;
 }
 
 void main() {
   vec2 uv = vP;
+
   vec3 col = mix(uBottom, uTop, smoothstep(0.0, 1.0, uv.y));
-  col += vec3(0.010, 0.014, 0.030) * (1.0 - uv.y);
+  col += vec3(0.006, 0.009, 0.020) * (1.0 - uv.y);
 
-  /* 银河：斜向的窄带，靠两端淡出，避免糊满整块画布 */
   vec2 p = (uv - 0.5) * vec2(1.62, 1.0);
-  float ang = -0.58;
+  float ang = -0.52;
   vec2 q = vec2(p.x * cos(ang) - p.y * sin(ang), p.x * sin(ang) + p.y * cos(ang));
-  float band = exp(-pow(abs(q.y - 0.26) * 8.6, 2.0));
-  band *= smoothstep(1.05, 0.15, abs(q.x));
 
-  /* 两级噪声：低频定轮廓，高频出丝；脊状变换让云气有纤维感 */
-  float n1 = fbm(vec2(q.x * 9.0, q.y * 26.0) + 3.1);
-  float n2 = fbm(vec2(q.x * 21.0, q.y * 58.0) + 9.7);
-  float ridge = 1.0 - abs(n1 * 2.0 - 1.0);
-  float dust = smoothstep(0.50, 0.93, ridge * 0.54 + n2 * 0.62);
-  dust = pow(dust, 2.1);
+  float band = exp(-pow(abs(q.y - 0.20) * 7.4, 2.0));
+  band *= smoothstep(1.00, 0.10, abs(q.x));
 
-  vec3 cool = vec3(0.09, 0.15, 0.33);
-  vec3 warm = vec3(0.36, 0.20, 0.30);
-  vec3 nebula = mix(cool, warm, smoothstep(0.30, 0.85, n2));
-  col += nebula * band * dust * uNebula;
+  float cloudA = fbm(vec2(q.x * 6.0, q.y * 17.0) + 2.3);
+  float cloudB = fbm(vec2(q.x * 15.0, q.y * 42.0) + 8.9);
+  float cloudC = fbm(vec2(q.x * 34.0, q.y * 96.0) + 21.7);
 
-  /* 暗尘：把银河切开，才有纵深 */
-  float dark = smoothstep(0.50, 0.95, fbm(vec2(q.x * 12.0, q.y * 38.0) + 17.0));
-  col *= 1.0 - 0.7 * band * dark * clamp(uNebula, 0.0, 1.0);
+  float ridge = 1.0 - abs(cloudA * 2.0 - 1.0);
+  float gran = pow(cloudC, 3.0);
+  float dust = smoothstep(0.42, 0.92, ridge * 0.52 + cloudB * 0.42 + gran * 0.26);
+  dust *= 0.55 + 0.45 * cloudB;
 
-  float d = distance(uv * vec2(1.0, 1.35), vec2(0.34, 0.62));
-  col += uGlow * uGlowAmt * exp(-d * d * 6.6);
-  float vig = smoothstep(1.34, 0.30, distance(uv, vec2(0.5)));
-  col *= mix(0.70, 1.0, vig);
+  vec3 cool = vec3(0.13, 0.18, 0.34);
+  vec3 warm = vec3(0.42, 0.29, 0.22);
+  vec3 neb = mix(cool, warm, smoothstep(0.42, 0.88, cloudB));
+  col += neb * band * dust * uNebula * 1.22;
+
+  /* 带内的碎星：高频噪声打出的细密亮点，让银河像恒星密集区而不是烟雾 */
+  float spec = pow(noise(vec2(q.x * 260.0, q.y * 520.0)), 18.0);
+  spec += pow(noise(vec2(q.x * 130.0, q.y * 260.0) + 7.0), 22.0);
+  col += vec3(0.72, 0.80, 1.0) * spec * 24.0 * band * (0.35 + 0.65 * dust) * uNebula;
+
+  float coreGlow = exp(-pow(abs(q.x + 0.18) * 3.2, 2.0)) * exp(-pow(abs(q.y - 0.20) * 14.0, 2.0));
+  col += vec3(0.30, 0.26, 0.24) * coreGlow * dust * uNebula * 0.5;
+
+  float dark = smoothstep(0.46, 0.92, fbm(vec2(q.x * 21.0, q.y * 60.0) + 31.0));
+  col *= 1.0 - 0.62 * band * dark * clamp(uNebula, 0.0, 1.0);
+
+  for (int i = 0; i < 2; i++) {
+    float fi = float(i);
+    float period = 9.5 + fi * 6.3;
+    float tt = uTime + fi * 4.7;
+    float cyc = floor(tt / period);
+    float ph = fract(tt / period);
+    float dur = 0.16;
+    float k = ph / dur;
+    if (k < 1.0) {
+      float r1 = hash(vec2(cyc, fi + 1.3));
+      float r2 = hash(vec2(cyc + 9.1, fi + 5.7));
+      vec2 start = vec2(-0.30 + r1 * 0.90, 0.90 + r2 * 0.16);
+      vec2 dirv = normalize(vec2(0.90, -0.46));
+      vec2 head = start + dirv * k * 0.92;
+      float s = meteor(uv, head, dirv, 0.24, 0.0030);
+      float fade = smoothstep(0.0, 0.12, k) * (1.0 - smoothstep(0.75, 1.0, k));
+      col += vec3(0.88, 0.94, 1.0) * s * fade * 1.7;
+      col += vec3(0.58, 0.70, 1.0) * pow(s, 0.55) * fade * 0.22;
+      /* 头部亮点 */
+      float headGlow = smoothstep(0.014, 0.0, length(uv - head));
+      col += vec3(1.0, 0.99, 0.96) * headGlow * fade * 1.1;
+    }
+  }
+
+  float dd = distance(uv, vec2(0.5)) / 0.78;
+  col *= pow(clamp(1.0 - dd * dd * 0.55, 0.0, 1.0), 0.9);
+
   col += (hash(uv * 1024.0) - 0.5) * uGrain;
   gl_FragColor = vec4(col, 1.0);
 }`;
@@ -303,6 +335,7 @@ const VS_STAR = `
 attribute vec3 aDir;
 attribute float aSize;
 attribute float aSeed;
+attribute float aSpike;
 uniform mat4 uProj;
 uniform mat4 uView;
 uniform float uDpr;
@@ -310,28 +343,33 @@ uniform float uTime;
 uniform float uStars;
 varying float vA;
 varying vec3 vC;
+varying float vSpike;
 void main() {
   vec3 p = (uView * vec4(aDir, 0.0)).xyz;
   vec4 clip = uProj * vec4(p, 1.0);
   gl_Position = vec4(clip.xy, 0.9999 * clip.w, clip.w);
-  /* 呼吸式的闪烁，幅度很小，避免整片星海一起眨 */
-  float tw = 0.84 + 0.16 * sin(uTime * 0.55 + aSeed * 6.283);
+  float tw = 0.86 + 0.14 * sin(uTime * 0.7 + aSeed * 6.283);
   gl_PointSize = aSize * uDpr * tw;
-  vA = uStars * tw * (0.58 + 0.42 * aSeed);
-  /* 色温：偏蓝的年轻星 ↔ 偏暖的老星 */
-  vC = mix(vec3(0.72, 0.82, 1.0), vec3(1.0, 0.93, 0.82), fract(aSeed * 7.31));
+  vA = uStars * tw * (0.46 + 0.54 * pow(aSeed, 0.7));
+  vC = mix(vec3(0.74, 0.84, 1.0), vec3(1.0, 0.95, 0.86), fract(aSeed * 7.31));
+  vSpike = aSpike;
 }`;
 
 const FS_STAR = `
 precision mediump float;
 varying float vA;
 varying vec3 vC;
+varying float vSpike;
 void main() {
   vec2 d = gl_PointCoord - 0.5;
   float r = length(d);
   if (r > 0.5) discard;
   float core = smoothstep(0.5, 0.0, r);
   float a = core * core * vA;
+  if (vSpike > 0.5) {
+    float arm = max(1.0 - abs(d.x) * 26.0, 1.0 - abs(d.y) * 26.0);
+    a += max(arm, 0.0) * (1.0 - r * 2.0) * 0.55 * vA;
+  }
   gl_FragColor = vec4(vC * a, a);
 }`;
 
@@ -445,10 +483,11 @@ export function createEarth(canvas, opts = {}) {
   };
 
   /* 星空 */
-  const starCount = mobile ? 1100 : 2600;
+  const starCount = mobile ? 2600 : 7000;
   const starDir = new Float32Array(starCount * 3);
   const starSize = new Float32Array(starCount);
   const starSeed = new Float32Array(starCount);
+  const starSpike = new Float32Array(starCount);
   for (let i = 0; i < starCount; i++) {
     const u = Math.random() * 2 - 1;
     const th = Math.random() * Math.PI * 2;
@@ -456,13 +495,18 @@ export function createEarth(canvas, opts = {}) {
     starDir[i * 3] = r * Math.cos(th);
     starDir[i * 3 + 1] = u;
     starDir[i * 3 + 2] = r * Math.sin(th);
-    /* 星等分布：绝大多数是暗星，少数亮星撑起层次 */
-    const m = Math.pow(Math.random(), 3.2);
-    starSize[i] = 0.85 + m * 3.1;
+    /* 绝大多数是细密暗星，约 1% 是带衍射星芒的亮星 */
+    if (Math.random() > 0.988) {
+      starSize[i] = 9 + Math.random() * 6;
+      starSpike[i] = 1;
+    } else {
+      starSize[i] = 0.55 + Math.pow(Math.random(), 2.4) * 2.1;
+      starSpike[i] = 0;
+    }
     starSeed[i] = Math.random();
   }
   const starBuf = {
-    dir: buffer(starDir), size: buffer(starSize), seed: buffer(starSeed)
+    dir: buffer(starDir), size: buffer(starSize), seed: buffer(starSeed), spike: buffer(starSpike)
   };
 
   /* 缓慢移动的光点 */
@@ -542,7 +586,7 @@ export function createEarth(canvas, opts = {}) {
 
   function buildPrograms() {
     progBg = program(VS_BG, FS_BG, { aP: 'aP' }, 'bg');
-    progStar = program(VS_STAR, FS_STAR, { aDir: 'aDir', aSize: 'aSize', aSeed: 'aSeed' }, 'star');
+    progStar = program(VS_STAR, FS_STAR, { aDir: 'aDir', aSize: 'aSize', aSeed: 'aSeed', aSpike: 'aSpike' }, 'star');
     progEarth = program(VS_SPHERE, FS_EARTH, { aPos: 'aPos', aUV: 'aUV' }, 'earth');
     progCloud = program(VS_SPHERE, FS_CLOUD, { aPos: 'aPos', aUV: 'aUV' }, 'cloud');
     progAtmo = program(VS_SPHERE, FS_ATMO, { aPos: 'aPos', aUV: 'aUV' }, 'atmo');
@@ -728,9 +772,8 @@ export function createEarth(canvas, opts = {}) {
     g.vertexAttribPointer(progBg.a.aP, 2, g.FLOAT, false, 0, 0);
     g.uniform3fv(progBg.u.uTop, themeState.spaceTop);
     g.uniform3fv(progBg.u.uBottom, themeState.spaceBottom);
-    g.uniform3fv(progBg.u.uGlow, themeState.glow);
-    g.uniform1f(progBg.u.uGlowAmt, themeState.glowAmt);
     g.uniform1f(progBg.u.uGrain, themeState.grain);
+    g.uniform1f(progBg.u.uTime, t);
     g.uniform1f(progBg.u.uNebula, themeState.nebula == null ? 1 : themeState.nebula);
     g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
 
@@ -745,6 +788,9 @@ export function createEarth(canvas, opts = {}) {
       g.bindBuffer(g.ARRAY_BUFFER, starBuf.size);
       g.enableVertexAttribArray(progStar.a.aSize);
       g.vertexAttribPointer(progStar.a.aSize, 1, g.FLOAT, false, 0, 0);
+      g.bindBuffer(g.ARRAY_BUFFER, starBuf.spike);
+      g.enableVertexAttribArray(progStar.a.aSpike);
+      g.vertexAttribPointer(progStar.a.aSpike, 1, g.FLOAT, false, 0, 0);
       g.bindBuffer(g.ARRAY_BUFFER, starBuf.seed);
       g.enableVertexAttribArray(progStar.a.aSeed);
       g.vertexAttribPointer(progStar.a.aSeed, 1, g.FLOAT, false, 0, 0);
