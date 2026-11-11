@@ -116,7 +116,7 @@ void main() {
 
   vec3 dayC = pow(texture2D(uDay, vUV).rgb, vec3(2.2));
   /* 夜图带一点紫底色，取高次幂压掉，只留城市的灯 */
-  vec3 nightC = pow(texture2D(uNight, vUV).rgb, vec3(2.7));
+  vec3 nightC = pow(texture2D(uNight, vUV).rgb, vec3(2.7)) * vec3(1.0, 0.9, 0.72);
   float ocean = texture2D(uSpec, vUV).r;
 
   /* 云影：云层下方略压暗 */
@@ -131,7 +131,7 @@ void main() {
 
   /* 夜面只保留城市灯光。任何一点反照，经 sRGB 编码后都会把整块大陆
      提亮成一片蓝紫，反而不真实。 */
-  vec3 dark = nightC * 3.2 * uNightGain * smoothstep(0.10, -0.18, ndl);
+  vec3 dark = nightC * 2.7 * uNightGain * smoothstep(0.10, -0.18, ndl);
 
   vec3 col = mix(dark, lit, day);
 
@@ -414,15 +414,22 @@ export function createEarth(canvas, opts = {}) {
     || canvas.getContext('webgl', { antialias: true, alpha: false, powerPreference: 'high-performance' });
   if (!gl) { onReady({ ok: false }); return null; }
 
+  /* 显卡驱动回收上下文时不崩页面：暂停绘制，恢复后重新载入贴图 */
   canvas.addEventListener('webglcontextlost', e => {
     e.preventDefault();
-    console.error('[earth] context lost');
+    state.running = false;
+    state.ready = false;
+    console.warn('[earth] context lost');
   });
-  canvas.addEventListener('webglcontextrestored', () => console.error('[earth] context restored'));
+  canvas.addEventListener('webglcontextrestored', () => {
+    console.warn('[earth] context restored');
+    state.running = true;
+    load().catch(() => {});
+  });
 
   const mobile = matchMedia('(max-width: 860px)').matches;
-  const SEG = mobile ? 72 : 128;
-  const RINGS = mobile ? 48 : 96;
+  const SEG = mobile ? 96 : 176;
+  const RINGS = mobile ? 64 : 128;
 
   const state = {
     /* 初始视角：以中国（约 105°E）为正面，俯角 23°，略偏东 */
@@ -584,7 +591,7 @@ export function createEarth(canvas, opts = {}) {
       || gl.getExtension('WEBKIT_EXT_texture_filter_anisotropic');
     if (an) {
       const max = gl.getParameter(an.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
-      gl.texParameterf(gl.TEXTURE_2D, an.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, max));
+      gl.texParameterf(gl.TEXTURE_2D, an.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(16, max));
     }
     return t;
   }
@@ -703,11 +710,11 @@ export function createEarth(canvas, opts = {}) {
     if (state._cnt >= 90) {
       const avg = state._acc / state._cnt;
       state._acc = 0; state._cnt = 0;
-      if (avg > 0.026 && state.quality > 0.6) {
-        state.quality = Math.max(0.6, state.quality - 0.15);
+      if (avg > 0.033 && state.quality > 0.8) {
+        state.quality = Math.max(0.8, state.quality - 0.1);
         resize();
-      } else if (avg < 0.0135 && state.quality < 1) {
-        state.quality = Math.min(1, state.quality + 0.08);
+      } else if (avg < 0.014 && state.quality < 1) {
+        state.quality = Math.min(1, state.quality + 0.06);
         resize();
       }
     }
@@ -740,7 +747,17 @@ export function createEarth(canvas, opts = {}) {
         if (Math.abs(state.velPitch) < 0.00002) state.velPitch = 0;
       }
 
-      draw(t);
+      try {
+        draw(t);
+        state.drawFails = 0;
+      } catch (err) {
+        /* 单帧失败不致命，连续失败才停掉循环，避免整页卡死 */
+        state.drawFails = (state.drawFails || 0) + 1;
+        if (state.drawFails > 5) {
+          state.running = false;
+          console.error('[earth] 绘制连续失败，已停止渲染', err);
+        }
+      }
     }
     requestAnimationFrame(frame);
   }
@@ -1159,7 +1176,7 @@ export function createEarth(canvas, opts = {}) {
     },
     getZoom: () => state.distTo,
     /* 验收用：读取当前视角，不参与渲染 */
-    _debug: () => ({ yaw: state.yaw, pitch: state.pitch, dist: state.dist, spin: state.spin }),
+    _debug: () => ({ yaw: state.yaw, pitch: state.pitch, dist: state.dist, spin: state.spin, q: state.quality }),
     isReady: () => state.ready,
     _project: (lat, lng) => {
       const eye = cameraEye();

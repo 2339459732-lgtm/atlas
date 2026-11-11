@@ -319,7 +319,14 @@ function syncStats() {
 
   const newest = state.photos.slice().sort((a, b) => b.t - a.t)[0];
   const nl = newest ? landmarkById(newest.landmarkId) : null;
-  setT('stat-latest', nl ? nl.name : '—');
+  setT('stat-latest', nl ? placeName(nl) : '—');
+
+  /* 首屏右上：最近一处落点，没有照片时退回最新的地标 */
+  const recent = nl || state.landmarks[0];
+  const nameEl = $('#hero-latest-name');
+  const coordEl = $('#hero-latest-coord');
+  if (nameEl) nameEl.textContent = recent ? placeName(recent) : '—';
+  if (coordEl) coordEl.textContent = recent ? (recent.coord || t('wall.unlocated')) : '—';
 }
 
 /* ───────── 相册墙 ───────── */
@@ -2318,21 +2325,6 @@ function initGate() {
   });
 }
 
-/* ───────── 首屏时钟 ───────── */
-function initHeroClock() {
-  const tEl = $('#hero-clock');
-  const dEl = $('#hero-date');
-  if (!tEl) return;
-  const pad = n => String(n).padStart(2, '0');
-  const tick = () => {
-    const d = new Date();
-    tEl.textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-    if (dEl) dEl.textContent = `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())}`;
-  };
-  tick();
-  setInterval(tick, 1000);
-}
-
 /* ───────── 背景音乐 ───────── */
 const LS_MUTED = 'atlas.muted.v1';
 
@@ -2458,7 +2450,6 @@ async function boot() {
     syncEarth();
   }
 
-  initHeroClock();
   initMusic();
 }
 

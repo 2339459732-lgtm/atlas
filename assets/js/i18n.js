@@ -45,7 +45,7 @@ export const DICT = {
   'hero.statLandmarks': ['地标', 'Places'],
   'hero.statPhotos': ['照片', 'Photos'],
   'hero.statLatest': ['最近入库', 'Latest'],
-  'hero.store': ['本机存储 · 不上传任何照片', 'Stored on this device · nothing uploaded'],
+  'hero.latest': ['最近落点', 'Latest'],
   'hero.rail': ['向下', 'SCROLL'],
   'site.title': ['经纬所及', 'Meridians of Memory'],
   'site.lede': ['一处地标，一本相册。先在地球上落一个点，再把那里的照片放进去——同一座城的片子待在一起，翻起来才像一次回来。',

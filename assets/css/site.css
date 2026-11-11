@@ -407,16 +407,23 @@ kbd {
   display: flex; align-items: flex-start; justify-content: space-between;
   gap: 24px;
 }
-.hero__meta { text-align: right; display: grid; gap: 7px; justify-items: end; }
-.hero__time {
-  display: inline-flex; align-items: baseline; gap: 8px;
-  font-family: var(--f-mono); font-size: 12px; letter-spacing: .14em; color: var(--ink-2);
+.hero__meta {
+  text-align: right; display: grid; gap: 6px; justify-items: end;
+  padding-top: 2px;
+  border-top: 1px solid var(--line);
+  min-width: 150px;
 }
-.hero__time-k { font-size: 8px; letter-spacing: .22em; color: var(--ink-3); }
-.hero__time em { font-style: normal; font-size: 9px; letter-spacing: .16em; color: var(--ink-3); }
-.hero__store {
-  font-family: var(--f-mono); font-size: 8.5px; letter-spacing: .18em;
+.hero__meta-k {
+  font-family: var(--f-mono); font-size: 8px; letter-spacing: .22em;
   text-transform: uppercase; color: var(--ink-3);
+}
+.hero__meta-v {
+  font-family: var(--f-disp); font-size: 1.05rem; line-height: 1.2;
+  color: var(--ink); letter-spacing: .01em;
+  max-width: 15ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hero__meta-c {
+  font-family: var(--f-mono); font-size: 9px; letter-spacing: .12em; color: var(--ink-3);
 }
 
 .kicker {
@@ -1813,6 +1820,7 @@ html[data-lang="en"] .slide__empty span {
   .search-btn { width: 34px; justify-content: center; padding: 0; }
 
   .hero { min-height: 92svh; padding-top: calc(var(--nav-h) + 56px); }
+  .hero__meta { display: none; }
   .hero__title { grid-column: 1 / -1; font-size: clamp(2.9rem, 13.2vw, 5rem); }
   .hero__body { grid-column: 1 / -1; padding-top: 8px; }
   .hero__lede { max-width: none; font-size: 14px; }
@@ -2014,13 +2022,13 @@ html[data-gate="open"] .gate { display: none; }
 
 /* ───────── 背景音乐 ───────── */
 .sound-btn {
-  width: 32px; height: 32px; display: grid; place-items: center;
-  background: none; border: 1px solid transparent; border-radius: 2px;
-  color: var(--ink-2); cursor: pointer;
+  width: 34px; height: 34px; display: grid; place-items: center;
+  background: transparent; border: 1px solid var(--line-2); border-radius: var(--r);
+  color: var(--ink-3); cursor: pointer;
   transition: color .3s, border-color .3s, background-color .3s;
 }
 .sound-btn svg { width: 16px; height: 16px; }
-.sound-btn:hover { color: var(--ink); border-color: var(--line-2); }
+.sound-btn:hover { color: var(--ink); border-color: var(--ink-3); }
 .sound-btn__slash { opacity: 0; transition: opacity .25s; }
 .sound-btn__wave { transition: opacity .25s; }
 /* 三态：播放中 / 等待手势 / 已关闭 */
