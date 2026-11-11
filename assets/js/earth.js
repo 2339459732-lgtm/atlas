@@ -57,7 +57,7 @@ function rotY(out, r) {
 function latLngToVec(lat, lng) {
   const la = lat * DEG, lo = lng * DEG;
   const c = Math.cos(la);
-  return [-c * Math.cos(lo), Math.sin(la), -c * Math.sin(lo)];
+  return [-c * Math.cos(lo), Math.sin(la), c * Math.sin(lo)];
 }
 
 /* ── 着色器 ── */
@@ -286,7 +286,8 @@ function buildSphere(seg, rings, radius) {
       const u = x / seg;
       const th = u * Math.PI * 2;
       pos.push(cl * Math.cos(th) * radius, sl * radius, cl * Math.sin(th) * radius);
-      uv.push(u, 1 - v);
+      /* u 翻转：纠正纹理与球面绕序不一致造成的东/西镜像 */
+      uv.push(1 - u, 1 - v);
     }
   }
   for (let y = 0; y < rings; y++) {
@@ -322,7 +323,7 @@ export function createEarth(canvas, opts = {}) {
 
   const state = {
     /* 初始视角：以中国（约 105°E）为正面，俯角 23°，略偏东 */
-    yaw: 0.30, pitch: 0.40, dist: 1, spin: -2.58,
+    yaw: 0.30, pitch: 0.40, dist: 1, spin: 0.04,
     targetYaw: null, targetPitch: null,
     velYaw: 0, velPitch: 0,
     auto: true, hovered: null, ready: false,
@@ -525,7 +526,7 @@ export function createEarth(canvas, opts = {}) {
   function fit() {
     const aspect = state.w / state.h || 1;
     const fov = 30 * DEG;
-    const k = 0.8;
+    const k = 0.74;   /* 球体留出安全边距，避免被舞台边缘裁切 */
     const needV = 1 / (k * Math.tan(fov / 2));
     const needH = 1 / (k * Math.tan(fov / 2) * aspect);
     state.baseDist = Math.max(needV, needH);
@@ -906,7 +907,7 @@ export function createEarth(canvas, opts = {}) {
     const mx = c2 * p[0] + s2 * p[2];
     const mz = -s2 * p[0] + c2 * p[2];
     const lat = Math.asin(clamp(p[1], -1, 1)) / DEG;
-    const lng = Math.atan2(-mz, -mx) / DEG;
+    const lng = Math.atan2(mz, -mx) / DEG;
     return { lat, lng };
   }
 
@@ -946,13 +947,13 @@ export function createEarth(canvas, opts = {}) {
       state.targetYaw = 0.30;
       state.targetPitch = 0.40;
       state.dist = 1;
-      state.spin = -2.58;
+      state.spin = 0.04;
       state.auto = true;
     },
     homeView() {
       state.yaw = 0.30;
       state.pitch = 0.40;
-      state.spin = -2.58;
+      state.spin = 0.04;
       state.velYaw = 0; state.velPitch = 0;
       state.targetYaw = null; state.targetPitch = null;
       dirty = true;

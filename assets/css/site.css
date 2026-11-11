@@ -598,7 +598,8 @@ kbd {
 .planet__loader-p { font-family: var(--f-mono); font-size: 10px; color: var(--accent); letter-spacing: .1em; }
 
 .planet__hud {
-  position: absolute; left: clamp(14px, 2vw, 26px); top: clamp(14px, 2vw, 26px);
+  position: absolute; left: clamp(16px, 2.2vw, 30px);
+  top: calc(var(--nav-h) + clamp(6px, 1vw, 12px));
   display: flex; gap: 6px; z-index: 2;
 }
 .hud-btn {
@@ -621,10 +622,15 @@ kbd {
   box-shadow: 0 0 8px color-mix(in oklab, var(--accent) 80%, transparent);
 }
 .planet__hint {
-  position: absolute; left: clamp(14px, 2vw, 26px); bottom: clamp(14px, 2vw, 22px);
-  font-family: var(--f-mono); font-size: var(--fs-micro);
-  letter-spacing: .2em; text-transform: uppercase; color: var(--ink-3);
+  position: absolute; left: clamp(16px, 2.2vw, 30px); bottom: clamp(16px, 2vw, 24px);
   z-index: 2; pointer-events: none;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 10px;
+  background: color-mix(in oklab, var(--surface) 55%, transparent);
+  border: 1px solid var(--line); border-radius: 2px;
+  backdrop-filter: blur(8px);
+  font-family: var(--f-mono); font-size: var(--fs-micro);
+  letter-spacing: .16em; text-transform: uppercase; color: var(--ink-2);
 }
 
 .planet__panel {
@@ -635,7 +641,7 @@ kbd {
 .planet__title {
   margin-top: clamp(14px, 2vw, 26px);
   font-family: var(--f-disp); font-weight: 400;
-  font-size: clamp(2.4rem, 4.4vw, 4.2rem);
+  font-size: clamp(2.1rem, 3.4vw, 3.2rem);
   line-height: 1.02; letter-spacing: .01em; text-indent: -.03em;
 }
 .planet__lede {
