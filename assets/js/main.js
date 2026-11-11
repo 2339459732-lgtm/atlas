@@ -480,6 +480,7 @@ function renderShelf() {
     const frame = el('div', 'album-card__frame' + (cover ? '' : ' is-empty'));
     if (cover) frame.style.setProperty('--src', `url("${cover.thumb}")`);
     if (!cover) frame.appendChild(el('span', 'album-card__ghost', esc(lm.name)));
+    frame.appendChild(el('span', 'album-card__marks', '<i></i><i></i><i></i><i></i>'));
     if (cover) {
       const img = el('img');
       img.alt = `${lm.name} 相册封面`;
@@ -490,16 +491,15 @@ function renderShelf() {
       if (img.complete) img.classList.add('is-in');
       frame.appendChild(img);
     }
+    const meta = lm.coord || lm.date || (photos.length ? photos.length + ' 张' : '空相册');
+    const body = el('div', 'album-card__body',
+      '<div class="album-card__row">' +
+        '<span class="album-card__name">' + esc(lm.name) + '</span>' +
+        '<span class="album-card__count">' + photos.length + ' 张</span>' +
+      '</div>' +
+      '<span class="album-card__meta">' + esc(meta) + '</span>');
+    frame.appendChild(body);
     card.appendChild(frame);
-
-    const meta = lm.coord || lm.date || (photos.length ? `${photos.length} 张` : '空相册');
-    const body = el('div', 'album-card__body', `
-      <div class="album-card__row">
-        <span class="album-card__name">${esc(lm.name)}</span>
-        <span class="album-card__count">${photos.length} 张</span>
-      </div>
-      <span class="album-card__meta">${esc(meta)}</span>`);
-    card.appendChild(body);
 
     card.addEventListener('click', () => openAlbum(lm.id));
     grid.appendChild(card);
@@ -508,6 +508,20 @@ function renderShelf() {
   syncStats();
 }
 
+let pageRaf = 0;
+window.addEventListener('scroll', () => {
+  if (pageRaf) return;
+  pageRaf = requestAnimationFrame(() => {
+    pageRaf = 0;
+    const max = Math.max(1, document.body.scrollHeight - window.innerHeight);
+    const p = Math.min(1, Math.max(0, window.scrollY / max));
+    const no = document.getElementById('pager-no');
+    const bar = document.getElementById('pager-bar');
+    if (no) no.textContent = String(Math.min(4, 1 + Math.floor(p * 3.999))).padStart(2, '0');
+    if (bar) bar.style.top = (p * 48).toFixed(1) + 'px';
+  });
+}, { passive: true });
+
 function syncStats() {
   const n = state.landmarks.length;
   const p = state.photos.length;
@@ -515,6 +529,8 @@ function syncStats() {
   countTo($('#stat-photos'), p);
   const cs = $('#colophon-stat');
   if (cs) cs.textContent = n + ' 个地标 · ' + p + ' 张照片';
+  const wc = document.getElementById('wall-count');
+  if (wc) wc.textContent = n + ' 本';
   paintIntroRule();
   if (state.view === 'index') renderIndex();
   if (state.view === 'atlas') renderMap();

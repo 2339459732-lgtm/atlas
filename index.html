@@ -23,6 +23,14 @@ try {
 
 <a class="skip" href="#views">跳到正文</a>
 
+<div class="axes" aria-hidden="true"><i></i><i></i></div>
+
+<aside class="pager" aria-hidden="true">
+  <span class="pager__no" id="pager-no">01</span>
+  <span class="pager__track"><i id="pager-bar"></i></span>
+  <span class="pager__no">04</span>
+</aside>
+
 <header class="bar">
   <a class="mark" href="#" aria-label="回到顶部">
     <span class="mark__en" id="site-name">ATLAS</span>
@@ -69,6 +77,7 @@ try {
 
   <!-- ══════════ 开篇 ══════════ -->
   <section class="intro" id="intro">
+    <div class="sec-mark"><b>§ 01</b>开篇<span></span><b>PREFACE</b></div>
     <div class="intro__rule" aria-hidden="true">
       <span id="intro-year">—</span>
       <span class="intro__ticks"></span>
@@ -82,7 +91,8 @@ try {
   </section>
 
   <!-- ══════════ 墙 ══════════ -->
-  <section class="view is-on" id="view-wall" aria-label="相册墙">
+  <section class="view is-on" id="view-wall" data-dir="y" aria-label="相册墙">
+    <div class="sec-mark"><b>§ 02</b>墙<span></span><b id="wall-count">0 本</b></div>
     <div class="shelf__grid" id="shelf-grid"></div>
     <div class="shelf__foot">
       <button type="button" class="btn btn--line" id="btn-new-2">
@@ -94,7 +104,8 @@ try {
   </section>
 
   <!-- ══════════ 索引 ══════════ -->
-  <section class="view" id="view-index" aria-label="索引" hidden>
+  <section class="view" id="view-index" data-dir="y" aria-label="索引" hidden>
+    <div class="sec-mark"><b>§ 03</b>索引<span></span><b>INDEX</b></div>
     <div class="idx__head">
       <span>册</span><span>地标</span><span>坐标</span><span>时间</span><span>张数</span>
     </div>
@@ -102,7 +113,8 @@ try {
   </section>
 
   <!-- ══════════ 图 ══════════ -->
-  <section class="view" id="view-atlas" aria-label="地图" hidden>
+  <section class="view" id="view-atlas" data-dir="x" aria-label="地图" hidden>
+    <div class="sec-mark"><b>§ 04</b>图<span></span><b>ATLAS</b></div>
     <div class="map" id="map">
       <svg class="map__graticule" id="map-grid" aria-hidden="true"></svg>
       <div class="map__pins" id="map-pins"></div>

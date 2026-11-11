@@ -1039,3 +1039,246 @@ input[type="range"]:active::-webkit-slider-thumb { background: var(--accent); sc
   .intro__rule { font-size: 8px; gap: 8px; letter-spacing: .14em; }
   .intro__title { font-size: clamp(2rem, 10.5vw, 3rem); }
 }
+
+/* ════════════════════════════════════════════════════════════════
+   设计系统 v5 · 图纸
+   四条外来语言：结构可见（建筑）/ 尺度极端（平面）/ 文字咬进图（时尚）/ 册页编号（编辑）
+   ════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* 只有四档字号，中间层一律砍掉 */
+  --fs-display: clamp(3rem, 11.4vw, 9.6rem);
+  --fs-h1:      clamp(2rem, 4.6vw, 3.9rem);
+  --fs-h2:      clamp(1.35rem, 2.5vw, 2rem);
+  --fs-body:    14px;
+  --fs-micro:   9px;
+
+  --tracking-micro: .22em;
+  --lh-display: .88;
+}
+
+/* ── 纸张：极轻的点阵纤维 ── */
+body::before {
+  background-image:
+    radial-gradient(120% 55% at 8% -8%, rgba(255,255,255,.5) 0%, rgba(255,255,255,0) 62%),
+    radial-gradient(circle at 50% 50%, rgba(18,18,14,.05) 0 .45px, transparent .55px);
+  background-size: auto, 3px 3px;
+  background-repeat: no-repeat, repeat;
+  opacity: .9;
+}
+[data-theme="dark"] body::before {
+  background-image:
+    radial-gradient(120% 55% at 8% -8%, rgba(255,255,255,.05) 0%, rgba(255,255,255,0) 58%),
+    radial-gradient(circle at 50% 50%, rgba(255,255,255,.035) 0 .45px, transparent .55px);
+}
+
+/* ── 轴线：像建筑图纸的基准线 ── */
+.axes { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+.axes i {
+  position: absolute; top: 58px; bottom: 0; width: 1px;
+  background: var(--rule); opacity: .42;
+}
+.axes i:first-child { left: var(--pad); }
+.axes i:last-child { right: var(--pad); }
+@media (max-width: 900px) { .axes { display: none; } }
+
+/* ── 页码：右侧竖排 ── */
+.pager {
+  position: fixed; right: calc(var(--pad) - 26px); top: 50%;
+  translate: 0 -50%; z-index: 40;
+  display: grid; justify-items: center; gap: 8px;
+  pointer-events: none;
+}
+.pager__no {
+  writing-mode: vertical-rl;
+  font-family: var(--f-mono); font-size: var(--fs-micro);
+  letter-spacing: .3em; color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.pager__track {
+  width: 1px; height: 64px; background: var(--rule); position: relative;
+}
+.pager__track i {
+  position: absolute; left: -1px; top: 0; width: 3px; height: 16px;
+  background: var(--ink);
+  transition: top .25s linear;
+}
+@media (max-width: 1100px) { .pager { display: none; } }
+
+/* ── 区块标注：§ 编号 ── */
+.sec-mark {
+  display: flex; align-items: baseline; gap: 10px;
+  font-family: var(--f-mono); font-size: var(--fs-micro);
+  letter-spacing: var(--tracking-micro); text-transform: uppercase;
+  color: var(--ink-3);
+  padding-bottom: clamp(10px, 1.2vw, 16px);
+}
+.sec-mark b { font-weight: 400; color: var(--ink-2); }
+.sec-mark span { flex: 1; height: 1px; background: var(--rule); transform: translateY(-3px); }
+
+/* ── 开篇：尺度极端 ── */
+.intro { padding-top: clamp(30px, 5vw, 88px); }
+.intro__title {
+  font-size: var(--fs-display);
+  line-height: var(--lh-display);
+  letter-spacing: -.03em;
+  margin-left: -.028em;
+  font-weight: 700;
+}
+.intro__lede {
+  font-size: var(--fs-body);
+  line-height: 1.9;
+  max-width: 30em;
+  color: var(--ink-2);
+}
+.intro__rule {
+  font-size: var(--fs-micro);
+  letter-spacing: var(--tracking-micro);
+}
+
+/* ── 相册卡：文字咬进图 ── */
+.album-card__frame { overflow: hidden; }
+.album-card__body {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  z-index: 3;
+  display: grid; gap: 3px;
+  padding: clamp(14px, 1.8vw, 22px) clamp(13px, 1.5vw, 20px);
+  background: linear-gradient(180deg,
+    rgba(12,12,10,0) 0%,
+    rgba(12,12,10,.30) 34%,
+    rgba(12,12,10,.72) 100%);
+  color: #F6F4ED;
+  pointer-events: none;
+}
+.album-card__name {
+  font-size: var(--fs-h2);
+  font-weight: 600; letter-spacing: .03em; line-height: 1.18;
+  background-image: none;
+}
+.album-card__count,
+.album-card__meta { color: rgba(246,244,237,.72); }
+.album-card__count { font-size: var(--fs-micro); letter-spacing: .14em; }
+.album-card__meta { font-size: var(--fs-micro); letter-spacing: .18em; }
+
+/* 空相册：标签回到图下，纸面上不压网点 */
+.album-card__frame.is-empty .album-card__body {
+  position: absolute;
+  background: none;
+  color: var(--ink);
+  padding: 0 clamp(13px, 1.5vw, 20px) clamp(14px, 1.8vw, 22px);
+}
+.album-card__frame.is-empty .album-card__ghost { padding-bottom: 26%; }
+.album-card__frame.is-empty .album-card__count,
+.album-card__frame.is-empty .album-card__meta { color: var(--ink-3); }
+
+
+
+/* 裁切角标 */
+.album-card__frame::after,
+.album-card__frame::before { border: 0; }
+.album-card__marks {
+  position: absolute; inset: 9px; z-index: 4;
+  pointer-events: none; opacity: 0;
+  transition: opacity .45s var(--ease);
+}
+.album-card:hover .album-card__marks { opacity: .9; }
+.album-card__marks i {
+  position: absolute; width: 9px; height: 9px;
+  border-color: rgba(246,244,237,.75); border-style: solid; border-width: 0;
+}
+.album-card__marks i:nth-child(1) { top: 0; left: 0; border-top-width: 1px; border-left-width: 1px; }
+.album-card__marks i:nth-child(2) { top: 0; right: 0; border-top-width: 1px; border-right-width: 1px; }
+.album-card__marks i:nth-child(3) { bottom: 0; left: 0; border-bottom-width: 1px; border-left-width: 1px; }
+.album-card__marks i:nth-child(4) { bottom: 0; right: 0; border-bottom-width: 1px; border-right-width: 1px; }
+
+/* ── 索引：更大，更像目录 ── */
+.idx-row { padding: clamp(18px, 2.2vw, 30px) 0; }
+.idx-row__name { font-size: var(--fs-h2); }
+.idx-row__no { font-size: var(--fs-micro); letter-spacing: .2em; }
+.idx__head { font-size: var(--fs-micro); letter-spacing: var(--tracking-micro); }
+
+/* ── 相册页：册号与标题的关系更狠 ── */
+.album__name {
+  font-size: var(--fs-display);
+  line-height: var(--lh-display);
+  letter-spacing: -.03em;
+  margin-left: -.028em;
+}
+.album__no { font-size: clamp(1rem, 1.4vw, 1.25rem); letter-spacing: .3em; margin-bottom: 6px; }
+
+/* ── 版权页：微字 ── */
+.colophon__title, .colophon__cn {
+  font-size: var(--fs-micro);
+  letter-spacing: var(--tracking-micro);
+}
+.colophon__body { font-size: 12.5px; line-height: 1.95; }
+
+/* ── 章节分隔：跨页留白 ── */
+.brk {
+  display: grid; place-items: center;
+  padding: clamp(40px, 7vw, 110px) var(--pad);
+  border: 0;
+}
+.brk i { width: 1px; height: 44px; background: var(--rule); }
+
+/* ── 入场编排：一条时间轴 ── */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes ruleIn { from { opacity: 0; transform: scaleX(.2); transform-origin: left } to { opacity: 1; transform: scaleX(1) } }
+  @keyframes riseIn { from { opacity: 0; translate: 0 26px } to { opacity: 1; translate: 0 0 } }
+  @keyframes fadeUp { from { opacity: 0; translate: 0 12px } to { opacity: 1; translate: 0 0 } }
+
+  .intro__rule { animation: ruleIn .9s var(--ease) both; }
+  .intro__title { animation: riseIn 1.05s var(--ease) .1s both; }
+  .intro__lede { animation: fadeUp .9s var(--ease) .4s both; }
+  .sec-mark { animation: fadeUp .8s var(--ease) .6s both; }
+
+  .shelf__grid .album-card { animation: riseIn .95s var(--ease) both; }
+  .shelf__grid .album-card:nth-child(1) { animation-delay: .52s; }
+  .shelf__grid .album-card:nth-child(2) { animation-delay: .60s; }
+  .shelf__grid .album-card:nth-child(3) { animation-delay: .68s; }
+  .shelf__grid .album-card:nth-child(4) { animation-delay: .76s; }
+  .shelf__grid .album-card:nth-child(5) { animation-delay: .84s; }
+  .shelf__grid .album-card:nth-child(n+6) { animation-delay: .9s; }
+}
+
+/* ── 视图切换的方向感 ── */
+@keyframes viewInY { from { opacity: 0; translate: 0 14px } to { opacity: 1; translate: 0 0 } }
+@keyframes viewInX { from { opacity: 0; translate: 18px 0 } to { opacity: 1; translate: 0 0 } }
+.view { animation-duration: .5s; }
+.view[data-dir="y"] { animation-name: viewInY; animation-duration: .5s; animation-timing-function: var(--ease); }
+.view[data-dir="x"] { animation-name: viewInX; animation-duration: .5s; animation-timing-function: var(--ease); }
+
+/* ── 顶栏：轴线的起点 ── */
+.bar { border-bottom-color: var(--rule); }
+
+/* ── 窄屏收敛 ── */
+@media (max-width: 900px) {
+  .intro__title { font-size: clamp(2.6rem, 13vw, 4.4rem); margin-left: -.02em; }
+  .album-card__name { font-size: 1.05rem; }
+  .album__name { font-size: clamp(2.2rem, 12vw, 3.6rem); }
+}
+
+/* ── v5 修正 ── */
+/* 标题跨满整行，说明落到第二行右侧 */
+.intro .intro__title { grid-column: 1 / -1; }
+.intro .intro__lede { grid-column: 2; margin-top: 8px; }
+.intro { row-gap: clamp(10px, 1.6vw, 22px); }
+.intro__title { line-height: .96; }
+
+/* 压在图上的字要能读 */
+.album-card__body { text-shadow: 0 1px 14px rgba(0,0,0,.55); }
+.album-card__frame.is-empty .album-card__body { text-shadow: 0 1px 10px rgba(0,0,0,.35); }
+
+/* 页码退到边缘，不压内容 */
+.pager { right: 12px; opacity: .75; }
+.pager:hover { opacity: 1; }
+
+@media (max-width: 1240px) {
+  .intro .intro__title,
+  .intro .intro__lede { grid-column: 1 / -1; }
+  .intro .intro__lede { margin-top: 0; }
+}
+
+/* 空相册：书脊上的竖排地名已经是名字，底部不再重复 */
+.album-card__frame.is-empty .album-card__name { display: none; }
+.album-card__frame.is-empty .album-card__row { justify-content: flex-end; }
