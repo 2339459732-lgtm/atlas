@@ -169,7 +169,8 @@ void main() {
                      + 0.11 * sin(13.0 * l + 26.0 * b + 3.1);
   clump = max(0.18, clump);
 
-  float d = (0.100 + 0.88 * spine + 0.26 * halo) * env * clump * (1.0 + 1.15 * core);
+  /* 银经包络的峰值与银心重合，两者的增益会叠乘，所以整体再压一个系数 */
+  float d = (0.100 + 0.88 * spine + 0.26 * halo) * env * clump * (1.0 + 0.50 * core) * 0.42;
 
   /* 暗带：中心线沿银经起伏，宽度内实心、边缘在 0.45–1.0 之间收住，
      强度再沿银经呼吸一次，避免出现几条等宽的直线。 */
@@ -445,7 +446,7 @@ export function catalog({ count, pole, core, e1, e2, seed = 20261112 }) {
     else { size = 0.66 + Math.pow(rnd(), 1.9) * 0.80; bright = 0.30 + rnd() * 0.26; }
 
     /* 银心附近整体更亮：密度靠采样，亮度靠这一步 */
-    bright *= 1 + 0.9 * coreF;
+    bright *= 1 + 0.45 * coreF;
 
     /* 色温：绝大部分是白/暖白，蓝白与橙是少数 */
     const cq = rnd();
