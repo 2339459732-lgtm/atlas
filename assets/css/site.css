@@ -167,10 +167,11 @@ kbd {
   85% { transform: translate(-2%,2%) }
 }
 
-.scroll-line { position: fixed; inset: 0 0 auto; height: 1px; z-index: 390; }
+.scroll-line { position: fixed; inset: 0 0 auto; height: 2px; z-index: 390; pointer-events: none; }
 .scroll-line i {
   display: block; height: 100%; width: 100%;
   background: linear-gradient(90deg, transparent, var(--accent));
+  box-shadow: 0 0 12px -2px color-mix(in oklab, var(--accent) 60%, transparent);
   transform: scaleX(0); transform-origin: 0 50%;
 }
 
