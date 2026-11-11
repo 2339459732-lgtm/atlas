@@ -62,6 +62,23 @@ const THEMES = {
 };
 const THEME_ORDER = ['noir', 'ivory', 'slate'];
 
+/* 常见地名的英文写法。地标自身有 nameEn 时优先用它。 */
+const EN_CITY = {
+  '北京': "Beijing", '上海': 'Shanghai', '广州': 'Guangzhou', '深圳': 'Shenzhen',
+  '成都': 'Chengdu', '西安': "Xi'an", '南宁': 'Nanning', '杭州': 'Hangzhou',
+  '南京': 'Nanjing', '重庆': 'Chongqing', '武汉': 'Wuhan', '厦门': 'Xiamen',
+  '香港': 'Hong Kong', '澳门': 'Macao', '台北': 'Taipei', '高雄': 'Kaohsiung',
+  '京都': 'Kyoto', '东京': 'Tokyo', '大阪': 'Osaka', '札幌': 'Sapporo',
+  '首尔': 'Seoul', '曼谷': 'Bangkok', '新加坡': 'Singapore', '吉隆坡': 'Kuala Lumpur',
+  '雷克雅未克': 'Reykjavík', '里斯本': 'Lisbon', '巴黎': 'Paris', '伦敦': 'London',
+  '罗马': 'Rome', '佛罗伦萨': 'Florence', '威尼斯': 'Venice', '巴塞罗那': 'Barcelona',
+  '阿姆斯特丹': 'Amsterdam', '柏林': 'Berlin', '维也纳': 'Vienna', '布拉格': 'Prague',
+  '纽约': 'New York', '旧金山': 'San Francisco', '洛杉矶': 'Los Angeles',
+  '温哥华': 'Vancouver', '悉尼': 'Sydney', '墨尔本': 'Melbourne', '奥克兰': 'Auckland',
+  '开普敦': 'Cape Town', '圣托里尼': 'Santorini', '伊斯坦布尔': 'Istanbul'
+};
+const placeName = lm => (getLang() === 'en' ? (lm.nameEn || EN_CITY[lm.name] || lm.name) : lm.name);
+
 /* ───────── 小工具 ───────── */
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -218,7 +235,7 @@ function applySite(site) {
   set('site-name', site.name);
   set('site-lede', lede);
   set('hero-site', site.name);
-  document.title = `${site.name} ${site.cn} · ${title}`;
+  document.title = site.name;
   const md = document.querySelector('meta[name="description"]');
   if (md) md.setAttribute('content', lede || title);
 }
@@ -308,7 +325,7 @@ function renderWall() {
     card.type = 'button';
     card.style.setProperty('--ac', lm.accent);
     card.style.transitionDelay = `${Math.min(i, 6) * 45}ms`;
-    card.setAttribute('aria-label', `${lm.name}，${photos.length} 张照片`);
+    card.setAttribute('aria-label', `${placeName(lm)} · ${t('wall.photoCount', { n: photos.length })}`);
 
     const frame = el('div', 'card__frame' + (cover ? '' : ' is-empty'));
     if (cover) {
@@ -334,7 +351,7 @@ function renderWall() {
     const body = el('div', 'card__body');
     body.innerHTML =
       `<span class="card__no">№${pad2(i + 1)}</span>` +
-      `<span class="card__name"><i class="card__dot"></i>${esc(lm.name)}</span>` +
+      `<span class="card__name"><i class="card__dot"></i>${esc(placeName(lm))}</span>` +
       `<span class="card__count">${isLocked(lm) ? t('ov.locked') : (photos.length ? t('wall.photoCount', { n: photos.length }) : t('wall.empty0'))}</span>` +
       `<span class="card__sub">${esc(lm.coord || lm.date || t('wall.unlocated'))}</span>`;
     card.appendChild(body);
@@ -411,7 +428,7 @@ function renderIndex() {
     row.style.setProperty('--ac', lm.accent);
     row.innerHTML =
       `<span class="row__no">${pad2(i + 1)}</span>` +
-      `<span class="row__name"><i class="row__dot"></i>${esc(lm.name)}</span>` +
+      `<span class="row__name"><i class="row__dot"></i>${esc(placeName(lm))}</span>` +
       `<span class="row__coord">${esc(lm.coord || '—')}</span>` +
       `<span class="row__date">${esc(lm.date || '—')}</span>` +
       `<span class="row__count">${t('wall.photoCount', { n: photos.length })}</span>` +
@@ -491,12 +508,12 @@ function buildMarkers() {
       b.type = 'button';
       b.dataset.id = l.id;
       b.style.setProperty('--ac', l.accent);
-      b.setAttribute('aria-label', `${l.name}，${photosOf(l.id).length} 张照片`);
+      b.setAttribute('aria-label', `${placeName(l)} · ${t('wall.photoCount', { n: photosOf(l.id).length })}`);
       b.innerHTML =
         `<span class="marker__ring"></span>` +
         `<span class="marker__dot"></span>` +
-        `<span class="marker__label">${esc(l.name)}</span>` +
-        `<span class="marker__card"><span class="marker__name">${esc(l.name)}</span>` +
+        `<span class="marker__label">${esc(placeName(l))}</span>` +
+        `<span class="marker__card"><span class="marker__name">${esc(placeName(l))}</span>` +
         `<span class="marker__meta">${esc(l.coord || '未标注')} · ${photosOf(l.id).length} 张</span></span>`;
       b.addEventListener('click', e => {
         e.stopPropagation();
@@ -579,7 +596,7 @@ function renderPlanetList() {
     b.dataset.id = l.id;
     b.innerHTML =
       `<i>${pad2(i + 1)}</i>` +
-      `<b>${esc(l.name)}</b>` +
+      `<b>${esc(placeName(l))}</b>` +
       `<em>${photosOf(l.id).length}</em>`;
     b.addEventListener('mouseenter', () => {
       earth?.setHovered(l.id);
@@ -679,10 +696,10 @@ function openAlbum(id, ev) {
 
   albumScroll.querySelector('.album__bar')?.classList.remove('is-stuck');
 
-  $('#album-name').textContent = lm.name;
+  $('#album-name').textContent = placeName(lm);
   $('#album-note').textContent = lm.note || '';
   $('#album-note').hidden = !lm.note;
-  $('#album-crumb').textContent = lm.name;
+  $('#album-crumb').textContent = placeName(lm);
   $('#album-kicker').textContent = `ALBUM ${pad2(state.landmarks.findIndex(l => l.id === id) + 1)}${lm.date ? ' · ' + lm.date : ''}`;
   $('#album-kicker').style.setProperty('--ac', lm.accent);
 
@@ -1099,7 +1116,7 @@ function renderPalette(q) {
     .filter(l => !ql || l.name.toLowerCase().includes(ql) || (l.coord || '').toLowerCase().includes(ql) || (l.note || '').toLowerCase().includes(ql))
     .slice(0, 6)
     .map(l => ({
-      id: l.id, label: l.name, meta: `${photosOf(l.id).length} 张`, kind: 'landmark',
+      id: l.id, label: placeName(l), meta: t('wall.photoCount', { n: photosOf(l.id).length }), kind: 'landmark',
       thumb: coverOf(l)?.thumb || '', run: () => openAlbum(l.id)
     }));
   if (lms.length) groups.push({ name: t('pal.places'), items: lms });
@@ -1770,7 +1787,7 @@ function layoutDeck() {
   const lm = state.landmarks[deckIndex];
   if (lm) {
     $('#car-no').textContent = `№ ${pad2(deckIndex + 1)}`;
-    $('#car-name').textContent = lm.name;
+    $('#car-name').textContent = placeName(lm);
     $('#car-sub').textContent = isLocked(lm)
       ? t('ov.lockedSub')
       : `${t('ov.count', { n: photosOf(lm.id).length })} · ${lm.coord || '—'}`;
@@ -2061,7 +2078,9 @@ async function mergeBackup(payload) {
 function applyLang() {
   applyI18n(document);
   const label = $('#lang-label');
-  if (label) label.textContent = getLang() === 'zh' ? 'EN' : '中';
+  if (label) label.textContent = getLang() === 'zh' ? '中' : 'EN';
+  const lb = $('#lang-btn');
+  if (lb) lb.setAttribute('title', t('nav.lang'));
   document.documentElement.setAttribute('lang', getLang() === 'zh' ? 'zh-CN' : 'en');
   /* 站点标题与导语跟随语言（未自定义时） */
   applySite(state.site || loadSite());

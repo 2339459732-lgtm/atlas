@@ -19,6 +19,7 @@ export const DICT = {
   'nav.more': ['更多操作', 'More'],
   'nav.lang': ['切换语言', 'Switch language'],
   'nav.brandHome': ['ATLAS 图册 · 回到顶部', 'ATLAS · Back to top'],
+  'brand.cn': ['图册', 'ATLAS'],
 
   /* 主题菜单 */
   'theme.title': ['主题', 'Theme'],
@@ -256,7 +257,11 @@ export function initLang() {
   setLang(saved);
 }
 
+/* 英文单复数：1 photo / 2 photos */
+const SINGULAR = { 'wall.photoCount': '1 photo', 'ov.count': '1 photo', 'planet.albumCount': '1 photo' };
+
 export function t(key, vars) {
+  if (lang === 'en' && vars && vars.n === 1 && SINGULAR[key]) return SINGULAR[key];
   const row = DICT[key];
   let s = row ? row[lang === 'zh' ? 0 : 1] : key;
   if (vars) {
