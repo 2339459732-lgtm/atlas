@@ -292,7 +292,7 @@ void main() {
   col *= 1.0 - 0.7 * band * dark;
 
   float d = distance(uv * vec2(1.0, 1.35), vec2(0.34, 0.62));
-  col += uGlow * uGlowAmt * exp(-d * d * 5.2);
+  col += uGlow * uGlowAmt * exp(-d * d * 6.6);
   float vig = smoothstep(1.34, 0.30, distance(uv, vec2(0.5)));
   col *= mix(0.70, 1.0, vig);
   col += (hash(uv * 1024.0) - 0.5) * uGrain;
@@ -317,7 +317,7 @@ void main() {
   /* 呼吸式的闪烁，幅度很小，避免整片星海一起眨 */
   float tw = 0.84 + 0.16 * sin(uTime * 0.55 + aSeed * 6.283);
   gl_PointSize = aSize * uDpr * tw;
-  vA = uStars * tw * (0.42 + 0.58 * aSeed);
+  vA = uStars * tw * (0.58 + 0.42 * aSeed);
   /* 色温：偏蓝的年轻星 ↔ 偏暖的老星 */
   vC = mix(vec3(0.72, 0.82, 1.0), vec3(1.0, 0.93, 0.82), fract(aSeed * 7.31));
 }`;
