@@ -308,8 +308,8 @@ void main() {
   vec3 perp = dir - uPole * b;
 
   /* 银盘剖面：亮脊套在宽晕里，带外迅速回到深空底色 */
-  float halo = exp(-pow(abs(b) * 5.40, 2.0));
-  float spine = exp(-pow(abs(b) * 16.0, 2.0));
+  float halo = exp(-pow(abs(b) * 7.60, 2.0));
+  float spine = exp(-pow(abs(b) * 19.0, 2.0));
   float band = halo * 0.42 + spine * 0.72;
 
   float coreAng = max(0.0, dot(dir, uCore));
@@ -333,16 +333,16 @@ void main() {
   vec3 dq = uPole * b * 34.0 + perp * 7.4;
   float d1 = fbm(dq + 31.0, 3.0);
   float d2 = fbm(dq * 3.4 + 57.0, 2.0);
-  float dust = smoothstep(0.55, 0.70, d1 * 0.62 + d2 * 0.40);
+  float dust = smoothstep(0.575, 0.645, d1 * 0.62 + d2 * 0.40);
   dust *= smoothstep(0.78, 0.18, abs(b));
-  glow *= 1.0 - 0.80 * dust;
+  glow *= 1.0 - 0.86 * dust;
 
   /* 银心：一团更亮更暖的核球辉光 */
   glow += core * 0.16;
 
   /* 软肩：直接把叠了三层的亮度送出去会爆成白块，
      用指数肩压到 0.52 以内，亮部仍保留层次 */
-  glow = 0.58 * (1.0 - exp(-glow * 1.70));
+  glow = 0.44 * (1.0 - exp(-glow * 1.90));
 
   /* 色调：银心暖琥珀 → 外围冷蓝 */
   vec3 cool = vec3(0.34, 0.44, 0.68);
