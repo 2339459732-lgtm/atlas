@@ -515,6 +515,7 @@ function initEarth() {
       if (earthReady) return;
       earthReady = true;
       buildMarkers();
+      paintRes();
     },
     onProject: ({ project }) => updateMarkers(project)
   });
@@ -523,6 +524,7 @@ function initEarth() {
     return;
   }
   earth.setTheme(THEMES[state.theme].globe);
+  earth.initTier(currentRes());
   window.atlasEarth = earth;   /* 调试/验收用只读句柄 */
 
   /* 兜底：无论贴图多慢，18 秒后都撤掉遮罩，交互不被挡住 */
@@ -1698,6 +1700,44 @@ function setLive(on) {
 $('#earth-live')?.addEventListener('click', e => {
   const btn = e.currentTarget;
   setLive(btn.getAttribute('aria-pressed') !== 'true');
+});
+
+/* ── 画质档位：1K / 2K / 4K ── */
+const LS_RES = 'atlas.res.v1';
+
+function currentRes() {
+  try {
+    const v = localStorage.getItem(LS_RES);
+    if (v && ['1k', '2k', '4k'].includes(v)) return v;
+  } catch {}
+  return matchMedia('(max-width: 860px)').matches ? '1k' : '2k';
+}
+
+function paintRes() {
+  const cur = earth?.getResolution?.() || currentRes();
+  $$('.planet__res-btns button').forEach(b => {
+    b.setAttribute('aria-pressed', String(b.dataset.res === cur));
+  });
+}
+
+$$('.planet__res-btns button').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const r = btn.dataset.res;
+    if (!earth || btn.getAttribute('aria-pressed') === 'true') return;
+    const all = $$('.planet__res-btns button');
+    all.forEach(b => { b.disabled = true; });
+    toast(t('planet.loadingRes', { r: r.toUpperCase() }));
+    try {
+      await earth.setResolution(r);
+      try { localStorage.setItem(LS_RES, r); } catch {}
+      toast(t('planet.resDone', { r: r.toUpperCase() }));
+    } catch {
+      toast(t('planet.resFail', { r: r.toUpperCase() }), true);
+    } finally {
+      all.forEach(b => { b.disabled = false; });
+      paintRes();
+    }
+  });
 });
 
 $('#earth-zoom-in')?.addEventListener('click', () => earth?.zoomBy(0.86));

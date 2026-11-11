@@ -2082,3 +2082,28 @@ html[data-gate="open"] .gate { display: none; }
   .hero__body { grid-column: 1 / -1; grid-row: 3; padding-bottom: 0; }
   .hero__stats { grid-row: 4; }
 }
+
+/* 画质选择：与面板其它控件同一套语言 */
+.planet__res {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.planet__res-k {
+  font-family: var(--f-mono); font-size: 8.5px; letter-spacing: .2em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.planet__res-btns { display: inline-flex; border: 1px solid var(--line-2); border-radius: var(--r); overflow: hidden; }
+.planet__res-btns button {
+  min-width: 40px; height: 26px; padding: 0 8px;
+  background: transparent; border: 0; border-right: 1px solid var(--line-2);
+  font-family: var(--f-mono); font-size: 8.5px; letter-spacing: .1em;
+  color: var(--ink-3); cursor: pointer;
+  transition: color .25s, background-color .25s;
+}
+.planet__res-btns button:last-child { border-right: 0; }
+.planet__res-btns button:hover { color: var(--ink); }
+.planet__res-btns button[aria-pressed="true"] {
+  color: var(--bg); background: var(--ink-2);
+}
+.planet__res-btns button[disabled] { opacity: .5; cursor: progress; }

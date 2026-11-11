@@ -235,6 +235,13 @@ void main() {
 
 const FS_BG = `
 precision highp float;
+uniform sampler2D uSky;
+uniform vec3 uRight;
+uniform vec3 uUp;
+uniform vec3 uFwd;
+uniform float uTanHalf;
+uniform float uAspect;
+uniform float uSkyGain;
 uniform vec3 uTop;
 uniform vec3 uBottom;
 uniform float uGrain;
@@ -247,19 +254,8 @@ float hash(vec2 p) {
   p += dot(p, p + 34.56);
   return fract(p.x * p.y);
 }
-float noise(vec2 p) {
-  vec2 i = floor(p), f = fract(p);
-  vec2 u = f * f * (3.0 - 2.0 * f);
-  float a = hash(i), b = hash(i + vec2(1.0, 0.0));
-  float c = hash(i + vec2(0.0, 1.0)), d = hash(i + vec2(1.0, 1.0));
-  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
-}
-float fbm(vec2 p) {
-  float v = 0.0, a = 0.5;
-  for (int i = 0; i < 5; i++) { v += a * noise(p); p = p * 2.07 + 13.1; a *= 0.5; }
-  return v;
-}
 
+/* 一条流星：沿方向的锥形拖尾 */
 float meteor(vec2 uv, vec2 head, vec2 dir, float len, float width) {
   vec2 tail = head - dir * len;
   vec2 d = uv - tail;
@@ -273,41 +269,22 @@ float meteor(vec2 uv, vec2 head, vec2 dir, float len, float width) {
 void main() {
   vec2 uv = vP;
 
-  vec3 col = mix(uBottom, uTop, smoothstep(0.0, 1.0, uv.y));
-  col += vec3(0.006, 0.009, 0.020) * (1.0 - uv.y);
+  /* 由屏幕坐标反推视线方向，再换算成赤经赤纬，去采样真实全天图 */
+  vec2 ndc = uv * 2.0 - 1.0;
+  vec3 dir = normalize(uRight * (ndc.x * uTanHalf * uAspect) + uUp * (ndc.y * uTanHalf) - uFwd);
 
-  vec2 p = (uv - 0.5) * vec2(1.62, 1.0);
-  float ang = -0.46;
-  vec2 q = vec2(p.x * cos(ang) - p.y * sin(ang), p.x * sin(ang) + p.y * cos(ang));
+  float lon = atan(dir.z, dir.x);
+  float lat = asin(clamp(dir.y, -1.0, 1.0));
+  vec2 skyUV = vec2(lon / 6.2831853 + 0.5, lat / 3.1415926 + 0.5);
 
-  float band = exp(-pow(abs(q.y - 0.26) * 6.6, 2.0));
-  band *= smoothstep(1.00, 0.10, abs(q.x));
+  vec3 sky = texture2D(uSky, skyUV).rgb;
+  /* 提一点对比，让银河与暗尘分开；再压低整体，避免抢地球 */
+  sky = pow(max(sky - 0.012, 0.0), vec3(1.25)) * 1.55;
 
-  float cloudA = fbm(vec2(q.x * 6.0, q.y * 17.0) + 2.3);
-  float cloudB = fbm(vec2(q.x * 15.0, q.y * 42.0) + 8.9);
-  float cloudC = fbm(vec2(q.x * 34.0, q.y * 96.0) + 21.7);
+  vec3 base = mix(uBottom, uTop, smoothstep(0.0, 1.0, uv.y));
+  vec3 col = mix(base, sky, clamp(uSkyGain, 0.0, 1.0));
 
-  float ridge = 1.0 - abs(cloudA * 2.0 - 1.0);
-  float gran = pow(cloudC, 3.0);
-  float dust = smoothstep(0.42, 0.92, ridge * 0.52 + cloudB * 0.42 + gran * 0.26);
-  dust *= 0.55 + 0.45 * cloudB;
-
-  vec3 cool = vec3(0.13, 0.16, 0.24);
-  vec3 warm = vec3(0.46, 0.33, 0.20);
-  vec3 neb = mix(cool, warm, smoothstep(0.42, 0.88, cloudB));
-  col += neb * band * dust * uNebula * 1.22;
-
-  /* 带内的碎星：高频噪声打出的细密亮点，让银河像恒星密集区而不是烟雾 */
-  float spec = pow(noise(vec2(q.x * 260.0, q.y * 520.0)), 18.0);
-  spec += pow(noise(vec2(q.x * 130.0, q.y * 260.0) + 7.0), 22.0);
-  col += vec3(0.72, 0.80, 1.0) * spec * 24.0 * band * (0.35 + 0.65 * dust) * uNebula;
-
-  float coreGlow = exp(-pow(abs(q.x + 0.18) * 3.2, 2.0)) * exp(-pow(abs(q.y - 0.26) * 14.0, 2.0));
-  col += vec3(0.30, 0.26, 0.24) * coreGlow * dust * uNebula * 0.5;
-
-  float dark = smoothstep(0.46, 0.92, fbm(vec2(q.x * 21.0, q.y * 60.0) + 31.0));
-  col *= 1.0 - 0.62 * band * dark * clamp(uNebula, 0.0, 1.0);
-
+  /* ── 流星 ── */
   for (int i = 0; i < 2; i++) {
     float fi = float(i);
     float period = 9.5 + fi * 6.3;
@@ -326,12 +303,12 @@ void main() {
       float fade = smoothstep(0.0, 0.12, k) * (1.0 - smoothstep(0.75, 1.0, k));
       col += vec3(0.90, 0.95, 1.0) * s * fade * 1.8;
       col += vec3(0.62, 0.74, 1.0) * pow(s, 0.55) * fade * 0.30;
-      /* 头部亮点 */
       float headGlow = smoothstep(0.014, 0.0, length(uv - head));
       col += vec3(1.0, 0.99, 0.96) * headGlow * fade * 1.1;
     }
   }
 
+  /* 四角压暗 */
   float dd = distance(uv, vec2(0.5)) / 0.86;
   col *= pow(clamp(1.0 - dd * dd * 0.34, 0.0, 1.0), 0.9);
 
@@ -555,11 +532,13 @@ export function createEarth(canvas, opts = {}) {
     spec: 'earth-specular-1k.jpg',
     normal: 'earth-normal.jpg'
   };
-  const texHi = {
-    day: 'earth-day.jpg',
-    night: 'earth-night.png',
-    spec: 'earth-specular.jpg'
+  /* 画质档位：1K 极速 / 2K 标准 / 4K 精细（4K 换了 3840×1920 的白昼图） */
+  const TIERS = {
+    '1k': { day: 'earth-day-1k.jpg', night: 'earth-night-1k.jpg', spec: 'earth-specular-1k.jpg' },
+    '2k': { day: 'earth-day.jpg', night: 'earth-night.png', spec: 'earth-specular.jpg' },
+    '4k': { day: 'earth-day-4k.jpg', night: 'earth-night.png', spec: 'earth-specular.jpg' }
   };
+  let tier = '2k';
   const textures = {};
 
   /* 1×1 占位纹理：让着色器始终有东西可采样，等真图到了再替换 */
@@ -615,6 +594,42 @@ export function createEarth(canvas, opts = {}) {
     progMote = program(VS_MOTE, FS_MOTE, { aPos: 'aPos', aSize: 'aSize', aPhase: 'aPhase' }, 'mote');
   }
 
+  /* 切档：先换白昼图（最显眼），其余并行替换；旧纹理等新的就绪才释放 */
+  async function applyTier(name, onProgress) {
+    const t = TIERS[name];
+    if (!t) return false;
+    const keys = Object.keys(t);
+    let done = 0;
+    const step = () => { done++; onProgress?.(done / keys.length); };
+
+    if (t.day) {
+      try {
+        const img = await loadImage(texUrl(t.day));
+        const next = upload(img, true);
+        if (textures.day) gl.deleteTexture(textures.day);
+        textures.day = next;
+      } catch (e) {
+        console.warn('[earth] 白昼贴图切换失败', e);
+      }
+      step();
+    }
+
+    await Promise.all(keys.filter(k => k !== 'day').map(async k => {
+      try {
+        const img = await loadImage(texUrl(t[k]));
+        const next = upload(img, true);
+        if (textures[k]) gl.deleteTexture(textures[k]);
+        textures[k] = next;
+      } catch (e) {
+        console.warn('[earth] 贴图切换失败 ' + k, e);
+      }
+      step();
+    }));
+
+    tier = name;
+    return true;
+  }
+
   async function load(progress) {
     try {
       /* 刚拿到的上下文可能还没完成 GPU 侧初始化，先等一帧，再退避重试 */
@@ -631,6 +646,7 @@ export function createEarth(canvas, opts = {}) {
       }
 
       /* 先铺占位：云层透明、法线平整、其余留黑，画面不会因为缺图而错乱 */
+      textures.sky = blank(3, 5, 10, 255);
       textures.night = blank(0, 0, 0, 255);
       textures.clouds = blank(0, 0, 0, 0);
       textures.spec = blank(0, 0, 0, 255);
@@ -639,6 +655,11 @@ export function createEarth(canvas, opts = {}) {
       progress?.(0.06);
 
       /* 先用最小的一张把球体点亮（约 90 KB），交互立刻可用 */
+      loadImage('assets/tex/sky-milkyway.jpg').then(img => {
+        if (!img) return;
+        if (textures.sky) gl.deleteTexture(textures.sky);
+        textures.sky = upload(img, false);
+      }).catch(() => {});
       try {
         const img = await loadImage(texUrl(texLow.day));
         gl.deleteTexture(textures.day);
@@ -665,21 +686,9 @@ export function createEarth(canvas, opts = {}) {
         progress?.(0.35 + 0.5 * (done / rest.length));
       }));
 
-      /* 桌面端再升级到 2K：白天、夜景、海面高光。移动端留在 1K 省流量 */
-      if (!mobile) {
-        const hiKeys = Object.keys(texHi);
-        let hd = 0;
-        await Promise.all(hiKeys.map(async k => {
-          try {
-            const img = await loadImage(texUrl(texHi[k]));
-            if (textures[k]) gl.deleteTexture(textures[k]);
-            textures[k] = upload(img, true);
-          } catch (e) {
-            console.warn('[earth] 高清贴图跳过 ' + k, e);
-          }
-          hd++;
-          progress?.(0.85 + 0.15 * (hd / hiKeys.length));
-        }));
+      /* 按当前档位补齐；移动端默认停在 1K 省流量 */
+      if (tier !== '1k') {
+        await applyTier(tier, p => progress?.(0.6 + 0.4 * p));
       }
 
       onReady({ ok: true });
@@ -840,6 +849,27 @@ export function createEarth(canvas, opts = {}) {
     g.bindBuffer(g.ARRAY_BUFFER, buf.quad);
     g.enableVertexAttribArray(progBg.a.aP);
     g.vertexAttribPointer(progBg.a.aP, 2, g.FLOAT, false, 0, 0);
+    /* 相机基向量：把屏幕像素换算成视线方向，用于采样全天星空图 */
+    const fwd = [-eye[0], -eye[1], -eye[2]];
+    const fl = Math.hypot(fwd[0], fwd[1], fwd[2]) || 1;
+    fwd[0] /= fl; fwd[1] /= fl; fwd[2] /= fl;
+    let rgt = [fwd[1] * 0 - fwd[2] * 1, fwd[2] * 0 - fwd[0] * 0, fwd[0] * 1 - fwd[1] * 0];
+    const rl = Math.hypot(rgt[0], rgt[1], rgt[2]) || 1;
+    rgt = [rgt[0] / rl, rgt[1] / rl, rgt[2] / rl];
+    const upv = [
+      rgt[1] * fwd[2] - rgt[2] * fwd[1],
+      rgt[2] * fwd[0] - rgt[0] * fwd[2],
+      rgt[0] * fwd[1] - rgt[1] * fwd[0]
+    ];
+
+    bindTex(progBg.u.uSky, textures.sky, 5);
+    g.uniform3fv(progBg.u.uRight, rgt);
+    g.uniform3fv(progBg.u.uUp, upv);
+    g.uniform3fv(progBg.u.uFwd, fwd);
+    g.uniform1f(progBg.u.uTanHalf, Math.tan(15 * DEG));
+    g.uniform1f(progBg.u.uAspect, aspect);
+    g.uniform1f(progBg.u.uSkyGain, themeState.nebula == null ? 1 : themeState.nebula);
+
     g.uniform3fv(progBg.u.uTop, themeState.spaceTop);
     g.uniform3fv(progBg.u.uBottom, themeState.spaceBottom);
     g.uniform1f(progBg.u.uGrain, themeState.grain);
@@ -1192,6 +1222,10 @@ export function createEarth(canvas, opts = {}) {
     },
     setAuto(v) { state.auto = v; },
     /* 实时太阳：传直射点的经纬度（世界坐标），传 null 回到跟随相机的默认光 */
+    /* 画质档位：'1k' | '2k' | '4k' */
+    async setResolution(name) { return applyTier(name); },
+    getResolution: () => tier,
+    initTier(name) { if (TIERS[name]) tier = name; },
     setSunGeo(lat, lng) { state.sunGeo = (lat == null || lng == null) ? null : { lat, lng }; },
     clearSunGeo() { state.sunGeo = null; },
     zoomBy(f) {
