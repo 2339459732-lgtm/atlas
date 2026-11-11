@@ -2034,8 +2034,8 @@ html[data-gate="open"] .gate { display: none; }
 }
 
 .audio-hint {
-  /* 抬高一点，避开左下角的操作提示条 */
-  position: fixed; left: 50%; bottom: 62px; transform: translateX(-50%);
+  /* 顶部居中：首屏与地球面板的这块区域都是空的，不压任何内容 */
+  position: fixed; left: 50%; top: calc(var(--nav-h) + 16px); transform: translateX(-50%);
   z-index: 260;
 }
 .audio-hint__btn {
@@ -2059,8 +2059,8 @@ html[data-gate="open"] .gate { display: none; }
 .audio-hint__eq i:nth-child(2) { height: 10px; animation-delay: -.5s; }
 .audio-hint__eq i:nth-child(3) { height: 7px; animation-delay: -.8s; }
 @keyframes eq { 0%, 100% { transform: scaleY(.5); } 50% { transform: scaleY(1); } }
-@keyframes hintIn { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes hintIn { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
 @media (max-width: 720px) {
-  .audio-hint { bottom: 84px; }
+  .audio-hint { top: calc(var(--nav-h) + 8px); }
 }
