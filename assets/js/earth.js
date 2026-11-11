@@ -308,8 +308,8 @@ void main() {
   vec3 perp = dir - uPole * b;
 
   /* 银盘剖面：亮脊套在宽晕里，带外迅速回到深空底色 */
-  float halo = exp(-pow(abs(b) * 4.60, 2.0));
-  float spine = exp(-pow(abs(b) * 13.0, 2.0));
+  float halo = exp(-pow(abs(b) * 6.20, 2.0));
+  float spine = exp(-pow(abs(b) * 16.0, 2.0));
   float band = halo * 0.42 + spine * 0.72;
 
   float coreAng = max(0.0, dot(dir, uCore));
@@ -323,15 +323,17 @@ void main() {
   /* 亮部：低频、平缓。分辨率无关，放大不会糊，也不会有噪点 */
   float n1 = fbm(q * 1.45, uOct);
   float n2 = fbm(q * 3.4, 2.0);
-  float glow = band * (0.34 + 0.78 * n1 + 0.30 * n2);
+  /* 平方一次：把亮暗差拉开，带子才不是一块平涂 */
+  float dens = 0.18 + 1.05 * n1 + 0.42 * n2;
+  float glow = band * pow(dens, 1.45);
   glow *= 0.78 + 0.34 * core;
 
   /* 暗尘：在「银极 ×24 / 银盘方向 ×5」的拉伸坐标系里取样，
      沿银盘方向变化慢、垂直方向快 → 平行于银河的细丝，而不是圆斑 */
-  vec3 dq = uPole * b * 34.0 + perp * 6.5;
+  vec3 dq = uPole * b * 46.0 + perp * 8.2;
   float d1 = fbm(dq + 31.0, 3.0);
   float d2 = fbm(dq * 3.4 + 57.0, 2.0);
-  float dust = smoothstep(0.50, 0.72, d1 * 0.62 + d2 * 0.40);
+  float dust = smoothstep(0.52, 0.66, d1 * 0.62 + d2 * 0.40);
   dust *= smoothstep(0.78, 0.18, abs(b));
   glow *= 1.0 - 0.94 * dust;
 
@@ -619,7 +621,7 @@ export function createEarth(canvas, opts = {}) {
     const fwd = nrm([-e[0], -e[1], -e[2]]);
     const rgt = nrm([fwd[1], -fwd[0], 0]);
     const upv = crs(rgt, fwd);
-    const off = 0.235;                       /* 银道到视轴的角距（弧度） */
+    const off = 0.17;                       /* 银道到视轴的角距（弧度） */
     const lean = 0.55;
     const pole = nrm([
       fwd[0] * Math.sin(off) + 0.94 * (rgt[0] * Math.cos(lean) + upv[0] * Math.sin(lean)),
@@ -642,7 +644,7 @@ export function createEarth(canvas, opts = {}) {
     return { pole, core, e1, e2, cu, cv };
   })();
 
-  const starCount = mobile ? 9000 : 26000;
+  const starCount = mobile ? 20000 : 60000;
   const starDir = new Float32Array(starCount * 3);
   const starCol = new Float32Array(starCount * 3);
   const starSize = new Float32Array(starCount);
