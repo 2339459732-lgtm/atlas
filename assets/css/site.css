@@ -2107,3 +2107,8 @@ html[data-gate="open"] .gate { display: none; }
   color: var(--bg); background: var(--ink-2);
 }
 .planet__res-btns button[disabled] { opacity: .5; cursor: progress; }
+
+.foot__credit {
+  font-family: var(--f-mono); font-size: 8px; letter-spacing: .12em;
+  color: var(--ink-3); opacity: .75;
+}
