@@ -116,13 +116,17 @@ void main() {
 
   vec3 dayC = pow(texture2D(uDay, vUV).rgb, vec3(2.2));
   /* 夜图带一点紫底色，取高次幂压掉，只留城市的灯 */
-  vec3 nightC = pow(texture2D(uNight, vUV).rgb, vec3(2.9));
-  /* 夜图里零星亮点太多，阈值一遍只留成片城区，画面才干净 */
-  float nMax = max(max(nightC.r, nightC.g), nightC.b);
-  nightC *= smoothstep(0.16, 0.62, nMax) * 0.92 + 0.08;
-  /* 去一部分饱和并往暖白拉，才像真实的城市灯光 */
-  float nLum = dot(nightC, vec3(0.299, 0.587, 0.114));
-  nightC = mix(vec3(nLum) * vec3(1.04, 0.98, 0.88), nightC, 0.5) * vec3(1.0, 0.94, 0.82);
+  /* ── 夜面染色 ──
+     不再直接使用夜图的 RGB（那会让灯光带上一层青绿），而是只取亮度，
+     再用一条暖色带重新上色：核心接近白炽，边缘偏琥珀。 */
+  vec3 nightTex = texture2D(uNight, vUV).rgb;
+  float nMax = max(max(nightTex.r, nightTex.g), nightTex.b);
+  float lights = smoothstep(0.10, 0.66, nMax);   /* 主城区 */
+  float halo = smoothstep(0.02, 0.52, nMax);     /* 周边辉光 */
+
+  vec3 warmCore = vec3(1.00, 0.86, 0.60);
+  vec3 warmEdge = vec3(0.92, 0.55, 0.24);
+  vec3 lightCol = mix(warmEdge, warmCore, lights);
   /* 只让成片的水面有镜面高光，湖泊/噪点不会变成蓝点 */
   float ocean = smoothstep(0.28, 0.72, texture2D(uSpec, vUV).r);
 
@@ -136,9 +140,13 @@ void main() {
   lit += vec3(1.0, 0.96, 0.88) * spec * smoothstep(0.05, 0.35, ndl);
   lit += dayC * pow(1.0 - max(dot(N, V), 0.0), 3.0) * 0.10;
 
-  /* 夜面只保留城市灯光。任何一点反照，经 sRGB 编码后都会把整块大陆
-     提亮成一片蓝紫，反而不真实。 */
-  vec3 dark = nightC * 2.3 * uNightGain * smoothstep(0.08, -0.20, ndl);
+  /* 夜面 = 城市灯光 + 一层极弱的冷色地面。
+     地面用海陆掩码区分明暗，否则整块大陆和海洋糊成一片。 */
+  float landMask = 1.0 - ocean;
+  vec3 ground = vec3(0.011, 0.014, 0.020) * (0.30 + 0.70 * landMask);
+
+  float term = smoothstep(0.08, -0.20, ndl);
+  vec3 dark = (lightCol * (lights * 1.55 + halo * 0.20) + ground) * term * uNightGain;
 
   vec3 col = mix(dark, lit, day);
 
