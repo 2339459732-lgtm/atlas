@@ -274,7 +274,7 @@ void main() {
   vec3 dir = normalize(uRight * (ndc.x * uTanHalf * uAspect) + uUp * (ndc.y * uTanHalf) - uFwd);
 
   /* 让银道面斜过来（约 32°），否则它正好落在球体背后，看不见 */
-  float tilt = 0.56;
+  float tilt = 0.66;
   vec3 sd = vec3(dir.x, dir.y * cos(tilt) - dir.z * sin(tilt), dir.y * sin(tilt) + dir.z * cos(tilt));
 
   float lon = atan(sd.z, sd.x);
