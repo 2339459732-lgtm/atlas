@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>ATLAS · 图册 — 去过的地方</title>
+<meta name="description" content="先在地图上钉一个地标，再把那里的照片放进去。一个地标就是一本相册，全部相册摆在一起就是作品集。" />
+<meta name="theme-color" content="#E9E7E0" />
+<meta property="og:title" content="ATLAS · 图册" />
+<meta property="og:description" content="一个地标就是一本相册。" />
+<meta property="og:type" content="website" />
+<link rel="preload" href="assets/fonts/archivo-var-latin.woff2" as="font" type="font/woff2" crossorigin />
+<script>
+try {
+  var t = localStorage.getItem('atlas.theme');
+  if (!t && window.matchMedia('(prefers-color-scheme: dark)').matches) t = 'dark';
+  if (t) document.documentElement.setAttribute('data-theme', t);
+} catch (e) {}
+</script>
+<link rel="stylesheet" href="assets/css/site.css" />
+</head>
+<body>
+
+<a class="skip" href="#shelf">跳到相册墙</a>
+
+<header class="bar">
+  <a class="mark" href="#" aria-label="回到顶部">
+    <span class="mark__en">ATLAS</span>
+    <span class="mark__cn">图册</span>
+  </a>
+  <p class="bar__stat">
+    <span id="stat-landmarks">0</span> 个地标<span class="bar__dot">·</span><span id="stat-photos">0</span> 张照片
+  </p>
+  <div class="bar__end">
+    <button type="button" class="btn-icon" id="btn-theme" aria-label="切换明暗" aria-pressed="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true" id="theme-icon">
+        <circle cx="12" cy="12" r="4.2"/>
+        <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.1 5.1l1.4 1.4M17.5 17.5l1.4 1.4M18.9 5.1l-1.4 1.4M6.5 17.5l-1.4 1.4" stroke-linecap="square"/>
+      </svg>
+    </button>
+    <button type="button" class="btn btn--line" id="btn-new">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="square"/></svg>
+      新建地标
+    </button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ══════════ 开篇 ══════════ -->
+  <section class="intro">
+    <h1 class="intro__title">去过的地方</h1>
+    <p class="intro__lede">
+      一个地标就是一本相册。先在地图上钉一个点，再把那里的照片放进去——
+      同一座城市的片子待在一起，翻起来才像一次回来。
+    </p>
+      </section>
+
+  <!-- ══════════ 相册墙 ══════════ -->
+  <section class="shelf" id="shelf" aria-labelledby="shelf-title">
+    <h2 class="sr" id="shelf-title">相册</h2>
+    <div class="shelf__grid" id="shelf-grid"></div>
+    <div class="shelf__foot">
+      <button type="button" class="btn btn--line" id="btn-new-2">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="square"/></svg>
+        新建地标
+      </button>
+      <p class="shelf__hint">地标和照片都存在这台机器上 · 不上传服务器</p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="colophon" id="colophon">
+  <div class="colophon__grid">
+    <div>
+      <p class="colophon__title">版权页</p>
+      <p class="colophon__body">
+        一本用照片打开的地图册。每个地标是一本相册，每张照片都经过四色分版与加网，
+        再加一点故意的错位——这样它们摆在一起时，才像同一个人的东西。
+        所有处理都在你的显卡里完成，照片不离开这台机器。
+      </p>
+    </div>
+    <dl class="colophon__list">
+      <div><dt>字体</dt><dd>Archivo Variable（拉丁，SIL OFL）/ 系统黑体（中文）</dd></div>
+      <div><dt>制版</dt><dd>WebGL 片元着色器 · 四通道加网 · 减色叠印</dd></div>
+      <div><dt>纸张</dt><dd>#E9E7E0 冷灰胶版纸</dd></div>
+      <div><dt>收存</dt><dd id="colophon-stat">0 个地标 · 0 张照片</dd></div>
+    </dl>
+    <div class="colophon__tail">
+      <p class="colophon__sig">ATLAS</p>
+      <p class="colophon__cn">图册</p>
+      <a class="colophon__mail" href="mailto:hello@example.com">hello@example.com</a>
+    </div>
+  </div>
+</footer>
+
+<!-- ══════════ 相册 ══════════ -->
+<section class="album" id="album" aria-hidden="true" aria-labelledby="album-name">
+  <div class="album__bar">
+    <button type="button" class="album__back" id="album-close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M14 5l-7 7 7 7" stroke-linecap="square"/></svg>
+      图册
+    </button>
+    <p class="album__crumb" id="album-crumb">—</p>
+    <div class="album__tools">
+      <label class="tool" for="cell"><span>网点</span><output id="cell-val">5.6</output></label>
+      <input type="range" id="cell" min="34" max="150" value="56" step="1" aria-label="网点尺度" />
+      <label class="tool" for="offset"><span>套印</span><output id="offset-val">7.3</output></label>
+      <input type="range" id="offset" min="0" max="100" value="34" step="1" aria-label="套印偏移" />
+    </div>
+  </div>
+
+  <div class="album__scroll" id="album-scroll">
+    <header class="album__head">
+      <div class="album__lead">
+        <h2 class="album__name" id="album-name">—</h2>
+        <p class="album__meta" id="album-meta"></p>
+      </div>
+      <p class="album__note" id="album-note"></p>
+    </header>
+
+    <div class="hero" id="hero">
+      <div class="hero__plate">
+        <canvas id="stage" aria-label="当前照片的四色印样"></canvas>
+        <div class="hero__veil" id="veil"><span id="veil-text">上版</span></div>
+      </div>
+      <p class="hero__cap"><span id="hero-no">01</span><span class="hero__dot"></span><span id="hero-name">—</span><span class="hero__dot"></span><span id="hero-dim">—</span></p>
+      <p class="exif" id="exif"></p>
+    </div>
+
+    <div class="stream" id="stream"></div>
+
+    <label class="add" id="add-photo" for="file">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1" aria-hidden="true">
+        <path d="M12 8v8M8 12h8" stroke-linecap="square"/><rect x="2.5" y="2.5" width="19" height="19"/>
+      </svg>
+      <span class="add__label">添加照片</span>
+      <span class="add__hint">可以一次选多张 · 拖进来也行 · JPG / PNG · 单张 ≤ 24MB</span>
+      <input type="file" id="file" accept="image/*" multiple />
+    </label>
+
+    <p class="note" id="note" role="status" aria-live="polite"></p>
+  </div>
+</section>
+
+<!-- ══════════ 新建地标 ══════════ -->
+<dialog class="dlg" id="dlg" aria-labelledby="dlg-title">
+  <form method="dialog" class="dlg__form" id="dlg-form">
+    <h2 class="dlg__title" id="dlg-title">新建地标</h2>
+    <p class="dlg__sub">它会成为一本相册。之后往里放的照片都归到这里。</p>
+
+    <label class="field">
+      <span class="field__name">地名</span>
+      <input class="field__input" id="f-name" type="text" maxlength="16" placeholder="里斯本" required autocomplete="off" />
+    </label>
+
+    <div class="field-row">
+      <label class="field">
+        <span class="field__name">坐标<span class="field__opt">选填</span></span>
+        <input class="field__input" id="f-coord" type="text" maxlength="26" placeholder="38.72°N 9.14°W" autocomplete="off" />
+      </label>
+      <label class="field">
+        <span class="field__name">时间<span class="field__opt">选填</span></span>
+        <input class="field__input" id="f-date" type="text" maxlength="20" placeholder="2025 年 4 月" autocomplete="off" />
+      </label>
+    </div>
+
+    <label class="field">
+      <span class="field__name">一句话<span class="field__opt">选填</span></span>
+      <input class="field__input" id="f-note" type="text" maxlength="64" placeholder="七丘之城的赭与青。" autocomplete="off" />
+    </label>
+
+    <div class="field">
+      <span class="field__name">这一本的油墨</span>
+      <div class="inks" id="inks">
+        <button type="button" class="inks__next" id="ink-shuffle" title="换一套">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.7-6" stroke-linecap="square"/><path d="M4 4v5h5" stroke-linecap="square"/></svg>
+        </button>
+        <div class="inks__dots" id="inks-dots"></div>
+      </div>
+    </div>
+
+    <div class="dlg__actions">
+      <button type="button" class="btn btn--line" id="dlg-cancel">取消</button>
+      <button type="submit" class="btn btn--solid">建这一本</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module" src="assets/js/main.js"></script>
+</body>
+</html>
