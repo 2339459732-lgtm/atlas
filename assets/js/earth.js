@@ -117,13 +117,14 @@ void main() {
   vec3 dayC = pow(texture2D(uDay, vUV).rgb, vec3(2.2));
   /* 夜图带一点紫底色，取高次幂压掉，只留城市的灯 */
   vec3 nightC = pow(texture2D(uNight, vUV).rgb, vec3(2.7)) * vec3(1.0, 0.9, 0.72);
-  float ocean = texture2D(uSpec, vUV).r;
+  /* 只让成片的水面有镜面高光，湖泊/噪点不会变成蓝点 */
+  float ocean = smoothstep(0.28, 0.72, texture2D(uSpec, vUV).r);
 
   /* 云影：云层下方略压暗 */
   dayC *= mix(1.0, 0.82, cloud);
 
   vec3 H = normalize(L + V);
-  float spec = pow(max(dot(N, H), 0.0), 900.0) * ocean * 0.30;
+  float spec = pow(max(dot(N, H), 0.0), 900.0) * ocean * 0.22;
 
   vec3 lit = dayC * (uAmbient + max(ndl, 0.0) * 1.28);
   lit += vec3(1.0, 0.96, 0.88) * spec * smoothstep(0.05, 0.35, ndl);
