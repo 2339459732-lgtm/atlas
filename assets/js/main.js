@@ -10,6 +10,11 @@ import { geocode, composeIntro } from './geo.js';
 import { sha256Hex, VAULT_HASH, makeBackup, readBackup, photoBlob } from './vault.js';
 import { t, applyI18n, initLang, getLang, setLang, LANGS } from './i18n.js';
 import { createMusic } from './audio.js';
+import {
+  key as acctKey, dbName, currentUser, accounts,
+  register as acctRegister, login as acctLogin, logout as acctLogout,
+  removeAccount, migrateGuestData, hasGuestData, validateName, validatePassword
+} from './accounts.js';
 
 /* 入口私钥（SHA-256）。改口令：把新口令的 sha256 填到这里 */
 const GATE_HASH = 'c7efaa94c1114dfc8e1d4007d5369b11ab55fa19dea1a31ccf5aabcb3cc39a55';
@@ -169,7 +174,7 @@ function dropURL(id) {
 let dbp = null;
 function db() {
   if (!dbp) dbp = new Promise((res, rej) => {
-    const req = indexedDB.open(DB_NAME, 3);
+    const req = indexedDB.open(dbName(), 3);
     req.onupgradeneeded = () => {
       const d = req.result;
       if (!d.objectStoreNames.contains(DB_STORE)) {
@@ -239,7 +244,7 @@ function fmtCoord(lat, lng) {
 /* ───────── 站点 ───────── */
 function loadSite() {
   try {
-    const raw = localStorage.getItem(LS_SITE);
+    const raw = localStorage.getItem(acctKey(LS_SITE));
     if (raw) return { ...DEFAULT_SITE, ...JSON.parse(raw) };
   } catch {}
   return { ...DEFAULT_SITE };
@@ -247,7 +252,7 @@ function loadSite() {
 function applySite(site) {
   state.site = site;
   let custom = false;
-  try { custom = !!localStorage.getItem(LS_SITE); } catch {}
+  try { custom = !!localStorage.getItem(acctKey(LS_SITE)); } catch {}
   const title = custom ? site.title : t('site.title');
   const lede = custom ? (site.lede || '') : t('site.lede');
   const set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
@@ -298,7 +303,7 @@ function normalizeLM(l) {
 }
 function loadLandmarks() {
   try {
-    const raw = localStorage.getItem(LS_LM);
+    const raw = localStorage.getItem(acctKey(LS_LM));
     if (raw) {
       const arr = JSON.parse(raw);
       if (Array.isArray(arr)) return arr.map(normalizeLM);
@@ -307,7 +312,7 @@ function loadLandmarks() {
   return null;
 }
 const saveLandmarks = () => {
-  try { localStorage.setItem(LS_LM, JSON.stringify(state.landmarks)); } catch {}
+  try { localStorage.setItem(acctKey(LS_LM), JSON.stringify(state.landmarks)); } catch {}
 };
 
 /* ───────── 统计 ───────── */
@@ -1395,7 +1400,7 @@ $('#site-form').addEventListener('submit', e => {
     lede: ($('#s-lede').value || '').trim()
   };
   applySite(next);
-  try { localStorage.setItem(LS_SITE, JSON.stringify(next)); } catch {}
+  try { localStorage.setItem(acctKey(LS_SITE), JSON.stringify(next)); } catch {}
   $('#dlg-site').close();
 });
 
@@ -2088,7 +2093,7 @@ function renderReco() {
     if (peer) out.push(['reco.peer', t('reco.peerText', { a: placeName(a), b: placeName(peer) })]);
   }
 
-  if (state.photos.length && !localStorage.getItem('atlas.backed.v1')) {
+  if (state.photos.length && !localStorage.getItem(acctKey('atlas.backed.v1'))) {
     out.push(['reco.backup', t('reco.backupText')]);
   }
 
@@ -2216,7 +2221,7 @@ $('#vault-export')?.addEventListener('click', async () => {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
-    try { localStorage.setItem('atlas.backed.v1', String(Date.now())); } catch {}
+    try { localStorage.setItem(acctKey('atlas.backed.v1'), String(Date.now())); } catch {}
     btn.textContent = t('vault.exported');
     toast(t('vault.exportedToast'));
   } catch (err) {
@@ -2269,7 +2274,7 @@ async function mergeBackup(payload) {
 
   if (payload.site) {
     applySite({ ...DEFAULT_SITE, ...payload.site });
-    try { localStorage.setItem(LS_SITE, JSON.stringify(state.site)); } catch {}
+    try { localStorage.setItem(acctKey(LS_SITE), JSON.stringify(state.site)); } catch {}
   }
 
   syncStats();
@@ -2421,6 +2426,149 @@ function initMusic() {
   return music;
 }
 
+/* ───────── 账号 ───────── */
+const ACCT_OPEN = 'atlas.acct.open';
+
+function initAccounts() {
+  const btn = $('#acct-btn');
+  const dlg = $('#acct-dlg');
+  if (!btn || !dlg) return;
+
+  const me = $('#acct-me');
+  const form = $('#acct-form');
+  const tabs = $$('.acct-tabs button');
+  const errBox = $('#acct-err');
+  const submit = $('#acct-submit');
+  let mode = 'login';
+
+  const ERR = {
+    name_empty: 'acct.e.nameEmpty',
+    name_invalid: 'acct.e.nameInvalid',
+    name_taken: 'acct.e.nameTaken',
+    pw_empty: 'acct.e.pwEmpty',
+    pw_short: 'acct.e.pwShort',
+    pw_mismatch: 'acct.e.pwMismatch',
+    bad_credentials: 'acct.e.bad',
+    storage_full: 'acct.e.storage'
+  };
+
+  const showErr = (code) => {
+    errBox.textContent = t(ERR[code] || 'acct.e.generic');
+    errBox.hidden = false;
+    dlg.classList.remove('is-shake');
+    void dlg.offsetWidth;
+    dlg.classList.add('is-shake');
+  };
+
+  const setMode = (m) => {
+    mode = m;
+    tabs.forEach(b => b.setAttribute('aria-selected', String(b.dataset.mode === m)));
+    $('#acct-pass2-wrap').hidden = m !== 'register';
+    $('#acct-migrate-wrap').hidden = !(m === 'register' && hasGuestData());
+    submit.setAttribute('data-i18n', m === 'login' ? 'acct.login' : 'acct.create');
+    submit.textContent = t(m === 'login' ? 'acct.login' : 'acct.create');
+    $('#acct-pass').setAttribute('autocomplete', m === 'login' ? 'current-password' : 'new-password');
+    errBox.hidden = true;
+  };
+
+  const paint = () => {
+    const u = currentUser();
+    const initial = u ? u.name.slice(0, 1).toUpperCase() : '';
+    $('#acct-initial').textContent = initial;
+    $('#acct-avatar').classList.toggle('is-on', !!u);
+    btn.setAttribute('aria-pressed', String(!!u));
+    btn.classList.toggle('is-on', !!u);
+
+    me.hidden = !u;
+    form.hidden = !!u;
+    if (u) {
+      $('#acct-me-avatar').textContent = initial;
+      $('#acct-me-name').textContent = u.name;
+      $('#acct-me-meta').textContent = t('acct.signedIn');
+      $('#acct-stat-lm').textContent = state.landmarks.length;
+      $('#acct-stat-ph').textContent = state.photos.length;
+      $('#acct-kicker').textContent = 'SIGNED IN';
+      $('#acct-title').textContent = t('acct.me');
+    } else {
+      $('#acct-kicker').textContent = 'ACCOUNT';
+      $('#acct-title').textContent = t('acct.title');
+    }
+  };
+
+  const open = (m) => {
+    paint();
+    if (!currentUser()) setMode(m || mode);
+    if (!dlg.open) dlg.showModal();
+    btn.setAttribute('aria-expanded', 'true');
+    if (!currentUser()) setTimeout(() => $('#acct-name').focus(), 60);
+  };
+  const close = () => {
+    if (dlg.open) dlg.close();
+    btn.setAttribute('aria-expanded', 'false');
+  };
+
+  const finish = (msg, reopen) => {
+    toast(msg);
+    if (reopen) { try { sessionStorage.setItem(ACCT_OPEN, reopen); } catch {} }
+    setTimeout(() => location.reload(), 460);
+  };
+
+  btn.addEventListener('click', () => (dlg.open ? close() : open()));
+  $('#acct-close').addEventListener('click', close);
+  dlg.addEventListener('click', e => { if (e.target === dlg) close(); });
+  dlg.addEventListener('close', () => btn.setAttribute('aria-expanded', 'false'));
+
+  tabs.forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    errBox.hidden = true;
+    const name = ($('#acct-name').value || '').trim();
+    const pw = $('#acct-pass').value || '';
+    submit.disabled = true;
+
+    try {
+      if (mode === 'register') {
+        if (pw !== ($('#acct-pass2').value || '')) throw new Error('pw_mismatch');
+        const u = await acctRegister(name, pw);
+        const want = !$('#acct-migrate-wrap').hidden && $('#acct-migrate').checked;
+        const moved = want ? migrateGuestData(u.id) : 0;
+        finish(t('acct.hello', { name: u.name }) + (moved ? ' · ' + t('acct.moved') : ''));
+      } else {
+        const u = await acctLogin(name, pw);
+        finish(t('acct.back', { name: u.name }));
+      }
+    } catch (ex) {
+      showErr(ex && ex.message);
+      submit.disabled = false;
+    }
+  });
+
+  $('#acct-logout').addEventListener('click', () => {
+    acctLogout();
+    close();
+    toast(t('acct.bye'));
+    setTimeout(() => location.reload(), 360);
+  });
+
+  $('#acct-switch').addEventListener('click', () => {
+    acctLogout();
+    try { sessionStorage.setItem(ACCT_OPEN, 'login'); } catch {}
+    setTimeout(() => location.reload(), 260);
+  });
+
+  paint();
+
+  /* 登录/退出后回到页面：把对话框状态还原 */
+  try {
+    const want = sessionStorage.getItem(ACCT_OPEN);
+    if (want) {
+      sessionStorage.removeItem(ACCT_OPEN);
+      open(want === 'register' ? 'register' : 'login');
+    }
+  } catch {}
+}
+
 /* ───────── 启动 ───────── */
 
 async function boot() {
@@ -2482,18 +2630,19 @@ async function boot() {
     earth?.start();
   }
 
-  if (!stored && !localStorage.getItem(LS_SEED)) {
+  if (!stored && !localStorage.getItem(acctKey(LS_SEED))) {
     state.landmarks = [
       normalizeLM({ id: 'lm-kyoto', name: '京都', coord: '35.01°N 135.77°E', accent: ACCENTS[0] }),
       normalizeLM({ id: 'lm-reyk', name: '雷克雅未克', coord: '64.15°N 21.94°W', accent: ACCENTS[1] }),
       normalizeLM({ id: 'lm-hk', name: '香港', coord: '22.32°N 114.17°E', accent: ACCENTS[2] })
     ];
     saveLandmarks();
-    try { localStorage.setItem(LS_SEED, '1'); } catch {}
+    try { localStorage.setItem(acctKey(LS_SEED), '1'); } catch {}
     renderWall();
     syncEarth();
   }
 
+  initAccounts();
   initMusic();
 }
 

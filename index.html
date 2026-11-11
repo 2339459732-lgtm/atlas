@@ -114,6 +114,19 @@ try {
       </div>
     </div>
 
+    <div class="acct" id="acct">
+      <button type="button" class="acct__btn" id="acct-btn" aria-haspopup="dialog" aria-expanded="false"
+              aria-label="账号" data-i18n-aria="acct.aria" data-i18n-title="acct.title">
+        <span class="acct__avatar" id="acct-avatar" aria-hidden="true">
+          <svg class="acct__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+            <circle cx="12" cy="8.7" r="3.5"/>
+            <path d="M4.9 19.8c0-3.7 3.1-6 7.1-6s7.1 2.3 7.1 6" stroke-linecap="round"/>
+          </svg>
+          <span class="acct__initial" id="acct-initial">A</span>
+        </span>
+      </button>
+    </div>
+
     <div class="menu" id="menu">
       <button type="button" class="icon-btn" id="menu-btn" aria-haspopup="true" aria-expanded="false" aria-label="更多操作" data-i18n-aria="nav.more">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="5.6" cy="12" r="1.15" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none"/><circle cx="18.4" cy="12" r="1.15" fill="currentColor" stroke="none"/></svg>
@@ -626,5 +639,67 @@ try {
     <span data-i18n="music.tap">点击播放背景音乐</span>
   </button>
 </div>
+
+<!-- ══════════ 账号 ══════════ -->
+<dialog class="dlg acct-dlg" id="acct-dlg">
+  <div class="acct-dlg__head">
+    <div>
+      <p class="dlg__kicker" id="acct-kicker">ACCOUNT</p>
+      <h2 class="dlg__title" id="acct-title" data-i18n="acct.title">账号</h2>
+    </div>
+    <button type="button" class="dlg__x" id="acct-close" aria-label="关闭" data-i18n-aria="common.close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+
+  <!-- 已登录 -->
+  <div class="acct-panel" id="acct-me" hidden>
+    <div class="acct-me">
+      <span class="acct-me__avatar" id="acct-me-avatar">A</span>
+      <div class="acct-me__txt">
+        <p class="acct-me__name" id="acct-me-name">—</p>
+        <p class="acct-me__meta" id="acct-me-meta">—</p>
+      </div>
+    </div>
+    <div class="acct-stats">
+      <div><b id="acct-stat-lm">0</b><span data-i18n="acct.places">地标</span></div>
+      <div><b id="acct-stat-ph">0</b><span data-i18n="acct.photos">照片</span></div>
+    </div>
+    <div class="acct-actions">
+      <button type="button" class="btn btn--line" id="acct-switch" data-i18n="acct.switch">切换账号</button>
+      <button type="button" class="btn btn--line acct-danger" id="acct-logout" data-i18n="acct.logout">退出登录</button>
+    </div>
+  </div>
+
+  <!-- 登录 / 注册 -->
+  <form class="acct-panel" id="acct-form" novalidate autocomplete="on">
+    <div class="acct-tabs" role="tablist">
+      <button type="button" role="tab" data-mode="login" aria-selected="true" data-i18n="acct.login">登录</button>
+      <button type="button" role="tab" data-mode="register" aria-selected="false" data-i18n="acct.register">注册</button>
+    </div>
+
+    <label class="field">
+      <span class="field__k" data-i18n="acct.name">账号</span>
+      <input class="field__input" id="acct-name" name="username" autocomplete="username" spellcheck="false" maxlength="24">
+    </label>
+    <label class="field">
+      <span class="field__k" data-i18n="acct.pass">密码</span>
+      <input class="field__input" id="acct-pass" name="password" type="password" autocomplete="current-password" maxlength="72">
+    </label>
+    <label class="field" id="acct-pass2-wrap" hidden>
+      <span class="field__k" data-i18n="acct.pass2">确认密码</span>
+      <input class="field__input" id="acct-pass2" name="password2" type="password" autocomplete="new-password" maxlength="72">
+    </label>
+    <label class="acct-migrate" id="acct-migrate-wrap" hidden>
+      <input type="checkbox" id="acct-migrate" checked>
+      <span data-i18n="acct.migrate">把本机现有作品导入此账号</span>
+    </label>
+
+    <p class="acct-err" id="acct-err" hidden></p>
+    <button type="submit" class="btn btn--solid acct-submit" id="acct-submit" data-i18n="acct.login">登录</button>
+    <p class="acct-note" data-i18n="acct.note">账号与作品只保存在本机浏览器，密码经 PBKDF2 派生后存储，明文不落盘。</p>
+  </form>
+</dialog>
+
 </body>
 </html>
