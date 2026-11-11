@@ -1,20 +1,22 @@
 /* ══════════════════════════════════════════════════════════════════
-   main.js — 图册
-   数据沿用原来的 IndexedDB / localStorage 键，旧照片不会丢。
+   main.js — ATLAS
+   数据仍沿用 atlas.landmarks.v4 / atlas-plates，旧照片不会丢。
    ══════════════════════════════════════════════════════════════════ */
 
 import { readExif } from './exif.js';
-import { createGlobe } from './globe.js';
+import { createEarth } from './earth.js';
 import { createDust } from './drift.js';
+import { geocode, composeIntro } from './geo.js';
+import { sha256Hex, VAULT_HASH, makeBackup, readBackup, photoBlob } from './vault.js';
 
 /* ───────── 常量 ───────── */
 const ACCENTS = ['#C9A96A', '#7FA8C9', '#C98A7F', '#9BC9A0', '#B9A0D8', '#D8C08A', '#8FA6B8', '#C97F9E'];
 
 const LS_LM = 'atlas.landmarks.v4';
 const LS_SITE = 'atlas.site.v1';
-const LS_THEME = 'atlas.theme';
-const LS_VIEW = 'atlas.view';
+const LS_THEME = 'atlas.theme.v2';
 const LS_SEED = 'atlas.seeded.v1';
+const SS_UNLOCK = 'atlas.unlocked.v1';
 const DB_NAME = 'atlas-plates';
 const DB_STORE = 'plates';
 const MAX_PX = 2400;
@@ -27,6 +29,37 @@ const DEFAULT_SITE = {
   lede: '一处地标，一本相册。先在地球上落一个点，再把那里的照片放进去——同一座城的片子待在一起，翻起来才像一次回来。',
   accent: '#C9A96A'
 };
+
+const THEMES = {
+  noir: {
+    label: '墨夜', meta: '#07070A',
+    globe: {
+      spaceTop: [0.055, 0.055, 0.068], spaceBottom: [0.012, 0.012, 0.018],
+      glow: [0.55, 0.42, 0.22], glowAmt: 0.24, grain: 0.012,
+      ambient: 0.05, atmo: [0.24, 0.46, 0.82], stars: 1,
+      exposure: 1.14, nightGain: 1, cloud: 0.9, atmoIntensity: 0.72
+    }
+  },
+  ivory: {
+    label: '宣纸', meta: '#F3F0E8',
+    globe: {
+      spaceTop: [0.955, 0.945, 0.92], spaceBottom: [0.985, 0.978, 0.955],
+      glow: [1.0, 0.93, 0.78], glowAmt: 0.55, grain: 0.006,
+      ambient: 0.17, atmo: [0.52, 0.7, 0.88], stars: 0,
+      exposure: 1.02, nightGain: 0.9, cloud: 0.74, atmoIntensity: 0.46
+    }
+  },
+  slate: {
+    label: '远山', meta: '#070B10',
+    globe: {
+      spaceTop: [0.04, 0.058, 0.085], spaceBottom: [0.012, 0.02, 0.033],
+      glow: [0.22, 0.48, 0.78], glowAmt: 0.26, grain: 0.012,
+      ambient: 0.06, atmo: [0.3, 0.6, 0.98], stars: 1,
+      exposure: 1.16, nightGain: 1.05, cloud: 0.88, atmoIntensity: 0.78
+    }
+  }
+};
+const THEME_ORDER = ['noir', 'ivory', 'slate'];
 
 /* ───────── 小工具 ───────── */
 const $ = (s, r = document) => r.querySelector(s);
@@ -42,20 +75,30 @@ const pad2 = n => String(n).padStart(2, '0');
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform || '');
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const fine = () => matchMedia('(pointer: fine)').matches;
 
 /* ───────── 状态 ───────── */
 const state = {
   landmarks: [],
   photos: [],
   site: null,
-  view: 'wall',
+  theme: 'noir',
   current: null,
   editing: null,
   pendingFiles: null
 };
 
-let globe = null;
+let earth = null;
 let dust = null;
+
+/* 各册集私钥解锁状态：只在本次会话内有效 */
+let unlocked = new Set();
+try { unlocked = new Set(JSON.parse(sessionStorage.getItem(SS_UNLOCK) || '[]')); } catch {}
+const saveUnlocked = () => {
+  try { sessionStorage.setItem(SS_UNLOCK, JSON.stringify([...unlocked])); } catch {}
+};
+const isLocked = lm => !!lm?.keyHash && !unlocked.has(lm.id);
+const LOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5" y="10.5" width="14" height="9.5" rx="1.6"/><path d="M8.2 10.5V8a3.8 3.8 0 017.6 0v2.5"/><circle cx="12" cy="15.2" r="1.3"/></svg>';
 
 const photosOf = id => state.photos.filter(p => p.landmarkId === id).sort((a, b) => b.t - a.t);
 const landmarkById = id => state.landmarks.find(l => l.id === id);
@@ -65,17 +108,13 @@ const coverOf = lm => {
 };
 const currentLandmark = () => landmarkById(state.current);
 
-/* 每个 blob 只生成一次 objectURL */
-const urlCache = new Map();
-function syncLock() {
-  const need = document.body.dataset.lock === '1';
-  document.body.classList.toggle('is-locked', need);
-}
+/* ───────── 滚动锁 ───────── */
 function setLock(on) {
-  document.body.dataset.lock = on ? '1' : '0';
-  syncLock();
+  document.body.classList.toggle('is-locked', !!on);
 }
 
+/* ───────── objectURL ───────── */
+const urlCache = new Map();
 function urlFor(photo) {
   if (!photo.blob) return photo.thumb || '';
   if (!urlCache.has(photo.id)) {
@@ -157,9 +196,7 @@ function parseCoord(s) {
 }
 function fmtCoord(lat, lng) {
   if (lat == null || lng == null) return '';
-  const ns = lat >= 0 ? 'N' : 'S';
-  const ew = lng >= 0 ? 'E' : 'W';
-  return `${Math.abs(lat).toFixed(2)}°${ns} ${Math.abs(lng).toFixed(2)}°${ew}`;
+  return `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lng).toFixed(2)}°${lng >= 0 ? 'E' : 'W'}`;
 }
 
 /* ───────── 站点 ───────── */
@@ -174,29 +211,28 @@ function applySite(site) {
   state.site = site;
   const set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
   set('site-name', site.name);
-  set('site-cn', site.cn);
-  set('site-sig', site.name);
-  set('site-title', site.title);
   set('site-lede', site.lede || '');
-  document.title = `${site.title || site.name} · ${site.cn}`;
+  set('hero-site', site.name);
+  document.title = `${site.name} ${site.cn} · ${site.title}`;
   const md = document.querySelector('meta[name="description"]');
   if (md) md.setAttribute('content', site.lede || site.title);
 }
 
 /* ───────── 主题 ───────── */
-function applyTheme(mode) {
-  const t = mode === 'light' ? 'light' : 'dark';
-  document.documentElement.dataset.theme = t;
+function applyTheme(name) {
+  const key = THEMES[name] ? name : 'noir';
+  state.theme = key;
+  document.documentElement.dataset.theme = key;
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', t === 'light' ? '#F2F0EA' : '#08080A');
-  globe?.refresh();
+  if (meta) meta.setAttribute('content', THEMES[key].meta);
+  $$('.theme__pop [data-theme]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.theme === key)));
+  earth?.setTheme(THEMES[key].globe);
   dust?.retheme();
+  try { localStorage.setItem(LS_THEME, key); } catch {}
 }
-function toggleTheme() {
-  const now = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
-  const next = now === 'dark' ? 'light' : 'dark';
-  try { localStorage.setItem(LS_THEME, next); } catch {}
-  applyTheme(next);
+function cycleTheme() {
+  const i = THEME_ORDER.indexOf(state.theme);
+  applyTheme(THEME_ORDER[(i + 1) % THEME_ORDER.length]);
 }
 
 /* ───────── 地标 ───────── */
@@ -214,6 +250,7 @@ function normalizeLM(l) {
     coverId: l.coverId || null,
     lat: geo ? geo.lat : null,
     lng: geo ? geo.lng : null,
+    keyHash: l.keyHash || '',
     createdAt: l.createdAt || 0
   };
 }
@@ -238,9 +275,8 @@ function syncStats() {
   const setT = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
   setT('stat-landmarks', lm);
   setT('stat-photos', ph);
-  setT('tab-count', lm);
   setT('colophon-stat', `${lm} 处地标 · ${ph} 张照片`);
-  setT('wall-note', lm ? `${lm} 处地标 · ${ph} 张照片` : '一处地标，一本');
+  setT('planet-count', `${lm} 处地标`);
 
   const newest = state.photos.slice().sort((a, b) => b.t - a.t)[0];
   const nl = newest ? landmarkById(newest.landmarkId) : null;
@@ -263,10 +299,10 @@ function renderWall() {
     const cover = coverOf(lm);
     const span = SPAN_CYCLE[i % SPAN_CYCLE.length];
 
-    const card = el('button', `card card--w${span}`);
+    const card = el('button', `card card--w${span} reveal`);
     card.type = 'button';
     card.style.setProperty('--ac', lm.accent);
-    card.style.animationDelay = Math.min(i, 7) * 55 + 'ms';
+    card.style.transitionDelay = `${Math.min(i, 6) * 45}ms`;
     card.setAttribute('aria-label', `${lm.name}，${photos.length} 张照片`);
 
     const frame = el('div', 'card__frame' + (cover ? '' : ' is-empty'));
@@ -280,33 +316,27 @@ function renderWall() {
       if (img.complete) img.classList.add('is-in');
       frame.appendChild(img);
       frame.appendChild(el('div', 'card__veil'));
-      frame.appendChild(el('div', 'card__spot'));
-      frame.appendChild(el('span', 'card__hint', '打开相册&nbsp;&nbsp;→'));
+      frame.appendChild(el('span', 'card__hint', '打开相册'));
     } else {
       frame.appendChild(el('span', 'card__ghost', esc(lm.name)));
-      frame.appendChild(el('span', 'card__hint', '拖入照片 · 或打开'));
+    }
+    if (isLocked(lm)) {
+      card.classList.add('is-locked');
+      frame.appendChild(el('div', 'card__lockbadge', LOCK_SVG));
     }
     card.appendChild(frame);
 
     const body = el('div', 'card__body');
     body.innerHTML =
-      `<span class="card__no">N°${pad2(i + 1)}</span>` +
+      `<span class="card__no">№${pad2(i + 1)}</span>` +
       `<span class="card__name"><i class="card__dot"></i>${esc(lm.name)}</span>` +
-      `<span class="card__count">${photos.length ? photos.length + ' 张' : '空'}</span>` +
+      `<span class="card__count">${isLocked(lm) ? '已锁' : (photos.length ? photos.length + ' 张' : '空')}</span>` +
       `<span class="card__sub">${esc(lm.coord || lm.date || '尚未落点')}</span>`;
     card.appendChild(body);
 
-    card.addEventListener('click', () => openAlbum(lm.id));
+    card.addEventListener('click', e => openAlbum(lm.id, e));
+    attachTilt(card);
 
-    if (cover) {
-      card.addEventListener('pointermove', e => {
-        const r = frame.getBoundingClientRect();
-        frame.style.setProperty('--mx', `${e.clientX - r.left}px`);
-        frame.style.setProperty('--my', `${e.clientY - r.top}px`);
-      }, { passive: true });
-    }
-
-    /* 把照片直接拖到某本相册上 */
     card.addEventListener('dragover', e => {
       if (!hasFiles(e)) return;
       e.preventDefault();
@@ -323,14 +353,14 @@ function renderWall() {
     });
 
     grid.appendChild(card);
+    revealObserve(card);
   });
 
   syncStats();
-  if (state.view === 'index') renderIndex();
-  if (state.view === 'globe') renderOrbList();
+  renderIndex();
+  if (typeof renderOverview === 'function') renderOverview();
 }
 
-/* 上传后只更新那一张卡，避免整墙重绘造成闪动 */
 function updateCard(lm) {
   const i = state.landmarks.indexOf(lm);
   const card = $$('.card')[i];
@@ -340,6 +370,24 @@ function updateCard(lm) {
   if (cnt) cnt.textContent = n ? n + ' 张' : '空';
   const frame = card.querySelector('.card__frame');
   if (frame?.classList.contains('is-empty') && n) renderWall();
+}
+
+/* 轻量 3D 倾斜 */
+function attachTilt(card) {
+  if (!fine() || reduced()) return;
+  let raf = 0, tx = 0, ty = 0;
+  card.addEventListener('pointermove', e => {
+    const r = card.getBoundingClientRect();
+    tx = ((e.clientX - r.left) / r.width - 0.5) * 2;
+    ty = ((e.clientY - r.top) / r.height - 0.5) * 2;
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      card.style.transform =
+        `perspective(900px) rotateX(${(-ty * 2.2).toFixed(2)}deg) rotateY(${(tx * 2.6).toFixed(2)}deg) translateY(-3px)`;
+    });
+  });
+  card.addEventListener('pointerleave', () => { card.style.transform = ''; });
 }
 
 /* ───────── 索引 ───────── */
@@ -363,7 +411,7 @@ function renderIndex() {
       `<span class="row__date">${esc(lm.date || '—')}</span>` +
       `<span class="row__count">${photos.length} 张</span>` +
       `<span class="row__arrow">→</span>`;
-    row.addEventListener('click', () => openAlbum(lm.id));
+    row.addEventListener('click', e => openAlbum(lm.id, e));
     row.addEventListener('mouseenter', () => showPeek(lm));
     row.addEventListener('mouseleave', hidePeek);
     row.addEventListener('focus', () => showPeek(lm));
@@ -378,6 +426,7 @@ peek.innerHTML = '<img alt="">';
 document.body.appendChild(peek);
 let peekOn = false;
 function showPeek(lm) {
+  if (!fine()) return;
   const cover = coverOf(lm);
   if (!cover) return;
   peek.querySelector('img').src = cover.thumb || urlFor(cover);
@@ -387,105 +436,187 @@ function showPeek(lm) {
 function hidePeek() { peek.classList.remove('is-on'); peekOn = false; }
 document.addEventListener('mousemove', e => {
   if (!peekOn) return;
-  peek.style.transform = `translate(${Math.min(e.clientX + 24, innerWidth - 250)}px, ${Math.min(Math.max(e.clientY - 80, 12), innerHeight - 180)}px)`;
+  peek.style.transform = `translate(${Math.min(e.clientX + 24, innerWidth - 266)}px, ${Math.min(Math.max(e.clientY - 86, 12), innerHeight - 190)}px)`;
 });
 
 /* ───────── 地球 ───────── */
-const globeCanvas = $('#globe-canvas');
+const earthCanvas = $('#earth-canvas');
+const markerLayer = $('#markers');
+const loader = $('#earth-loader');
+const progressEl = $('#earth-progress');
 
-function initGlobe() {
-  if (!globeCanvas || globe) return;
-  globe = createGlobe(globeCanvas, {
-    onPick: it => openAlbum(it.id),
+let markers = [];
+let earthStarted = false;
+
+function initEarth() {
+  if (earth || !earthCanvas) return;
+  earth = createEarth(earthCanvas, {
+    onPick: m => openAlbum(m.id),
+    onHover: m => {
+      $$('.planet__item').forEach(b => b.classList.toggle('is-lit', !!m && b.dataset.id === m.id));
+      $$('.marker').forEach(x => x.classList.toggle('is-lit', !!m && x.dataset.id === m.id));
+    },
     onEmpty: geo => openDialog({ lat: geo.lat, lng: geo.lng }),
-    onHover: it => {
-      $$('.orb__item').forEach(b => b.classList.toggle('is-lit', !!it && b.dataset.id === it.id));
-    }
+    onReady: ({ ok }) => {
+      if (!ok) {
+        loader.classList.add('is-done');
+        toast('这台设备不支持 WebGL，地球未能载入', true);
+        return;
+      }
+      loader.classList.add('is-done');
+      buildMarkers();
+    },
+    onProject: ({ project }) => updateMarkers(project)
   });
-  globe.setItems(globeItems());
+  if (!earth) {
+    loader.innerHTML = '<span class="planet__loader-t">这台设备暂不支持 WebGL</span>';
+    return;
+  }
+  earth.setTheme(THEMES[state.theme].globe);
 }
 
-const globeItems = () => state.landmarks
-  .filter(l => l.lat != null && l.lng != null)
-  .map(l => ({
-    id: l.id, name: l.name, lat: l.lat, lng: l.lng,
-    accent: l.accent, count: photosOf(l.id).length
-  }));
+function buildMarkers() {
+  if (!markerLayer) return;
+  markerLayer.innerHTML = '';
+  markers = state.landmarks
+    .filter(l => l.lat != null && l.lng != null)
+    .map(l => {
+      const b = el('button', 'marker');
+      b.type = 'button';
+      b.dataset.id = l.id;
+      b.style.setProperty('--ac', l.accent);
+      b.setAttribute('aria-label', `${l.name}，${photosOf(l.id).length} 张照片`);
+      b.innerHTML =
+        `<span class="marker__ring"></span>` +
+        `<span class="marker__dot"></span>` +
+        `<span class="marker__label">${esc(l.name)}</span>` +
+        `<span class="marker__card"><span class="marker__name">${esc(l.name)}</span>` +
+        `<span class="marker__meta">${esc(l.coord || '未标注')} · ${photosOf(l.id).length} 张</span></span>`;
+      b.addEventListener('click', e => {
+        e.stopPropagation();
+        openAlbum(l.id, e);
+      });
+      b.addEventListener('mouseenter', () => {
+        earth?.setHovered(l.id);
+        $$('.planet__item').forEach(x => x.classList.toggle('is-lit', x.dataset.id === l.id));
+      });
+      b.addEventListener('mouseleave', () => {
+        earth?.setHovered(null);
+        $$('.planet__item').forEach(x => x.classList.remove('is-lit'));
+      });
+      markerLayer.appendChild(b);
+      return { id: l.id, lat: l.lat, lng: l.lng, name: l.name, el: b, _x: 0, _y: 0, _visible: false };
+    });
+  earth?.setMarkers(markers);
+  renderPlanetList();
+}
 
-function renderOrbList() {
-  const list = $('#orb-list');
+function updateMarkers(project) {
+  for (const m of markers) {
+    const p = project(m.lat, m.lng);
+    m._x = p.x; m._y = p.y; m._visible = p.visible;
+    if (!p.visible) {
+      m.el.style.opacity = '0';
+      m.el.style.pointerEvents = 'none';
+      continue;
+    }
+    const depth = clamp((p.depth - 0.02) / 1.1, 0, 1);
+    m.el.style.transform =
+      `translate3d(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px, 0) translate(-50%, -50%) scale(${(0.86 + depth * 0.2).toFixed(3)})`;
+    m.el.style.opacity = String(0.5 + depth * 0.5);
+    m.el.style.pointerEvents = 'auto';
+    m.el.style.zIndex = String(10 + Math.round(depth * 20));
+  }
+}
+
+function renderPlanetList() {
+  const list = $('#planet-list');
   if (!list) return;
   list.innerHTML = '';
   if (!state.landmarks.length) {
-    list.appendChild(el('p', 'orb__none', '还没有地标'));
+    list.innerHTML = '<li class="planet__item" style="pointer-events:none;color:var(--ink-3)">还没有地标</li>';
     return;
   }
-  state.landmarks.forEach((lm, i) => {
-    const b = el('button', 'orb__item');
+  state.landmarks.forEach((l, i) => {
+    const b = el('button', 'planet__item');
     b.type = 'button';
-    b.dataset.id = lm.id;
-    b.style.animationDelay = Math.min(i, 9) * 45 + 'ms';
+    b.dataset.id = l.id;
     b.innerHTML =
       `<i>${pad2(i + 1)}</i>` +
-      `<b>${esc(lm.name)}</b>` +
-      `<em>${photosOf(lm.id).length}</em>`;
-    b.addEventListener('mouseenter', () => globe?.setLit(lm.id));
-    b.addEventListener('mouseleave', () => globe?.setLit(null));
-    b.addEventListener('focus', () => globe?.setLit(lm.id));
-    b.addEventListener('blur', () => globe?.setLit(null));
-    b.addEventListener('click', () => {
-      if (lm.lat != null) globe?.focusLandmark(lm);
-      openAlbum(lm.id);
+      `<b>${esc(l.name)}</b>` +
+      `<em>${photosOf(l.id).length}</em>`;
+    b.addEventListener('mouseenter', () => {
+      earth?.setHovered(l.id);
+      $$('.marker').forEach(x => x.classList.toggle('is-lit', x.dataset.id === l.id));
+    });
+    b.addEventListener('mouseleave', () => {
+      earth?.setHovered(null);
+      $$('.marker').forEach(x => x.classList.remove('is-lit'));
+    });
+    b.addEventListener('click', e => {
+      if (l.lat != null) earth?.focus(l.lat, l.lng);
+      openAlbum(l.id, e);
     });
     list.appendChild(b);
   });
 }
 
-function syncGlobe() {
-  initGlobe();
-  if (!globe) return;
-  globe.setItems(globeItems());
-  renderOrbList();
-  globe.refresh();
+function syncEarth() {
+  initEarth();
+  if (!earth) return;
+  buildMarkers();
 }
 
-/* ───────── 视图 ───────── */
-const VIEWS = ['wall', 'index', 'globe'];
-function setView(v, opts = {}) {
-  if (!VIEWS.includes(v)) v = 'wall';
-  state.view = v;
-  try { localStorage.setItem(LS_VIEW, v); } catch {}
-  $$('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.view === v)));
-  VIEWS.forEach(k => {
-    const n = document.getElementById(k);
-    if (!n) return;
-    if (k === v) {
-      n.hidden = false;
-      n.style.animation = 'none';
-      void n.offsetWidth;
-      n.style.animation = '';
-    } else n.hidden = true;
-  });
+/* ───────── 导航与滚动 ───────── */
+const navEl = $('#nav');
+const scrollBar = $('#scroll-bar');
+let scrollQueued = false;
 
-  if (v === 'index') renderIndex();
-  if (v === 'globe') {
-    syncGlobe();
-    requestAnimationFrame(() => {
-      globe?.resize();
-      globe?.start();
+function onScroll() {
+  if (scrollQueued) return;
+  scrollQueued = true;
+  requestAnimationFrame(() => {
+    scrollQueued = false;
+    const y = scrollY;
+    navEl.classList.toggle('is-stuck', y > 20);
+    const h = document.documentElement.scrollHeight - innerHeight;
+    scrollBar.style.transform = `scaleX(${h > 0 ? clamp(y / h, 0, 1) : 0})`;
+
+    /* 当前章节：取视口中线所在的区块 */
+    const mid = y + innerHeight * 0.42;
+    let active = '';
+    ['overview', 'planet', 'wall', 'index'].forEach(id => {
+      const n = document.getElementById(id);
+      if (n && n.offsetTop <= mid) active = id;
     });
-  } else {
-    globe?.stop();
-  }
-  hidePeek();
+    $$('.nav__links a').forEach(a => a.classList.toggle('is-active', a.dataset.nav === active));
+  });
+}
 
-  if (opts.scroll !== false) {
-    const target = document.getElementById(v);
-    const top = target?.getBoundingClientRect().top ?? 0;
-    if (target && (top > innerHeight * 0.55 || top < -8)) {
-      target.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
-    }
-  }
+function initNavSpy() { /* 由 onScroll 统一计算，避免隐藏区块误判 */ }
+
+/* ───────── 入场 ───────── */
+let revealIO = null;
+function initRevealObserver() {
+  if (!('IntersectionObserver' in window)) return;
+  revealIO = new IntersectionObserver(entries => {
+    entries.forEach(en => {
+      if (en.isIntersecting) {
+        en.target.classList.add('is-in');
+        revealIO.unobserve(en.target);
+      }
+    });
+  }, { threshold: 0.08, rootMargin: '0px 0px -6% 0px' });
+  $$('.sechead, .foot-hint, .colophon__top, .planet__panel > *').forEach((n, i) => {
+    n.classList.add('reveal');
+    if (i % 3 === 1) n.classList.add('reveal-d1');
+    if (i % 3 === 2) n.classList.add('reveal-d2');
+    revealIO.observe(n);
+  });
+}
+function revealObserve(node) {
+  if (revealIO) revealIO.observe(node);
+  else node.classList.add('is-in');
 }
 
 /* ───────── 相册 ───────── */
@@ -493,17 +624,24 @@ const albumEl = $('#album');
 const albumScroll = $('#album-scroll');
 let albumList = [];
 
-function openAlbum(id) {
+function openAlbum(id, ev) {
   const lm = landmarkById(id);
   if (!lm) return;
   state.current = id;
   hidePeek();
 
+  if (ev?.clientX != null) {
+    albumEl.style.setProperty('--ox', `${(ev.clientX / innerWidth) * 100}%`);
+    albumEl.style.setProperty('--oy', `${(ev.clientY / innerHeight) * 100}%`);
+  } else {
+    albumEl.style.setProperty('--ox', '50%');
+    albumEl.style.setProperty('--oy', '50%');
+  }
+
   const list = photosOf(id);
   albumList = list;
 
-  const barEl = albumScroll.querySelector('.album__bar');
-  barEl?.classList.remove('is-stuck');
+  albumScroll.querySelector('.album__bar')?.classList.remove('is-stuck');
 
   $('#album-name').textContent = lm.name;
   $('#album-note').textContent = lm.note || '';
@@ -512,10 +650,28 @@ function openAlbum(id) {
   $('#album-kicker').textContent = `ALBUM ${pad2(state.landmarks.findIndex(l => l.id === id) + 1)}${lm.date ? ' · ' + lm.date : ''}`;
   $('#album-kicker').style.setProperty('--ac', lm.accent);
 
-  $('#album-meta').innerHTML = [lm.coord, lm.date, `${list.length} 张照片`, list[0]?.exif?.camera]
+  const locked = isLocked(lm);
+  $('#album-meta').innerHTML = [lm.coord, lm.date, locked ? '已上锁' : `${list.length} 张照片`]
     .filter(Boolean).map(v => `<span>${esc(v)}</span>`).join('');
 
-  renderAlbumGrid();
+  const lockEl = $('#album-locked');
+  const gridEl = $('#album-grid');
+  const dropEl = $('#dropzone');
+  lockEl.hidden = !locked;
+  gridEl.hidden = locked;
+  dropEl.hidden = locked;
+  $('#album-empty').hidden = true;
+
+  if (locked) {
+    albumList = [];
+    gridEl.innerHTML = '';
+    lockEl.classList.remove('is-shake');
+    $('#album-lock-err').hidden = true;
+    $('#album-key').value = '';
+    setTimeout(() => $('#album-key').focus(), 420);
+  } else {
+    renderAlbumGrid();
+  }
 
   albumEl.classList.add('is-open');
   albumEl.setAttribute('aria-hidden', 'false');
@@ -529,13 +685,12 @@ function closeAlbum() {
   albumEl.setAttribute('aria-hidden', 'true');
   setLock(lbState.open || palette.classList.contains('is-open'));
   state.current = null;
-  renderWall();
-  const idx = state.landmarks.findIndex(l => l.id === id);
-  const card = $$('.card')[idx];
-  if (card) card.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' });
+  if (id) {
+    const i = state.landmarks.findIndex(l => l.id === id);
+    $$('.card')[i]?.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' });
+  }
 }
 
-/* justified 版面：按原始比例排，不裁切 */
 function renderAlbumGrid() {
   const grid = $('#album-grid');
   if (!grid) return;
@@ -553,7 +708,6 @@ function renderAlbumGrid() {
 
   const rows = [];
   let row = [], sum = 0;
-  let n = 0;
 
   if (compact) {
     for (let i = 0; i < albumList.length; i += 2) {
@@ -601,7 +755,6 @@ function renderAlbumGrid() {
       img.loading = idx < 8 ? 'eager' : 'lazy';
       img.src = urlFor(p);
       shot.appendChild(img);
-
       shot.appendChild(el('span', 'shot__no', pad2(idx + 1)));
 
       const del = el('button', 'shot__del');
@@ -613,7 +766,6 @@ function renderAlbumGrid() {
 
       const at = idx;
       shot.addEventListener('click', () => openLightbox(albumList, at));
-
       rowEl.appendChild(shot);
       requestAnimationFrame(() => shot.classList.add('is-in'));
       idx++;
@@ -623,24 +775,12 @@ function renderAlbumGrid() {
   grid.appendChild(frag);
 }
 
-let relayoutT = 0;
-addEventListener('resize', () => {
-  clearTimeout(relayoutT);
-  relayoutT = setTimeout(() => {
-    globe?.resize();
-    if (albumEl.classList.contains('is-open')) renderAlbumGrid();
-    dust?.resize();
-  }, 180);
-});
-
 /* ───────── 上传 ───────── */
 let busy = false;
-
 function hasFiles(e) {
   const t = e.dataTransfer?.types;
   return !!t && [...t].includes('Files');
 }
-
 function decodeImage(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -719,6 +859,7 @@ async function uploadTo(landmarkId, files) {
       .filter(Boolean).map(v => `<span>${esc(v)}</span>`).join('');
     albumScroll.scrollTo({ top: 0, behavior: reduced() ? 'auto' : 'smooth' });
   }
+  if (ok) buildMarkers();
   say(ok ? `${lm.name} · 已加入 ${ok} 张${skip ? ` · ${skip} 张跳过` : ''}` : '没有可用的图片', !ok);
 }
 
@@ -731,7 +872,7 @@ async function removePhoto(p) {
   albumList = lm ? photosOf(lm.id) : [];
   renderAlbumGrid();
   syncStats();
-  renderWall();
+  buildMarkers();
   showNote('已移除');
 }
 
@@ -862,7 +1003,6 @@ function showNote(msg, isError) {
   clearTimeout(noteTimer);
   if (msg && !isError) noteTimer = setTimeout(() => { n.textContent = ''; }, 5200);
 }
-
 let toastTimer = 0;
 function toast(msg, isError) {
   const t = $('#toast');
@@ -882,9 +1022,9 @@ let palItems = [], palIndex = 0;
 
 const ACTIONS = [
   { id: 'act-new', label: '新建地标', meta: '', key: 'N', run: () => openDialog() },
-  { id: 'act-globe', label: '打开地球', meta: '', key: 'G', run: () => { setView('globe'); document.getElementById('globe')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } },
-  { id: 'act-index', label: '打开索引', meta: '', key: 'I', run: () => { setView('index'); document.getElementById('index')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } },
-  { id: 'act-theme', label: '切换明暗主题', meta: '', key: 'T', run: toggleTheme },
+  { id: 'act-planet', label: '去地球看看', meta: '', key: 'G', run: () => document.getElementById('planet')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
+  { id: 'act-index', label: '去索引', meta: '', key: 'I', run: () => document.getElementById('index')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
+  { id: 'act-theme', label: '切换主题', meta: '', key: 'T', run: cycleTheme },
   { id: 'act-settings', label: '站点设置', meta: '', key: 'S', run: () => openSettings() },
   { id: 'act-export', label: '导出作品集', meta: '', key: 'E', run: () => exportStandalone() }
 ];
@@ -915,7 +1055,6 @@ function renderPalette(q) {
   const ql = query.toLowerCase();
   palItems = [];
   palList.innerHTML = '';
-
   const groups = [];
 
   const lms = state.landmarks
@@ -941,7 +1080,7 @@ function renderPalette(q) {
               const list = photosOf(p.landmarkId);
               const i = list.findIndex(x => x.id === p.id);
               if (i >= 0) openLightbox(list, i);
-            }, 380);
+            }, 420);
           }
         };
       });
@@ -1058,12 +1197,16 @@ function openEditDialog(lm) {
 }
 
 $('#dlg-cancel').addEventListener('click', () => dlg.close());
-$('#dlg-form').addEventListener('submit', e => {
+$('#dlg-form').addEventListener('submit', async e => {
   e.preventDefault();
   const name = ($('#f-name').value || '').trim();
   if (!name) { $('#dlg-err').hidden = false; $('#dlg-err').textContent = '给这处地方一个名字。'; return; }
   const coordRaw = ($('#f-coord').value || '').trim();
   const geo = parseCoord(coordRaw) || pickGeo;
+  const keyRaw = ($('#f-key').value || '').trim();
+  const keyHash = keyRaw ? await sha256Hex(keyRaw) : '';
+  const noteVal = ($('#f-note').value || '').trim()
+    || composeIntro({ name, lat: geo?.lat ?? null, lng: geo?.lng ?? null, date: $('#f-date').value });
 
   if (state.editing) {
     const lm = landmarkById(state.editing);
@@ -1071,14 +1214,17 @@ $('#dlg-form').addEventListener('submit', e => {
     lm.name = name.slice(0, 16);
     lm.coord = coordRaw || (geo ? fmtCoord(geo.lat, geo.lng) : '');
     lm.date = ($('#f-date').value || '').trim();
-    lm.note = ($('#f-note').value || '').trim();
+    lm.note = noteVal;
     lm.accent = swatchPick;
     lm.lat = geo ? geo.lat : null;
     lm.lng = geo ? geo.lng : null;
+    if (keyHash) lm.keyHash = keyHash;
     saveLandmarks();
     dlg.close();
+    buildMarkers();
+    renderWall();
+    if (geo) earth?.focus(geo.lat, geo.lng);
     openAlbum(lm.id);
-    syncGlobe();
     return;
   }
 
@@ -1091,20 +1237,24 @@ $('#dlg-form').addEventListener('submit', e => {
     accent: swatchPick,
     lat: geo ? geo.lat : null,
     lng: geo ? geo.lng : null,
+    keyHash,
+    note: noteVal,
     createdAt: Date.now()
   });
   state.landmarks.unshift(lm);
   saveLandmarks();
   dlg.close();
   renderWall();
-  syncGlobe();
+  buildMarkers();
+  deckIndex = 0;
+  if (geo) earth?.focus(geo.lat, geo.lng);
 
   const pending = state.pendingFiles;
   state.pendingFiles = null;
   setTimeout(() => {
     openAlbum(lm.id);
     if (pending?.length) uploadTo(lm.id, pending);
-  }, 140);
+  }, 160);
 });
 
 /* ───────── 站点设置 ───────── */
@@ -1160,24 +1310,44 @@ $('#site-form').addEventListener('submit', e => {
     state.landmarks = state.landmarks.filter(x => x.id !== lm.id);
     saveLandmarks();
     closeAlbum();
-    syncGlobe();
+    buildMarkers();
+    renderWall();
   });
 }
 
-/* ───────── 菜单 ───────── */
-const menuBtn = $('#btn-menu');
+/* ───────── 菜单 / 主题 ───────── */
+const menuBtn = $('#menu-btn');
 const menuPop = $('#menu-pop');
+const themeBtn = $('#theme-btn');
+const themePop = $('#theme-pop');
+
 function closeMenu() {
   menuPop.hidden = true;
   menuBtn.setAttribute('aria-expanded', 'false');
 }
+function closeTheme() {
+  themePop.hidden = true;
+  themeBtn.setAttribute('aria-expanded', 'false');
+}
+
 menuBtn.addEventListener('click', e => {
   e.stopPropagation();
   const open = menuPop.hidden;
   menuPop.hidden = !open;
   menuBtn.setAttribute('aria-expanded', String(open));
+  closeTheme();
 });
-document.addEventListener('click', closeMenu);
+themeBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  const open = themePop.hidden;
+  themePop.hidden = !open;
+  themeBtn.setAttribute('aria-expanded', String(open));
+  closeMenu();
+});
+document.addEventListener('click', e => {
+  closeMenu();
+  if (!e.target.closest('.theme')) closeTheme();
+});
 menuPop.addEventListener('click', e => {
   const b = e.target.closest('[data-act]');
   if (!b) return;
@@ -1185,8 +1355,13 @@ menuPop.addEventListener('click', e => {
   const act = b.dataset.act;
   if (act === 'new') openDialog();
   if (act === 'settings') openSettings();
-  if (act === 'theme') toggleTheme();
   if (act === 'export') exportStandalone();
+});
+themePop.addEventListener('click', e => {
+  const b = e.target.closest('[data-theme]');
+  if (!b) return;
+  applyTheme(b.dataset.theme);
+  closeTheme();
 });
 
 /* ───────── 拖放 ───────── */
@@ -1237,7 +1412,7 @@ window.addEventListener('drop', e => {
   }
   state.pendingFiles = [...e.dataTransfer.files];
   openDialog();
-  showNote('地标签好之后，这些照片会入这本书');
+  toast('地标签好之后，这些照片会入这本书');
 });
 
 /* ───────── 导出 ───────── */
@@ -1262,7 +1437,7 @@ function buildExport() {
 
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1">` +
-    `<title>${esc(state.site.name)} · ${esc(state.site.cn)}</title><style>${EXPORT_CSS}</style></head><body>` +
+    `<title>${esc(state.site.name)} ${esc(state.site.cn)}</title><style>${EXPORT_CSS}</style></head><body>` +
     `<header class="top"><span class="mark">${esc(state.site.name)}<em>${esc(state.site.cn)}</em></span>` +
     `<span class="stat">${groups.length} 地标 · ${total} 张</span></header>` +
     `<div class="hero"><h1>${esc(state.site.title)}</h1>` +
@@ -1273,33 +1448,33 @@ function buildExport() {
 
 const EXPORT_CSS = `
 *{box-sizing:border-box}
-body{margin:0;background:#08080A;color:#F4F1E9;font-family:Archivo,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;font-size:15px;line-height:1.75;-webkit-font-smoothing:antialiased}
-.top{position:sticky;top:0;z-index:9;display:flex;align-items:center;height:60px;padding:0 clamp(18px,5vw,80px);background:rgba(8,8,10,.86);backdrop-filter:blur(18px);border-bottom:1px solid rgba(244,241,233,.1)}
-.mark{font-weight:700;font-size:13px;letter-spacing:.24em}
-.mark em{font-style:normal;font-size:10px;letter-spacing:.3em;color:#6A665F;margin-left:10px}
-.stat{margin-left:auto;font-family:Consolas,ui-monospace,monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#6A665F}
-.hero{padding:clamp(56px,10vw,150px) clamp(18px,5vw,80px) clamp(28px,4vw,54px);max-width:1100px}
+body{margin:0;background:#07070A;color:#F4F1E9;font-family:Archivo,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;font-size:15px;line-height:1.75;-webkit-font-smoothing:antialiased}
+.top{position:sticky;top:0;z-index:9;display:flex;align-items:center;height:62px;padding:0 clamp(18px,5vw,92px);background:rgba(7,7,10,.86);backdrop-filter:blur(18px);border-bottom:1px solid rgba(244,241,233,.09)}
+.mark{font-weight:600;font-size:13px;letter-spacing:.3em}
+.mark em{font-style:normal;font-size:10px;letter-spacing:.34em;color:#7C766C;margin-left:10px;font-family:"Songti SC",Georgia,serif}
+.stat{margin-left:auto;font-family:Consolas,ui-monospace,monospace;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:#7C766C}
+.hero{padding:clamp(56px,10vw,150px) clamp(18px,5vw,92px) clamp(28px,4vw,54px);max-width:1100px}
 .hero h1{margin:0;font-weight:400;font-size:clamp(2.6rem,8vw,7rem);line-height:.98;letter-spacing:.01em;font-family:"Songti SC",Georgia,serif}
-.hero p{margin:22px 0 0;max-width:34em;color:#A6A198;font-size:14.5px;line-height:1.95}
-.ch{padding:clamp(34px,5vw,80px) clamp(18px,5vw,80px);border-top:1px solid rgba(244,241,233,.1)}
+.hero p{margin:22px 0 0;max-width:34em;color:#ADA79C;font-size:14.5px;line-height:1.95}
+.ch{padding:clamp(34px,5vw,80px) clamp(18px,5vw,92px);border-top:1px solid rgba(244,241,233,.09)}
 .ch header{margin-bottom:clamp(20px,2.6vw,36px)}
-.kick{font-family:Consolas,ui-monospace,monospace;font-size:9px;letter-spacing:.26em;color:#C9A96A;margin:0 0 10px;text-transform:uppercase}
+.kick{font-family:Consolas,ui-monospace,monospace;font-size:9px;letter-spacing:.28em;color:#C9A96A;margin:0 0 10px;text-transform:uppercase}
 .ch h2{margin:0;font-weight:400;font-size:clamp(1.8rem,4.4vw,3.2rem);letter-spacing:.02em;font-family:"Songti SC",Georgia,serif}
-.ch .meta{font-family:Consolas,ui-monospace,monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#6A665F;margin:10px 0 0}
-.ch .note{max-width:40em;color:#A6A198;font-size:13.5px;line-height:1.9;margin:8px 0 0}
+.ch .meta{font-family:Consolas,ui-monospace,monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:#7C766C;margin:10px 0 0}
+.ch .note{max-width:40em;color:#ADA79C;font-size:13.5px;line-height:1.9;margin:8px 0 0}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(8px,1.2vw,16px)}
 figure{margin:0}
-figure img{display:block;width:100%;height:auto;background:#101014}
-figcaption{padding-top:7px;font-family:Consolas,ui-monospace,monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#6A665F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-footer{padding:clamp(36px,5vw,72px) clamp(18px,5vw,80px) 56px;border-top:1px solid rgba(244,241,233,.1)}
-footer p{margin:0;font-family:Consolas,ui-monospace,monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#6A665F}
+figure img{display:block;width:100%;height:auto;background:#0D0D12}
+figcaption{padding-top:7px;font-family:Consolas,ui-monospace,monospace;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:#7C766C;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+footer{padding:clamp(36px,5vw,72px) clamp(18px,5vw,92px) 56px;border-top:1px solid rgba(244,241,233,.09)}
+footer p{margin:0;font-family:Consolas,ui-monospace,monospace;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:#7C766C}
 @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:600px){.grid{grid-template-columns:1fr}}
 `;
 
 function exportStandalone() {
   const groups = state.landmarks.map(lm => ({ lm, list: photosOf(lm.id) })).filter(g => g.list.length);
-  if (!groups.length) { showNote('先放几张照片，再导出', true); return; }
+  if (!groups.length) { toast('先放几张照片，再导出', true); return; }
   const blob = new Blob([buildExport()], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1309,88 +1484,18 @@ function exportStandalone() {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
-  showNote('已导出 · 单个 HTML，双击可看');
+  toast('已导出 · 单个 HTML，双击可看');
 }
 
-/* ───────── 滚动、磁吸与入场 ───────── */
-const bar = $('#top');
-const progressBar = $('#progress-bar');
-
-function onScroll() {
-  const y = scrollY;
-  bar.classList.toggle('is-stuck', y > 24);
-  const h = document.documentElement.scrollHeight - innerHeight;
-  progressBar.style.transform = `scaleX(${h > 0 ? clamp(y / h, 0, 1) : 0})`;
-}
-
-const heroGlow = $('#hero-glow');
-const heroEl = $('#hero');
-heroEl?.addEventListener('pointermove', e => {
-  const r = heroEl.getBoundingClientRect();
-  heroGlow.style.setProperty('--gx', `${((e.clientX - r.left) / r.width) * 100}%`);
-  heroGlow.style.setProperty('--gy', `${((e.clientY - r.top) / r.height) * 100}%`);
-}, { passive: true });
-
-$$('.cta').forEach(btn => {
-  btn.addEventListener('pointermove', e => {
-    const r = btn.getBoundingClientRect();
-    const dx = (e.clientX - (r.left + r.width / 2)) / r.width;
-    const dy = (e.clientY - (r.top + r.height / 2)) / r.height;
-    btn.style.transform = `translate(${dx * 4}px, ${dy * 3}px)`;
-  });
-  btn.addEventListener('pointerleave', () => { btn.style.transform = ''; });
-});
-
-/* ───────── 键盘 ───────── */
-document.addEventListener('keydown', e => {
-  const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || '') || document.activeElement?.isContentEditable;
-
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-    e.preventDefault();
-    palette.classList.contains('is-open') ? closePalette() : openPalette();
-    return;
-  }
-
-  if (lbState.open) {
-    if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); }
-    else if (e.key === 'ArrowLeft') { e.preventDefault(); lbShow(Math.max(0, lbState.index - 1)); }
-    else if (e.key === 'ArrowRight') { e.preventDefault(); lbShow(Math.min(lbState.list.length - 1, lbState.index + 1)); }
-    else if (e.key === '0') { resetZoom(); }
-    return;
-  }
-
-  if (e.key === 'Escape') {
-    if (palette.classList.contains('is-open')) { closePalette(); return; }
-    if (dlg.open || $('#dlg-site').open) return;
-    if (albumEl.classList.contains('is-open')) closeAlbum();
-    return;
-  }
-
-  if (typing || dlg.open || $('#dlg-site').open) return;
-  if (albumEl.classList.contains('is-open')) return;
-
-  if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openDialog(); }
-  else if (e.key === 's' || e.key === 'S') { e.preventDefault(); openSettings(); }
-  else if (e.key === 't' || e.key === 'T') { e.preventDefault(); toggleTheme(); }
-  else if (e.key === 'e' || e.key === 'E') { e.preventDefault(); exportStandalone(); }
-  else if (e.key === 'g' || e.key === 'G') { e.preventDefault(); setView('globe'); }
-  else if (e.key === 'i' || e.key === 'I') { e.preventDefault(); setView('index'); }
-  else if (e.key === 'w' || e.key === 'W') { e.preventDefault(); setView('wall'); }
-  else if (e.key === '/') { e.preventDefault(); openPalette(); }
-});
-
-/* ───────── 绑定 ───────── */
-$$('.tabs button').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
-$('#btn-palette').addEventListener('click', openPalette);
-$('#btn-theme').addEventListener('click', toggleTheme);
-$('#btn-new').addEventListener('click', () => openDialog());
+/* ───────── 交互绑定 ───────── */
+$('#btn-new')?.addEventListener('click', () => openDialog());
+$('#ov-new')?.addEventListener('click', () => openDialog());
+$('#car-prev')?.addEventListener('click', () => deckGo(-1));
+$('#car-next')?.addEventListener('click', () => deckGo(1));
 $('#wall-empty-new')?.addEventListener('click', () => openDialog());
-$('#hero-new').addEventListener('click', () => openDialog());
-$('#hero-globe').addEventListener('click', () => {
-  setView('globe');
-  document.getElementById('globe')?.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
-});
-$('#orb-reset')?.addEventListener('click', () => globe?.reset());
+$('#hero-new')?.addEventListener('click', () => openDialog());
+$('#planet-new')?.addEventListener('click', () => openDialog());
+$('#palette-btn').addEventListener('click', openPalette);
 $('#album-close').addEventListener('click', closeAlbum);
 $('#album-edit').addEventListener('click', () => openEditDialog(currentLandmark()));
 $('#lb-close').addEventListener('click', closeLightbox);
@@ -1416,12 +1521,490 @@ albumScroll.addEventListener('scroll', () => {
 }, { passive: true });
 addEventListener('scroll', onScroll, { passive: true });
 
-/* ───────── 启动 ───────── */
-async function boot() {
-  applyTheme(localStorage.getItem(LS_THEME) === 'light' ? 'light' : 'dark');
+$('#earth-auto')?.addEventListener('click', e => {
+  const btn = e.currentTarget;
+  const on = btn.getAttribute('aria-pressed') !== 'true';
+  btn.setAttribute('aria-pressed', String(on));
+  earth?.setAuto(on);
+});
+$('#earth-reset')?.addEventListener('click', () => earth?.reset());
 
+/* 磁吸 */
+if (fine() && !reduced()) {
+  $$('.btn').forEach(btn => {
+    btn.addEventListener('pointermove', e => {
+      const r = btn.getBoundingClientRect();
+      const dx = (e.clientX - (r.left + r.width / 2)) / r.width;
+      const dy = (e.clientY - (r.top + r.height / 2)) / r.height;
+      btn.style.transform = `translate(${(dx * 3).toFixed(2)}px, ${(dy * 2).toFixed(2)}px)`;
+    });
+    btn.addEventListener('pointerleave', () => { btn.style.transform = ''; });
+  });
+}
+
+/* 开篇光晕 */
+const heroEl = $('#hero');
+const halo = $('#hero-halo');
+heroEl?.addEventListener('pointermove', e => {
+  if (!fine()) return;
+  const r = heroEl.getBoundingClientRect();
+  halo.style.setProperty('--hx', `${(((e.clientX - r.left) / r.width) * 100).toFixed(1)}%`);
+  halo.style.setProperty('--hy', `${(((e.clientY - r.top) / r.height) * 100).toFixed(1)}%`);
+}, { passive: true });
+
+/* ───────── 键盘 ───────── */
+document.addEventListener('keydown', e => {
+  const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || '') || document.activeElement?.isContentEditable;
+
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    palette.classList.contains('is-open') ? closePalette() : openPalette();
+    return;
+  }
+
+  if (lbState.open) {
+    if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); lbShow(Math.max(0, lbState.index - 1)); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); lbShow(Math.min(lbState.list.length - 1, lbState.index + 1)); }
+    else if (e.key === '0') { resetZoom(); }
+    return;
+  }
+
+  if (e.key === 'Escape') {
+    if (palette.classList.contains('is-open')) { closePalette(); return; }
+    if (dlg.open || $('#dlg-site').open) return;
+    if (themePop && !themePop.hidden) { closeTheme(); return; }
+    if (albumEl.classList.contains('is-open')) closeAlbum();
+    return;
+  }
+
+  if (typing || dlg.open || $('#dlg-site').open) return;
+
+  if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openDialog(); }
+  else if (e.key === 's' || e.key === 'S') { e.preventDefault(); openSettings(); }
+  else if (e.key === 't' || e.key === 'T') { e.preventDefault(); cycleTheme(); }
+  else if (e.key === 'e' || e.key === 'E') { e.preventDefault(); exportStandalone(); }
+  else if (e.key === 'g' || e.key === 'G') { document.getElementById('planet')?.scrollIntoView({ behavior: 'smooth' }); }
+  else if (e.key === 'i' || e.key === 'I') { document.getElementById('index')?.scrollIntoView({ behavior: 'smooth' }); }
+  else if (e.key === '/') { e.preventDefault(); openPalette(); }
+  else if (e.key === 'ArrowLeft') { deckGo(-1); }
+  else if (e.key === 'ArrowRight') { deckGo(1); }
+});
+
+
+/* ───────── 地理识别：地名 → 坐标 ───────── */
+const geoEl = $('#geo');
+const geoText = $('#geo-text');
+const geoBtn = $('#geo-btn');
+let geoBusy = false;
+
+function setGeo(stateName, text) {
+  if (!geoEl) return;
+  geoEl.dataset.state = stateName;
+  geoText.textContent = text;
+  geoBtn.disabled = stateName === 'loading';
+}
+
+async function locateFromName() {
+  if (!geoEl || geoBusy) return;
+  const name = ($('#f-name').value || '').trim();
+  if (name.length < 2) { setGeo('idle', '填写地名后自动识别坐标'); return; }
+
+  geoBusy = true;
+  setGeo('loading', '正在解析坐标…');
+  let hit = null;
+  try { hit = await geocode(name); } catch { hit = null; }
+  geoBusy = false;
+
+  if (hit) {
+    pickGeo = { lat: hit.lat, lng: hit.lng };
+    $('#f-coord').value = fmtCoord(hit.lat, hit.lng);
+    setGeo('ok', `${hit.label} · ${hit.source}`);
+    if (!$('#f-note').value.trim()) {
+      $('#f-note').value = composeIntro({ name, lat: hit.lat, lng: hit.lng, date: $('#f-date').value });
+    }
+  } else {
+    setGeo('fail', '未找到坐标 · 可在地球上点选');
+  }
+}
+
+$('#f-name')?.addEventListener('blur', () => {
+  if (!$('#f-coord').value.trim() && ($('#f-name').value || '').trim().length >= 2) locateFromName();
+});
+geoBtn?.addEventListener('click', locateFromName);
+
+/* ───────── 概览：虚影轮播 ───────── */
+let deckIndex = 0;
+let deckTimer = 0;
+
+function renderOverview() {
+  renderDeck();
+  renderTags();
+  renderReco();
+}
+
+function renderDeck() {
+  const stage = $('#deck-stage');
+  if (!stage) return;
+  stage.innerHTML = '';
+  const albums = state.landmarks;
+  if (!albums.length) {
+    $('#car-no').textContent = '№ 00';
+    $('#car-name').textContent = '还没有相册';
+    $('#car-sub').textContent = '先建一处地标';
+    $('#car-prev').disabled = true;
+    $('#car-next').disabled = true;
+    return;
+  }
+
+  albums.forEach((lm, i) => {
+    const cover = coverOf(lm);
+    const b = el('button', 'slide');
+    b.type = 'button';
+    b.dataset.i = String(i);
+    b.setAttribute('aria-label', `${lm.name}，${photosOf(lm.id).length} 张`);
+
+    const card = el('div', 'slide__card');
+    if (cover) {
+      const img = el('img');
+      img.src = cover.thumb || urlFor(cover);
+      img.alt = lm.name;
+      img.loading = i > 4 ? 'lazy' : 'eager';
+      card.appendChild(img);
+    } else {
+      card.appendChild(el('div', 'slide__empty', `<span>${esc(lm.name)}</span>`));
+    }
+    if (isLocked(lm)) card.appendChild(el('div', 'slide__lock', LOCK_SVG));
+    b.appendChild(card);
+
+    const ghost = el('div', 'slide__ghost');
+    if (cover) ghost.style.backgroundImage = `url("${cover.thumb || urlFor(cover)}")`;
+    b.appendChild(ghost);
+
+    b.appendChild(el('span', 'slide__tag', isLocked(lm) ? 'LOCKED' : `${photosOf(lm.id).length} 张`));
+    b.addEventListener('click', e => openAlbum(lm.id, e));
+    stage.appendChild(b);
+  });
+
+  deckIndex = clamp(deckIndex, 0, albums.length - 1);
+  layoutDeck();
+}
+
+function layoutDeck() {
+  const slides = $$('.slide');
+  if (!slides.length) return;
+  const w = slides[0].offsetWidth || 240;
+
+  slides.forEach((s, i) => {
+    const d = i - deckIndex;
+    const ad = Math.abs(d);
+    s.style.transform =
+      `translate(-50%, -50%) translateX(${(d * w * 0.62).toFixed(1)}px) translateZ(${(-ad * 120).toFixed(0)}px)` +
+      ` rotateY(${(-d * 15).toFixed(1)}deg) scale(${d === 0 ? 1 : 0.94})`;
+    s.style.opacity = ad > 3 ? '0' : String(Math.max(0, 1 - ad * 0.26));
+    s.style.zIndex = String(20 - ad);
+    s.style.filter = ad >= 2 ? 'blur(2px) brightness(.72)' : 'none';
+    s.style.pointerEvents = ad > 3 ? 'none' : 'auto';
+    s.classList.toggle('is-active', d === 0);
+  });
+
+  const lm = state.landmarks[deckIndex];
+  if (lm) {
+    $('#car-no').textContent = `№ ${pad2(deckIndex + 1)}`;
+    $('#car-name').textContent = lm.name;
+    $('#car-sub').textContent = isLocked(lm)
+      ? '已上锁 · 需单独私钥'
+      : `${photosOf(lm.id).length} 张 · ${lm.coord || '未标注'}`;
+  }
+  $('#car-prev').disabled = deckIndex === 0;
+  $('#car-next').disabled = deckIndex >= state.landmarks.length - 1;
+}
+
+function deckGo(step) {
+  const n = state.landmarks.length;
+  if (!n) return;
+  deckIndex = clamp(deckIndex + step, 0, n - 1);
+  layoutDeck();
+  restartDeckTimer();
+}
+
+function restartDeckTimer() {
+  clearInterval(deckTimer);
+  if (reduced() || state.landmarks.length < 2) return;
+  deckTimer = setInterval(() => {
+    if (albumEl.classList.contains('is-open')) return;
+    const n = state.landmarks.length;
+    if (!n) return;
+    deckIndex = (deckIndex + 1) % n;
+    layoutDeck();
+  }, 6500);
+}
+
+/* ───────── 自动标签与建议 ───────── */
+function albumTags(lm) {
+  const tags = [];
+  if (lm.lat != null) {
+    const a = Math.abs(lm.lat);
+    tags.push(a < 23.5 ? '热带' : a < 55 ? '温带' : '高纬');
+    tags.push(lm.lat >= 0 ? '北半球' : '南半球');
+  }
+  const y = /(\d{4})/.exec(lm.date || '');
+  if (y) tags.push(y[1]);
+  const mo = /(\d{1,2})\s*月/.exec(lm.date || '');
+  if (mo) {
+    const k = +mo[1];
+    tags.push(k === 12 || k <= 2 ? '冬' : k <= 5 ? '春' : k <= 8 ? '夏' : '秋');
+  }
+  const ps = photosOf(lm.id);
+  if (!ps.length) tags.push('空册');
+  else {
+    const land = ps.filter(p => (p.w || 0) >= (p.h || 0)).length;
+    tags.push(land * 2 >= ps.length ? '横构图' : '竖构图');
+    if (ps.some(p => p.exif)) tags.push('有拍摄参数');
+    if (ps.length < 3) tags.push('待补');
+  }
+  return tags;
+}
+
+function renderTags() {
+  const box = $('#tag-cloud');
+  if (!box) return;
+  box.innerHTML = '';
+  const counts = new Map();
+  state.landmarks.forEach(lm => albumTags(lm).forEach(t => counts.set(t, (counts.get(t) || 0) + 1)));
+  if (!counts.size) {
+    box.innerHTML = '<p class="ov__note">还没有地标，标签会在建第一本之后出现。</p>';
+    return;
+  }
+  [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .forEach(([t, n]) => {
+      box.appendChild(el('span', 'tag', `${esc(t)}<i>${n}</i>`));
+    });
+}
+
+function renderReco() {
+  const list = $('#reco-list');
+  if (!list) return;
+  list.innerHTML = '';
+  const out = [];
+
+  const empty = state.landmarks.filter(l => photosOf(l.id).length < 2);
+  if (empty.length) out.push(['补全', `给《${empty[0].name}》再补几张，凑成一组。`]);
+
+  const withPhotos = state.landmarks.filter(l => photosOf(l.id).length);
+  if (withPhotos.length) {
+    const oldest = withPhotos.slice().sort((a, b) => (photosOf(a.id)[0]?.t || 0) - (photosOf(b.id)[0]?.t || 0))[0];
+    const days = Math.round((Date.now() - (photosOf(oldest.id)[0]?.t || Date.now())) / 86400000);
+    if (days > 7) out.push(['回访', `《${oldest.name}》已经 ${days} 天没有新照片。`]);
+  }
+
+  if (state.landmarks.length >= 2) {
+    const a = state.landmarks.find(l => l.lat != null);
+    const peer = a && state.landmarks.find(l => l.id !== a.id && l.lat != null && Math.abs(l.lat - a.lat) < 8);
+    if (peer) out.push(['关联', `《${a.name}》与《${peer.name}》纬度相近，适合并在一起看。`]);
+  }
+
+  if (state.photos.length && !localStorage.getItem('atlas.backed.v1')) {
+    out.push(['备份', '还没有导出备份。备份入口在页脚的「私钥」里。']);
+  }
+
+  if (!out.length) out.push(['开始', '一切就绪。新建一处地标，第一本相册就开始了。']);
+
+  out.slice(0, 4).forEach(([k, text], i) => {
+    list.appendChild(el('li', '', `<i>${pad2(i + 1)}</i><span><b>${esc(k)}</b> · ${esc(text)}</span>`));
+  });
+}
+
+/* ───────── 册集私钥 ───────── */
+$('#album-lock-form')?.addEventListener('submit', async e => {
+  e.preventDefault();
+  const lm = currentLandmark();
+  if (!lm) return;
+  const box = $('#album-locked');
+  const input = $('#album-key');
+  const err = $('#album-lock-err');
+  const h = await sha256Hex(input.value || '');
+  if (h && h === lm.keyHash) {
+    unlocked.add(lm.id);
+    saveUnlocked();
+    err.hidden = true;
+    openAlbum(lm.id);
+    toast(`《${lm.name}》已解锁 · 仅本次会话`);
+  } else {
+    err.hidden = false;
+    err.textContent = '私钥不正确';
+    box.classList.remove('is-shake');
+    void box.offsetWidth;
+    box.classList.add('is-shake');
+    input.select();
+  }
+});
+
+/* ───────── 保险库 ───────── */
+const vaultEl = $('#vault');
+const vaultBox = $('#vault-box');
+let vaultUnlocked = false;
+
+function openVault() {
+  vaultEl.classList.add('is-open');
+  vaultEl.setAttribute('aria-hidden', 'false');
+  setLock(true);
+  if (vaultUnlocked) showVaultPanel();
+  else {
+    $('#vault-lock').hidden = false;
+    $('#vault-panel').hidden = true;
+    $('#vault-pass').value = '';
+    $('#vault-err').hidden = true;
+    setTimeout(() => $('#vault-pass').focus(), 240);
+  }
+}
+function closeVault() {
+  vaultEl.classList.remove('is-open');
+  vaultEl.setAttribute('aria-hidden', 'true');
+  setLock(albumEl.classList.contains('is-open') || lbState.open);
+}
+function showVaultPanel() {
+  vaultUnlocked = true;
+  $('#vault-lock').hidden = true;
+  $('#vault-panel').hidden = false;
+  updateVaultStats();
+}
+async function updateVaultStats() {
+  $('#vault-lm').textContent = state.landmarks.length;
+  $('#vault-ph').textContent = state.photos.length;
+  let size = 0;
+  try {
+    const est = await navigator.storage?.estimate?.();
+    size = est?.usage || 0;
+  } catch {}
+  if (!size) {
+    size = state.photos.reduce((a, p) => a + (p.blob?.size || 0), 0);
+  }
+  $('#vault-size').textContent = size > 1048576
+    ? (size / 1048576).toFixed(1) + ' MB'
+    : Math.max(0, Math.round(size / 1024)) + ' KB';
+}
+
+$('#vault-open')?.addEventListener('click', openVault);
+$('#vault-close')?.addEventListener('click', closeVault);
+vaultEl?.addEventListener('click', e => { if (e.target === vaultEl) closeVault(); });
+$('#vault-form')?.addEventListener('submit', async e => {
+  e.preventDefault();
+  const pass = $('#vault-pass').value || '';
+  const h = await sha256Hex(pass);
+  const err = $('#vault-err');
+  if (h && h === VAULT_HASH) {
+    err.hidden = true;
+    showVaultPanel();
+  } else {
+    err.hidden = false;
+    err.textContent = '私钥不正确';
+    vaultBox.classList.remove('is-shake');
+    void vaultBox.offsetWidth;
+    vaultBox.classList.add('is-shake');
+    $('#vault-pass').select();
+  }
+});
+$('#vault-lock-btn')?.addEventListener('click', () => {
+  vaultUnlocked = false;
+  closeVault();
+  toast('保险库已锁定');
+});
+
+$('#vault-export')?.addEventListener('click', async () => {
+  const btn = $('#vault-export');
+  const pass = $('#vault-pass2').value || '';
+  btn.setAttribute('aria-busy', 'true');
+  btn.textContent = '正在打包…';
+  try {
+    const text = await makeBackup({
+      site: state.site,
+      landmarks: state.landmarks,
+      photos: state.photos,
+      passphrase: pass
+    });
+    const blob = new Blob([text], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `atlas-vault-${new Date().toISOString().slice(0, 10)}.atlas`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    try { localStorage.setItem('atlas.backed.v1', String(Date.now())); } catch {}
+    btn.textContent = '已导出';
+    toast('备份已生成 · 请妥善保管文件与口令');
+  } catch (err) {
+    btn.textContent = '导出加密备份';
+    toast(err?.message || '导出失败', true);
+  } finally {
+    btn.removeAttribute('aria-busy');
+    setTimeout(() => { btn.textContent = '导出加密备份'; }, 3200);
+  }
+});
+
+$('#vault-file')?.addEventListener('change', async e => {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file) return;
+  const pass = $('#vault-pass2').value || '';
+  try {
+    const payload = await readBackup(await file.text(), pass);
+    await mergeBackup(payload);
+    toast(`已恢复 ${payload.landmarks?.length || 0} 处地标`);
+  } catch (err) {
+    toast(err?.message || '导入失败', true);
+  }
+});
+
+async function mergeBackup(payload) {
+  const byId = new Map(state.landmarks.map(l => [l.id, l]));
+  (payload.landmarks || []).forEach(raw => {
+    const next = normalizeLM(raw);
+    const cur = byId.get(next.id);
+    if (cur) Object.assign(cur, next, { coverId: cur.coverId || next.coverId });
+    else { state.landmarks.push(next); byId.set(next.id, next); }
+  });
+  saveLandmarks();
+
+  const have = new Set(state.photos.map(p => p.id));
+  const added = [];
+  for (const p of payload.photos || []) {
+    if (have.has(p.id)) continue;
+    const blob = photoBlob(p.data);
+    if (!blob) continue;
+    const rec = {
+      id: p.id, landmarkId: p.landmarkId, name: p.name,
+      blob, thumb: p.thumb, exif: p.exif || null,
+      w: p.w, h: p.h, t: p.t || Date.now()
+    };
+    try { await dbPut(rec); added.push(rec); } catch {}
+  }
+  state.photos.push(...added);
+
+  if (payload.site) {
+    applySite({ ...DEFAULT_SITE, ...payload.site });
+    try { localStorage.setItem(LS_SITE, JSON.stringify(state.site)); } catch {}
+  }
+
+  syncStats();
+  renderWall();
+  renderOverview();
+  buildMarkers();
+  updateVaultStats();
+  return added.length;
+}
+
+/* ───────── 启动 ───────── */
+
+async function boot() {
   state.site = loadSite();
   applySite(state.site);
+
+  applyTheme(localStorage.getItem(LS_THEME) || 'noir');
 
   const stored = loadLandmarks();
   if (stored) state.landmarks = stored;
@@ -1437,16 +2020,42 @@ async function boot() {
   const hy = $('#hero-year'); if (hy) hy.textContent = year;
   const km = $('#kbd-mod'); if (km) km.textContent = isMac ? '⌘K' : 'Ctrl K';
 
-  initGlobe();
   renderWall();
-  syncGlobe();
-
-  let savedView = null;
-  try { savedView = localStorage.getItem(LS_VIEW); } catch {}
-  setView(savedView || 'wall', { scroll: false });
+  initRevealObserver();
+  initNavSpy();
+  restartDeckTimer();
   onScroll();
 
-  /* 首次到访：三处空白地标作引子 */
+  /* 轮播：悬停暂停 */
+  const deck = $('#deck');
+  deck?.addEventListener('pointerenter', () => clearInterval(deckTimer));
+  deck?.addEventListener('pointerleave', restartDeckTimer);
+  addEventListener('resize', () => { clearTimeout(deck._t); deck._t = setTimeout(layoutDeck, 160); });
+
+  const stage = $('#planet-stage');
+  if (stage && 'IntersectionObserver' in window) {
+    const loadIO = new IntersectionObserver(entries => {
+      if (!entries[0].isIntersecting || earthStarted) return;
+      earthStarted = true;
+      initEarth();
+      earth?.load(p => { if (progressEl) progressEl.textContent = Math.round(p * 100) + '%'; });
+      loadIO.disconnect();
+    }, { rootMargin: '400px 0px', threshold: 0 });
+    loadIO.observe(stage);
+
+    const runIO = new IntersectionObserver(entries => {
+      const on = entries[0].isIntersecting;
+      if (on && !earthStarted) return;
+      on ? earth?.start() : earth?.stop();
+    }, { threshold: 0 });
+    runIO.observe(stage);
+  } else {
+    earthStarted = true;
+    initEarth();
+    earth?.load(p => { if (progressEl) progressEl.textContent = Math.round(p * 100) + '%'; });
+    earth?.start();
+  }
+
   if (!stored && !localStorage.getItem(LS_SEED)) {
     state.landmarks = [
       normalizeLM({ id: 'lm-kyoto', name: '京都', coord: '35.01°N 135.77°E', accent: ACCENTS[0] }),
@@ -1456,7 +2065,7 @@ async function boot() {
     saveLandmarks();
     try { localStorage.setItem(LS_SEED, '1'); } catch {}
     renderWall();
-    syncGlobe();
+    syncEarth();
   }
 }
 

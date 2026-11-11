@@ -1,20 +1,20 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="dark">
+<html lang="zh-CN" data-theme="noir">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>图册 · 去过的地方</title>
-<meta name="description" content="一处地标，一本相册。照片留在本机，只做编排。" />
-<meta name="theme-color" content="#08080A" />
-<meta property="og:title" content="图册 · 去过的地方" />
-<meta property="og:description" content="一处地标，一本相册。" />
+<title>ATLAS 图册 · 去过的地方</title>
+<meta name="description" content="一处地标，一本相册。私人地理志，照片只留在本机。" />
+<meta name="theme-color" content="#07070A" />
+<meta property="og:title" content="ATLAS 图册 · 去过的地方" />
+<meta property="og:description" content="一处地标，一本相册。私人地理志。" />
 <meta property="og:type" content="website" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%2308080A'/%3E%3Ccircle cx='16' cy='16' r='9.5' fill='none' stroke='%23C9A96A' stroke-width='1.4'/%3E%3Cellipse cx='16' cy='16' rx='4' ry='9.5' fill='none' stroke='%23C9A96A' stroke-width='1' opacity='.6'/%3E%3Cpath d='M6.5 16h19' stroke='%23C9A96A' stroke-width='1' opacity='.6'/%3E%3Ccircle cx='20.2' cy='10.8' r='1.9' fill='%23C9A96A'/%3E%3C/svg%3E" />
+<link rel="icon" href="assets/img/mark.svg" type="image/svg+xml" />
 <link rel="preload" href="assets/fonts/archivo-var-latin.woff2" as="font" type="font/woff2" crossorigin />
 <script>
 try {
-  var t = localStorage.getItem('atlas.theme');
-  document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+  var t = localStorage.getItem('atlas.theme.v2');
+  if (t === 'ivory' || t === 'slate' || t === 'noir') document.documentElement.setAttribute('data-theme', t);
 } catch (e) {}
 </script>
 <link rel="stylesheet" href="assets/css/site.css" />
@@ -22,100 +22,207 @@ try {
 <body>
 
 <a class="skip" href="#wall">跳到相册</a>
-<div class="noise" aria-hidden="true"></div>
-<div class="progress" aria-hidden="true"><i id="progress-bar"></i></div>
+<div class="grain" aria-hidden="true"></div>
+<div class="scroll-line" aria-hidden="true"><i id="scroll-bar"></i></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div class="dropveil" id="dropveil" aria-hidden="true"><span>拖到任意相册 · 或松手新建一处</span></div>
 
-<!-- ══════════ 顶栏 ══════════ -->
-<header class="top" id="top">
-  <a class="brand" href="#hero" aria-label="回到顶部">
-    <svg class="brand__mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-      <circle cx="16" cy="16" r="12.5" stroke="currentColor" stroke-width="1.1"/>
-      <ellipse cx="16" cy="16" rx="5.2" ry="12.5" stroke="currentColor" stroke-width=".9" opacity=".55"/>
-      <path d="M3.5 16h25" stroke="currentColor" stroke-width=".9" opacity=".55"/>
-      <circle cx="21.5" cy="9.5" r="1.9" fill="currentColor"/>
+<!-- ══════════ 导航 ══════════ -->
+<header class="nav" id="nav">
+  <a class="brand" href="#top" aria-label="ATLAS 图册 · 回到顶部">
+    <svg class="brand__mark" viewBox="0 0 48 48" aria-hidden="true">
+      <circle cx="24" cy="24" r="19.2" fill="none" stroke="currentColor" stroke-width="1.35"/>
+      <path d="M12.6 33.4C16.2 22.6 20.2 13.6 24 11.6c3.8 2 7.8 11 11.4 21.8"
+            fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/>
+      <path d="M17.2 28.6h13.6" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" opacity=".7"/>
+      <circle cx="24" cy="11.6" r="2.15" fill="currentColor"/>
     </svg>
-    <span class="brand__name" id="site-name">ATLAS</span>
-    <span class="brand__cn" id="site-cn">图册</span>
+    <span class="brand__text">
+      <span class="brand__word">ATLAS</span>
+      <span class="brand__cn">图册</span>
+    </span>
   </a>
 
-  <nav class="tabs" role="tablist" id="tabs" aria-label="视图">
-    <button type="button" role="tab" data-view="wall" aria-selected="true">相册<i id="tab-count">0</i></button>
-    <button type="button" role="tab" data-view="index" aria-selected="false">索引</button>
-    <button type="button" role="tab" data-view="globe" aria-selected="false">地球</button>
+  <nav class="nav__links" aria-label="页面">
+    <a href="#overview" data-nav="overview">概览</a>
+    <a href="#wall" data-nav="wall">相册</a>
+    <a href="#planet" data-nav="planet">地球</a>
   </nav>
 
-  <div class="top__end">
-    <button type="button" class="kbd" id="btn-palette" aria-label="打开搜索与命令面板">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="11" cy="11" r="6.4"/><path d="M15.8 15.8L20 20" stroke-linecap="round"/></svg>
+  <div class="nav__end">
+    <button type="button" class="search-btn" id="palette-btn" aria-label="搜索与命令">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.2"/><path d="M15.4 15.4L20 20" stroke-linecap="round"/></svg>
       <span>搜索</span>
       <kbd id="kbd-mod">⌘K</kbd>
     </button>
 
-    <button type="button" class="icon" id="btn-theme" aria-label="切换明暗主题">
-      <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" aria-hidden="true"><path d="M20 13.4A8 8 0 019.8 3.2a8.2 8.2 0 1010.2 10.2z"/></svg>
-      <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6" stroke-linecap="round"/></svg>
-    </button>
+    <div class="theme" id="theme">
+      <button type="button" class="theme__btn" id="theme-btn" aria-haspopup="listbox" aria-expanded="false" aria-label="切换主题">
+        <span class="theme__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+      </button>
+      <div class="theme__pop" id="theme-pop" role="listbox" aria-label="主题" hidden>
+        <p class="theme__title">主题</p>
+        <button type="button" role="option" data-theme="noir" aria-selected="true">
+          <span class="theme__chip" data-chip="noir"></span>
+          <span class="theme__name">墨夜<em>Noir</em></span>
+        </button>
+        <button type="button" role="option" data-theme="ivory" aria-selected="false">
+          <span class="theme__chip" data-chip="ivory"></span>
+          <span class="theme__name">宣纸<em>Ivory</em></span>
+        </button>
+        <button type="button" role="option" data-theme="slate" aria-selected="false">
+          <span class="theme__chip" data-chip="slate"></span>
+          <span class="theme__name">远山<em>Slate</em></span>
+        </button>
+      </div>
+    </div>
 
     <div class="menu" id="menu">
-      <button type="button" class="icon" id="btn-menu" aria-haspopup="true" aria-expanded="false" aria-label="更多操作">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="5.5" cy="12" r="1.15" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.15" fill="currentColor" stroke="none"/></svg>
+      <button type="button" class="icon-btn" id="menu-btn" aria-haspopup="true" aria-expanded="false" aria-label="更多操作">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="5.6" cy="12" r="1.15" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none"/><circle cx="18.4" cy="12" r="1.15" fill="currentColor" stroke="none"/></svg>
       </button>
       <div class="menu__pop" id="menu-pop" role="menu" hidden>
         <button type="button" role="menuitem" data-act="new">新建地标<kbd>N</kbd></button>
         <button type="button" role="menuitem" data-act="settings">站点设置<kbd>S</kbd></button>
-        <button type="button" role="menuitem" data-act="theme">明暗主题<kbd>T</kbd></button>
         <button type="button" role="menuitem" data-act="export">导出作品集<kbd>E</kbd></button>
       </div>
     </div>
   </div>
 </header>
 
-<main>
+<main id="top">
 
   <!-- ══════════ 开篇 ══════════ -->
   <section class="hero" id="hero">
     <canvas class="hero__dust" id="dust" aria-hidden="true"></canvas>
-    <div class="hero__glow" id="hero-glow" aria-hidden="true"></div>
+    <div class="hero__halo" id="hero-halo" aria-hidden="true"></div>
+    <div class="hero__grid" aria-hidden="true"></div>
 
     <div class="hero__inner">
-      <p class="kicker"><span class="kicker__dot"></span>PERSONAL&nbsp;ATLAS<span class="kicker__sep">/</span><span id="hero-year">2026</span></p>
+      <p class="kicker"><span class="kicker__dot"></span>PRIVATE&nbsp;ATLAS<span class="kicker__sep">/</span>№&nbsp;<span id="hero-year">2026</span></p>
 
-      <h1 class="hero__title" id="site-title">去过的地方</h1>
+      <h1 class="hero__title"><span>去过的</span><span>地方</span></h1>
 
-      <p class="hero__lede" id="site-lede"></p>
-
-      <div class="hero__acts">
-        <button type="button" class="cta" id="hero-new">
-          新建地标
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M5 12h13M13 7l5 5-5 5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-        <button type="button" class="cta cta--ghost" id="hero-globe">
-          打开地球
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><circle cx="12" cy="12" r="8.4"/><ellipse cx="12" cy="12" rx="3.6" ry="8.4"/><path d="M3.8 12h16.4"/></svg>
-        </button>
+      <div class="hero__body">
+        <p class="hero__lede" id="site-lede"></p>
+        <div class="hero__acts">
+          <button type="button" class="btn btn--solid" id="hero-new">
+            新建地标
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M5 12h13M13 7l5 5-5 5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <a class="btn btn--ghost" href="#planet">
+            转动地球
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><ellipse cx="12" cy="12" rx="3.4" ry="8.2"/><path d="M4 12h16"/></svg>
+          </a>
+        </div>
       </div>
 
       <dl class="hero__stats">
         <div><dt>地标</dt><dd id="stat-landmarks">0</dd></div>
         <div><dt>照片</dt><dd id="stat-photos">0</dd></div>
-        <div><dt>最近</dt><dd id="stat-latest" class="is-text">—</dd></div>
+        <div class="hero__stats-last"><dt>最近入库</dt><dd id="stat-latest" class="is-text">—</dd></div>
       </dl>
     </div>
 
-    <p class="hero__marg" aria-hidden="true">DRAG&nbsp;PHOTOS&nbsp;ANYWHERE</p>
+    <div class="hero__rail" aria-hidden="true">
+      <span>SCROLL</span><i></i><span id="hero-site">ATLAS</span>
+    </div>
+  </section>
+
+  <!-- ══════════ 概览 ══════════ -->
+  <section class="section overview" id="overview" aria-labelledby="ov-title">
+    <header class="sechead">
+      <p class="eyebrow"><span>01</span>OVERVIEW</p>
+      <h2 class="sechead__title" id="ov-title">概览</h2>
+      <p class="sechead__desc">最近翻动的几本，和这台机器记住的偏好。</p>
+      <button type="button" class="btn btn--line" id="ov-new">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 5.5v13M5.5 12h13" stroke-linecap="round"/></svg>
+        新建地标
+      </button>
+    </header>
+
+    <div class="deck" id="deck" aria-roledescription="轮播" aria-label="相册封面">
+      <div class="deck__stage" id="deck-stage"></div>
+      <div class="deck__shadow" aria-hidden="true"></div>
+    </div>
+
+    <div class="deck__bar">
+      <button type="button" class="round-btn" id="car-prev" aria-label="上一本">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M14 5l-7 7 7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="deck__meta">
+        <p class="deck__no" id="car-no">№ 00</p>
+        <h3 class="deck__name" id="car-name">还没有相册</h3>
+        <p class="deck__sub" id="car-sub">先建一处地标</p>
+      </div>
+      <button type="button" class="round-btn" id="car-next" aria-label="下一本">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M10 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+
+    <div class="ov__grid">
+      <div class="ov__panel">
+        <p class="ov__label">自动标签</p>
+        <div class="tags" id="tag-cloud"></div>
+        <p class="ov__note">标签由坐标、时间与影像元数据推导，规则可解释、结果可复现。</p>
+      </div>
+      <div class="ov__panel">
+        <p class="ov__label">接下来</p>
+        <ul class="reco" id="reco-list"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 地球 ══════════ -->
+  <section class="planet" id="planet" aria-labelledby="planet-title">
+    <div class="planet__stage" id="planet-stage">
+      <canvas class="planet__canvas" id="earth-canvas" aria-label="可交互的三维地球"></canvas>
+      <div class="planet__markers" id="markers"></div>
+
+      <div class="planet__loader" id="earth-loader">
+        <span class="planet__loader-ring" aria-hidden="true"></span>
+        <span class="planet__loader-t">正在绘制地球</span>
+        <span class="planet__loader-p" id="earth-progress">0%</span>
+      </div>
+
+      <div class="planet__hud">
+        <button type="button" class="hud-btn" id="earth-auto" aria-pressed="true">
+          <span class="hud-btn__dot"></span>自转
+        </button>
+        <button type="button" class="hud-btn" id="earth-reset">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="12" cy="12" r="7.6"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>
+          正对
+        </button>
+      </div>
+
+      <p class="planet__hint">拖动旋转 · 滚轮缩放 · 点击空白处落一个地标</p>
+    </div>
+
+    <aside class="planet__panel">
+      <p class="eyebrow"><span>04</span>ORBIT</p>
+      <h2 class="planet__title" id="planet-title">把地球<br />转过来</h2>
+      <p class="planet__lede">
+        每一处地标，都是球面上的一点。转动它，看点落在光的哪一侧——那是你去过的纬度。
+      </p>
+
+      <ol class="planet__list" id="planet-list" aria-label="地标列表"></ol>
+
+      <div class="planet__foot">
+        <span id="planet-count">0 处地标</span>
+        <button type="button" class="link-btn" id="planet-new">+ 落一处新的</button>
+      </div>
+    </aside>
   </section>
 
   <!-- ══════════ 相册 ══════════ -->
-  <section class="view is-on" id="wall" role="tabpanel" aria-labelledby="tab-wall">
+  <section class="section" id="wall" aria-labelledby="wall-title">
     <header class="sechead">
-      <h2 class="sechead__t">相册</h2>
-      <span class="sechead__n" id="wall-note">一处地标，一本</span>
-      <span class="sechead__rule"></span>
-      <button type="button" class="mini" id="btn-new">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M12 5.5v13M5.5 12h13" stroke-linecap="round"/></svg>
-        新建
+      <p class="eyebrow"><span>02</span>COLLECTION</p>
+      <h2 class="sechead__title" id="wall-title">相册</h2>
+      <p class="sechead__desc">一处地标，一本。照片不裁切，只编排。</p>
+      <button type="button" class="btn btn--line" id="btn-new">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 5.5v13M5.5 12h13" stroke-linecap="round"/></svg>
+        新建地标
       </button>
     </header>
 
@@ -124,51 +231,29 @@ try {
     <div class="wall__empty" id="wall-empty" hidden>
       <p class="wall__empty-t">还没有地标</p>
       <p class="wall__empty-h">给一处地方起个名字，它就成了第一本相册。</p>
-      <button type="button" class="cta" id="wall-empty-new">建第一本相册</button>
+      <button type="button" class="btn btn--solid" id="wall-empty-new">建第一本相册</button>
     </div>
 
     <p class="foot-hint">
-      <span>拖一张照片到任意相册，即入库</span>
+      <span>把照片拖到任意相册上即可入库</span>
       <span>·</span>
-      <span>照片只在本机，不上传</span>
+      <span>全部保存在本机浏览器</span>
     </p>
   </section>
 
   <!-- ══════════ 索引 ══════════ -->
-  <section class="view" id="index" role="tabpanel" aria-labelledby="tab-index" hidden>
+  <section class="section" id="index" aria-labelledby="index-title">
     <header class="sechead">
-      <h2 class="sechead__t">索引</h2>
-      <span class="sechead__n">最近建制在前</span>
-      <span class="sechead__rule"></span>
+      <p class="eyebrow"><span>03</span>INDEX</p>
+      <h2 class="sechead__title" id="index-title">索引</h2>
+      <p class="sechead__desc">按建制先后。悬停一行，可预览封面。</p>
     </header>
 
     <div class="ledger">
       <div class="ledger__head" aria-hidden="true">
-        <span>#</span><span>地标</span><span>坐标</span><span>时间</span><span class="ta-r">张数</span><span></span>
+        <span>№</span><span>地标</span><span>坐标</span><span>时间</span><span class="ta-r">张数</span><span></span>
       </div>
       <div id="idx-list"></div>
-    </div>
-    <p class="foot-hint"><span>悬停一行可预览封面</span></p>
-  </section>
-
-  <!-- ══════════ 地球 ══════════ -->
-  <section class="view" id="globe" role="tabpanel" aria-labelledby="tab-globe" hidden>
-    <header class="sechead">
-      <h2 class="sechead__t">地球</h2>
-      <span class="sechead__n" id="globe-note">拖动旋转 · 滚轮缩放</span>
-      <span class="sechead__rule"></span>
-      <button type="button" class="mini" id="orb-reset">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg>
-        正对
-      </button>
-    </header>
-
-    <div class="orb" id="orb">
-      <canvas class="orb__canvas" id="globe-canvas"></canvas>
-      <div class="orb__hud">
-        <p class="orb__hint" id="orb-hint">点空白处，落一处地标</p>
-      </div>
-      <aside class="orb__list" id="orb-list" aria-label="地标列表"></aside>
     </div>
   </section>
 
@@ -176,29 +261,53 @@ try {
 
 <!-- ══════════ 页脚 ══════════ -->
 <footer class="colophon" id="colophon">
-  <div class="colophon__grid">
-    <div>
-      <p class="colophon__sig" id="site-sig">ATLAS</p>
-      <p class="colophon__body" id="site-colophon">一处地标，一本相册。照片保持原样，只做编排。</p>
+  <div class="colophon__top">
+    <div class="colophon__brand">
+      <svg viewBox="0 0 48 48" aria-hidden="true" class="colophon__mark">
+        <circle cx="24" cy="24" r="19.2" fill="none" stroke="currentColor" stroke-width="1.35"/>
+        <path d="M12.6 33.4C16.2 22.6 20.2 13.6 24 11.6c3.8 2 7.8 11 11.4 21.8" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/>
+        <path d="M17.2 28.6h13.6" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" opacity=".7"/>
+        <circle cx="24" cy="11.6" r="2.15" fill="currentColor"/>
+      </svg>
+      <p class="colophon__word">ATLAS<span>图册</span></p>
+      <p class="colophon__tag">私人地理志 · 一处地标，一本相册</p>
     </div>
-    <dl class="colophon__list">
-      <div><dt>字体</dt><dd>Archivo Variable · 系统宋体</dd></div>
+
+    <dl class="colophon__meta">
+      <div><dt>字体</dt><dd>Archivo Variable · 宋体</dd></div>
       <div><dt>收存</dt><dd id="colophon-stat">0 处地标 · 0 张照片</dd></div>
       <div><dt>数据</dt><dd>浏览器本机 · 永不上传</dd></div>
-      <div><dt>快捷键</dt><dd><kbd>⌘K</kbd> 搜索 · <kbd>N</kbd> 新建 · <kbd>T</kbd> 明暗</dd></div>
+      <div><dt>地球纹理</dt><dd>NASA Blue Marble · 公有领域</dd></div>
     </dl>
-    <div class="colophon__tail">
-      <a class="colophon__mail" href="mailto:hello@example.com">hello@example.com</a>
-      <p class="colophon__fine">© <span id="year-now">2026</span></p>
+
+    <div class="colophon__keys">
+      <p class="colophon__keys-t">快捷键</p>
+      <ul>
+        <li><kbd>⌘K</kbd><span>搜索与命令</span></li>
+        <li><kbd>N</kbd><span>新建地标</span></li>
+        <li><kbd>T</kbd><span>切换主题</span></li>
+        <li><kbd>E</kbd><span>导出作品集</span></li>
+      </ul>
     </div>
+  </div>
+
+  <div class="colophon__bottom">
+    <span>© <span id="year-now">2026</span> ATLAS</span>
+    <span>PRIVATE CARTOGRAPHY</span>
+    <button type="button" class="vault-link" id="vault-open">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true">
+        <circle cx="8.5" cy="8.5" r="4.2"/><path d="M11.6 11.6L20 20M17 17l2-2M14 14l2-2" stroke-linecap="round"/>
+      </svg>
+      私钥
+    </button>
   </div>
 </footer>
 
-<!-- ══════════ 相册（覆盖层） ══════════ -->
+<!-- ══════════ 相册 ══════════ -->
 <section class="album" id="album" aria-hidden="true" aria-labelledby="album-name">
   <div class="album__bar">
     <button type="button" class="album__back" id="album-close">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M14 5l-7 7 7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M14 5l-7 7 7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       相册
     </button>
     <p class="album__crumb" id="album-crumb">—</p>
@@ -216,6 +325,22 @@ try {
       <p class="album__meta" id="album-meta"></p>
     </header>
 
+    <div class="album__locked" id="album-locked" hidden>
+      <svg class="album__lockicon" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+        <circle cx="32" cy="28" r="13" stroke="currentColor" stroke-width="1.4"/>
+        <circle cx="32" cy="28" r="3.4" stroke="currentColor" stroke-width="1.2" opacity=".65"/>
+        <path d="M32 41v10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        <rect x="20" y="14" width="24" height="30" rx="2" stroke="currentColor" stroke-width="1.1" opacity=".25"/>
+      </svg>
+      <p class="album__locked-t">这本相册已上锁</p>
+      <p class="album__locked-h">输入这本册集的私钥，与其它册集互不影响。</p>
+      <form class="album__locked-form" id="album-lock-form">
+        <input id="album-key" type="password" autocomplete="off" spellcheck="false" placeholder="私钥" aria-label="册集私钥" />
+        <button type="submit">解锁</button>
+      </form>
+      <p class="album__locked-err" id="album-lock-err" role="alert" hidden></p>
+    </div>
+
     <div class="album__grid" id="album-grid"></div>
 
     <div class="album__empty" id="album-empty" hidden>
@@ -226,7 +351,7 @@ try {
     <label class="dropzone" id="dropzone">
       <input type="file" id="file" accept="image/*" multiple />
       <span class="dropzone__plus" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1"><path d="M12 7v10M7 12h10" stroke-linecap="round"/><rect x="3" y="3" width="18" height="18"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M12 7.5v9M7.5 12h9" stroke-linecap="round"/><rect x="3.5" y="3.5" width="17" height="17"/></svg>
       </span>
       <span class="dropzone__t">添加照片</span>
       <span class="dropzone__h">可多选 · 也可从桌面直接拖入 · 原图入库，不做滤镜</span>
@@ -244,13 +369,13 @@ try {
     <div class="lb__nav">
       <button type="button" class="lb__act" id="lb-cover">设为封面</button>
       <button type="button" class="lb__btn" id="lb-prev" aria-label="上一张">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M14 5l-7 7 7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M14 5l-7 7 7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <button type="button" class="lb__btn" id="lb-next" aria-label="下一张">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M10 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M10 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <button type="button" class="lb__btn" id="lb-close" aria-label="关闭">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg>
       </button>
     </div>
   </div>
@@ -262,11 +387,68 @@ try {
   <div class="lb__rail" id="lb-rail"></div>
 </div>
 
+<!-- ══════════ 私钥 / 保险库 ══════════ -->
+<div class="vault" id="vault" aria-hidden="true">
+  <div class="vault__box" id="vault-box" role="dialog" aria-modal="true" aria-labelledby="vault-title">
+    <button type="button" class="vault__close" id="vault-close" aria-label="关闭">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg>
+    </button>
+
+    <div class="vault__lock" id="vault-lock">
+      <svg class="vault__key" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+        <circle cx="32" cy="24" r="13.5" stroke="currentColor" stroke-width="1.4"/>
+        <circle cx="32" cy="24" r="4" stroke="currentColor" stroke-width="1.2" opacity=".7"/>
+        <path d="M32 37.5V54M32 47h7M32 52h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      </svg>
+      <p class="vault__kicker">PRIVATE ACCESS</p>
+      <h2 class="vault__title" id="vault-title">私钥</h2>
+      <p class="vault__sub">输入私钥，进入保险库。</p>
+
+      <form class="vault__form" id="vault-form">
+        <input class="vault__input" id="vault-pass" type="password" inputmode="text"
+               autocomplete="current-password" spellcheck="false" placeholder="••••••••••••" aria-label="私钥" />
+        <button type="submit" class="vault__submit">验证</button>
+      </form>
+
+      <p class="vault__err" id="vault-err" role="alert" hidden></p>
+      <p class="vault__note">私钥只在本机校验，不会发送到任何服务器。</p>
+    </div>
+
+    <div class="vault__panel" id="vault-panel" hidden>
+      <p class="vault__kicker">VAULT</p>
+      <h2 class="vault__title">保险库</h2>
+      <p class="vault__sub">导出加密备份，换设备或清空缓存后仍能完整恢复。</p>
+
+      <dl class="vault__stats">
+        <div><dt>地标</dt><dd id="vault-lm">0</dd></div>
+        <div><dt>照片</dt><dd id="vault-ph">0</dd></div>
+        <div><dt>占用</dt><dd id="vault-size">—</dd></div>
+      </dl>
+
+      <label class="vault__field">
+        <span>备份口令</span>
+        <input id="vault-pass2" type="password" autocomplete="new-password" spellcheck="false" placeholder="至少 6 位" />
+      </label>
+
+      <div class="vault__actions">
+        <button type="button" class="vault__act" id="vault-export">导出加密备份</button>
+        <label class="vault__act vault__act--ghost">
+          导入备份
+          <input type="file" id="vault-file" accept=".atlas,.json,application/json" />
+        </label>
+      </div>
+
+      <p class="vault__note">备份包含全部地标、照片与站点设置，以 AES-GCM 加密。口令遗失将无法解密。</p>
+      <button type="button" class="vault__lockbtn" id="vault-lock-btn">锁定并退出</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════ 命令面板 ══════════ -->
 <div class="palette" id="palette" aria-hidden="true">
   <div class="palette__box" role="dialog" aria-modal="true" aria-label="搜索与命令">
     <div class="palette__field">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="11" cy="11" r="6.4"/><path d="M15.8 15.8L20 20" stroke-linecap="round"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.2"/><path d="M15.4 15.4L20 20" stroke-linecap="round"/></svg>
       <input id="pal-input" type="text" autocomplete="off" spellcheck="false" placeholder="搜索地标、照片，或输入命令" aria-label="搜索" />
       <kbd>ESC</kbd>
     </div>
@@ -293,13 +475,19 @@ try {
 
     <div class="field-row">
       <label class="field">
-        <span class="field__name">坐标<span class="field__opt">选填</span></span>
-        <input class="field__input" id="f-coord" type="text" maxlength="26" placeholder="38.72°N 9.14°W" autocomplete="off" />
+        <span class="field__name">坐标<span class="field__opt">自动识别</span></span>
+        <input class="field__input" id="f-coord" type="text" maxlength="26" placeholder="填写地名后自动定位" autocomplete="off" />
       </label>
       <label class="field">
         <span class="field__name">时间<span class="field__opt">选填</span></span>
         <input class="field__input" id="f-date" type="text" maxlength="20" placeholder="2025 年 4 月" autocomplete="off" />
       </label>
+    </div>
+
+    <div class="geo" id="geo" data-state="idle">
+      <i class="geo__dot" aria-hidden="true"></i>
+      <p class="geo__text" id="geo-text">填写地名后自动识别坐标</p>
+      <button type="button" class="geo__btn" id="geo-btn">重新定位</button>
     </div>
 
     <label class="field">
@@ -310,6 +498,13 @@ try {
     <div class="field">
       <span class="field__name">标记色</span>
       <div class="swatches" id="swatches" role="group" aria-label="地标标记色"></div>
+    </div>
+
+    <div class="field">
+      <span class="field__name">私钥保护<span class="field__opt">选填</span></span>
+      <input class="field__input" id="f-key" type="password" maxlength="32" autocomplete="new-password"
+             placeholder="设置后，打开这本相册需单独验证" />
+      <p class="field__hint">每本册集的私钥彼此独立；不填则公开。</p>
     </div>
 
     <p class="dlg__err" id="dlg-err" hidden></p>
