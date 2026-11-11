@@ -107,18 +107,18 @@ export function createMusic({ volume = 0.55 } = {}) {
     const lowShelf = ctx.createBiquadFilter();
     lowShelf.type = 'lowshelf';
     lowShelf.frequency.value = 130;
-    lowShelf.gain.value = 2.5;
+    lowShelf.gain.value = 1.6;
 
     const mud = ctx.createBiquadFilter();
     mud.type = 'peaking';
     mud.frequency.value = 380;
     mud.Q.value = 0.9;
-    mud.gain.value = -2.8;
+    mud.gain.value = -2.2;
 
     const air = ctx.createBiquadFilter();
     air.type = 'highshelf';
     air.frequency.value = 5200;
-    air.gain.value = 1.8;
+    air.gain.value = 0.7;
 
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -19;
@@ -145,9 +145,9 @@ export function createMusic({ volume = 0.55 } = {}) {
     comp.connect(ctx.destination);
 
     waves = {
-      soft: pianoWave(1.55),
-      mid: pianoWave(1.25),
-      bright: pianoWave(1.0)
+      soft: pianoWave(1.75),
+      mid: pianoWave(1.45),
+      bright: pianoWave(1.20)
     };
     return true;
   }
@@ -195,7 +195,7 @@ export function createMusic({ volume = 0.55 } = {}) {
     o.stop(time + body + 0.05); o2.stop(time + body + 0.05);
 
     /* 击弦瞬态：10ms 的带通噪声，给音头一点颗粒 */
-    if (vel > 0.45) {
+    if (vel > 0.62) {
       const nlen = Math.floor(ctx.sampleRate * 0.012);
       const nb = ctx.createBuffer(1, nlen, ctx.sampleRate);
       const nd = nb.getChannelData(0);
@@ -207,7 +207,7 @@ export function createMusic({ volume = 0.55 } = {}) {
       nf.frequency.value = Math.min(6000, f * 3.2);
       nf.Q.value = 1.1;
       const ng = ctx.createGain();
-      ng.gain.value = vel * 0.035;
+      ng.gain.value = vel * 0.016;
       ns.connect(nf); nf.connect(ng); ng.connect(master);
       ns.start(time);
     }
@@ -216,6 +216,27 @@ export function createMusic({ volume = 0.55 } = {}) {
   /* 低音也是钢琴，只是更低、更长、稍偏左 */
   function bass(time, midi, dur, vel) {
     piano(time, midi, dur, Math.min(0.72, vel * 0.9), -0.22);
+  }
+
+  /* 极轻的暖垫：三角波、1.2s 起音，只做和声支撑，不抢钢琴 */
+  function softPad(time, notes, dur, gain) {
+    if (gain <= 0.01) return;
+    notes.forEach((m, i) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      const lp = ctx.createBiquadFilter();
+      o.type = 'triangle';
+      o.frequency.value = mtof(m);
+      o.detune.value = (i - 1) * 5;
+      lp.type = 'lowpass';
+      lp.frequency.value = 620;
+      g.gain.setValueAtTime(0, time);
+      g.gain.linearRampToValueAtTime(gain * 0.016, time + 1.2);
+      g.gain.linearRampToValueAtTime(gain * 0.012, time + dur * 0.85);
+      g.gain.linearRampToValueAtTime(0, time + dur);
+      o.connect(lp); lp.connect(g); g.connect(master);
+      o.start(time); o.stop(time + dur + 0.05);
+    });
   }
 
   function sectionOf(index) {
@@ -244,8 +265,8 @@ export function createMusic({ volume = 0.55 } = {}) {
       const midi = ch.tones[shape[i % 8]] + 12;
       const accent = i % 4 === 0 ? 1 : 0.66;
       const rise = 0.84 + 0.16 * (i / 15);
-      piano(t + i * stepDur + rand(-0.004, 0.004), midi, stepDur * 3.2,
-        sec.vel * accent * rise * rand(0.92, 1.06), 0.12);
+      piano(t + i * stepDur + rand(-0.008, 0.008), midi, stepDur * 5.2,
+        sec.vel * accent * rise * rand(0.88, 1.10), 0.12);
     }
 
     /* 高潮段：右手加一层高八度的弱奏，厚度靠层数而不是音量 */
@@ -253,6 +274,10 @@ export function createMusic({ volume = 0.55 } = {}) {
       for (let i = 4; i < 16; i += 4) {
         piano(t + i * stepDur, ch.tones[shape[i % 8]] + 24, stepDur * 2.2, sec.vel * 0.30, -0.18);
       }
+    }
+
+    if (index % 2 === 0 && sec.step <= 2) {
+      softPad(t, ch.tones.map(m => m + 12), BAR * 2, sec.vel);
     }
 
     /* 主旋律：八小节一句，按预计算的拍位落音 */

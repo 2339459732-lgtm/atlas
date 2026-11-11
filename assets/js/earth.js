@@ -143,7 +143,8 @@ void main() {
   /* 夜面 = 城市灯光 + 一层极弱的冷色地面。
      地面用海陆掩码区分明暗，否则整块大陆和海洋糊成一片。 */
   float landMask = 1.0 - ocean;
-  vec3 ground = vec3(0.011, 0.014, 0.020) * (0.30 + 0.70 * landMask);
+  /* 地面亮度：抬到能辨认大陆轮廓，但仍远低于灯光 */
+  vec3 ground = vec3(0.019, 0.023, 0.031) * (0.34 + 0.66 * landMask);
 
   float term = smoothstep(0.08, -0.20, ndl);
   vec3 dark = (lightCol * (lights * 1.55 + halo * 0.20) + ground) * term * uNightGain;
@@ -294,7 +295,7 @@ void main() {
 
   vec3 sky = texture2D(uSky, skyUV).rgb;
   /* 轻抬暗部、保留直方图，避免幂函数把暗尘压成色块 */
-  sky = sky * 1.28 + 0.004;
+  sky = sky * 1.22 + 0.006;
   /* 抖动：8bit 贴图在暗部容易出色带，加一点点噪声抹平 */
   sky += (hash(uv * 2048.0) - 0.5) * 0.0022;
 
@@ -614,7 +615,9 @@ export function createEarth(canvas, opts = {}) {
   /* 星空：带 mipmap + 各向异性，缩小时不会闪烁、放大时不会糊成一团 */
   function loadSky(file) {
     return loadImage(file).then(img => {
-      const next = upload(img, true);
+      /* 不开 mipmap：等距柱状图在经度 ±180° 处 atan 有跳变，
+         导数会让硬件误判为极小尺度，直接掉到最低 mip —— 表现就是一片方块。 */
+      const next = upload(img, false);
       if (textures.sky) gl.deleteTexture(textures.sky);
       textures.sky = next;
     }).catch(() => {});

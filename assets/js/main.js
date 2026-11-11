@@ -1710,7 +1710,8 @@ function currentRes() {
     const v = localStorage.getItem(LS_RES);
     if (v && ['1k', '2k', '4k'].includes(v)) return v;
   } catch {}
-  return matchMedia('(max-width: 860px)').matches ? '1k' : '2k';
+  /* 桌面默认 4K，移动端 2K：兼顾观感与流量 */
+  return matchMedia('(max-width: 860px)').matches ? '2k' : '4k';
 }
 
 function paintRes() {
