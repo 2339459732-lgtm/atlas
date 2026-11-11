@@ -289,7 +289,7 @@ void main() {
 
   /* 暗尘：把银河切开，才有纵深 */
   float dark = smoothstep(0.50, 0.95, fbm(vec2(q.x * 12.0, q.y * 38.0) + 17.0));
-  col *= 1.0 - 0.7 * band * dark;
+  col *= 1.0 - 0.7 * band * dark * clamp(uNebula, 0.0, 1.0);
 
   float d = distance(uv * vec2(1.0, 1.35), vec2(0.34, 0.62));
   col += uGlow * uGlowAmt * exp(-d * d * 6.6);
