@@ -614,7 +614,7 @@ export function createEarth(canvas, opts = {}) {
     const aspect = state.w / state.h || 1;
     const fov = 30 * DEG;
     /* 宽屏留出天空才显尺度；窄屏受宽度限制，球太小反而留下大片空场 */
-    const k = (state.w / state.h) < 1.05 ? 0.80 : 0.62;
+    const k = (state.w / state.h) < 1.05 ? 0.80 : 0.56;
     const needV = 1 / (k * Math.tan(fov / 2));
     const needH = 1 / (k * Math.tan(fov / 2) * aspect);
     state.baseDist = Math.max(needV, needH);

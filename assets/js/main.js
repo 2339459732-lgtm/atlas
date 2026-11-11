@@ -44,7 +44,7 @@ const THEMES = {
       spaceTop: [0.055, 0.055, 0.068], spaceBottom: [0.012, 0.012, 0.018],
       spaceCool: [0.44, 0.54, 0.76], spaceWarm: [1.0, 0.86, 0.66],
       glow: [0.55, 0.42, 0.22], glowAmt: 0.085, grain: 0.012,
-      ambient: 0.05, atmo: [0.24, 0.46, 0.82], stars: 1, nebula: 1.18,
+      ambient: 0.05, atmo: [0.24, 0.46, 0.82], stars: 1, nebula: 1.00,
       exposure: 1.06, nightGain: 1.05, cloud: 0.9, atmoIntensity: 0.56
     }
   },

@@ -34,7 +34,7 @@ export const PALETTE = [
 
 /* 银河带在画面中的目标位置（0–1，y 自顶向下） */
 export const LAYOUT = {
-  bandY: 0.155,   /* 站内：亮脊从球体上缘升起，不被球体遮住 */
+  bandY: 0.165,   /* 站内：亮脊从球体上缘升起，不被球体遮住 */
   coreX: 0.52,    /* 银心横向位置，与参考图一致 */
   width: 0.046     /* 亮脊半宽（弧度） */
 };
@@ -305,8 +305,6 @@ export function frame({ yaw, pitch, bandY, coreX, aspect, tanHalf }) {
 
   /* 银极：同时垂直于「屏幕右方向」与「亮脊方向」→ 银道在屏上呈水平 */
   const pole = nrm(crs(right, nearDir));
-  const e1 = nrm(crs(pole, up));           /* 银道面内基向量（近似垂直方向） */
-  const e2 = nrm(crs(pole, e1));           /* 银道面内基向量（近似水平方向） */
 
   /* 银心：画面 (coreX, bandY) 处，再投影回银道面 */
   const ndcX = 2 * coreX - 1;
@@ -316,6 +314,11 @@ export function frame({ yaw, pitch, bandY, coreX, aspect, tanHalf }) {
     fwd[2] + right[2] * (ndcX * tanHalf * aspect) + up[2] * (ndcY * tanHalf)
   ];
   const core = nrm([0, 1, 2].map(i => cd[i] - pole[i] * dot3(cd, pole)));
+
+  /* 银经零点对准银心：亮度包络 exp(-(l/L)³) 才会在 coreX 处达到峰值，
+     否则最亮的一段会漂到画面边缘。 */
+  const e1 = core;
+  const e2 = nrm(crs(pole, e1));
 
   return { fwd, right, up, pole, core, e1, e2 };
 }
