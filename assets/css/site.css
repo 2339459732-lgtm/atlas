@@ -2072,3 +2072,12 @@ html[data-gate="open"] .gate { display: none; }
 @media (max-width: 720px) {
   .audio-hint { top: calc(var(--nav-h) + 8px); }
 }
+
+/* ── 窄屏：首屏三段栅格改为纵向堆叠，避免标题与正文重叠 ── */
+@media (max-width: 900px) {
+  .hero__inner { grid-template-rows: auto auto auto auto; align-content: end; }
+  .hero__top { grid-row: 1; }
+  .hero__title { grid-column: 1 / -1; grid-row: 2; margin-bottom: clamp(18px, 4vw, 28px); }
+  .hero__body { grid-column: 1 / -1; grid-row: 3; padding-bottom: 0; }
+  .hero__stats { grid-row: 4; }
+}
