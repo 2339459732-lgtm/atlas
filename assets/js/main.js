@@ -476,6 +476,7 @@ const progressEl = $('#earth-progress');
 
 let markers = [];
 let earthStarted = false;
+let earthReady = false;
 
 function initEarth() {
   if (earth || !earthCanvas) return;
@@ -492,7 +493,10 @@ function initEarth() {
         toast(t('planet.toastNoWebgl'), true);
         return;
       }
+      /* 贴图分批到：第一次就揭开遮罩，之后只补画质，不重复建标记 */
       loader.classList.add('is-done');
+      if (earthReady) return;
+      earthReady = true;
       buildMarkers();
     },
     onProject: ({ project }) => updateMarkers(project)
@@ -503,6 +507,11 @@ function initEarth() {
   }
   earth.setTheme(THEMES[state.theme].globe);
   window.atlasEarth = earth;   /* 调试/验收用只读句柄 */
+
+  /* 兜底：无论贴图多慢，18 秒后都撤掉遮罩，交互不被挡住 */
+  setTimeout(() => {
+    if (!earthReady) loader.classList.add('is-done');
+  }, 18000);
 }
 
 function buildMarkers() {
