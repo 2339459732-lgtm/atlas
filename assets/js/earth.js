@@ -166,11 +166,12 @@ void main() {
   float lit = smoothstep(-0.12, 0.42, ndl);
 
   float rim = pow(1.0 - max(dot(N, V), 0.0), 2.0);
-  vec3 shade = mix(vec3(0.035, 0.045, 0.062), vec3(1.0), lit);
+  /* 夜面的云几乎不可见，否则会给整块大陆蒙一层蓝灰纱 */
+  vec3 shade = mix(vec3(0.016, 0.020, 0.028), vec3(1.0), lit);
   shade += vec3(0.5, 0.62, 0.8) * rim * 0.18 * lit;
   shade *= uExposure;
 
-  gl_FragColor = vec4(shade, a * uOpacity * (0.30 + 0.70 * lit));
+  gl_FragColor = vec4(shade, a * uOpacity * (0.05 + 0.95 * lit));
 }`;
 
 const FS_ATMO = `
