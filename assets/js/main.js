@@ -2252,16 +2252,18 @@ function initMusic() {
   if (!btn) return null;
 
   const music = createMusic();
-  const paint = ({ playing }) => {
-    btn.setAttribute('aria-pressed', String(!!playing));
+  const paint = ({ playing, muted }) => {
+    const st = muted ? 'off' : (playing ? 'on' : 'pending');
+    btn.dataset.state = st;
+    btn.setAttribute('aria-pressed', String(st === 'on'));
     if (playing) hint && (hint.hidden = true);
   };
   music.onChange(paint);
-  paint({ playing: false });
 
   const wanted = () => {
     try { return localStorage.getItem(LS_MUTED) !== '1'; } catch { return true; }
   };
+  paint({ playing: false, muted: !wanted() });
 
   const begin = async () => {
     if (!wanted()) return;

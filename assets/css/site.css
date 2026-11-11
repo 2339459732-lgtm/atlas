@@ -1972,9 +1972,12 @@ html[data-gate="open"] .gate { display: none; }
 .sound-btn svg { width: 16px; height: 16px; }
 .sound-btn:hover { color: var(--ink); border-color: var(--line-2); }
 .sound-btn__slash { opacity: 0; transition: opacity .25s; }
-.sound-btn[aria-pressed="false"] .sound-btn__slash { opacity: 1; }
-.sound-btn[aria-pressed="false"] .sound-btn__wave { opacity: 0; }
-.sound-btn[aria-pressed="true"] .sound-btn__wave { animation: soundPulse 2.6s var(--e-out) infinite; }
+.sound-btn__wave { transition: opacity .25s; }
+/* 三态：播放中 / 等待手势 / 已关闭 */
+.sound-btn[data-state="on"] .sound-btn__wave { animation: soundPulse 2.6s var(--e-out) infinite; }
+.sound-btn[data-state="pending"] .sound-btn__wave { opacity: .32; }
+.sound-btn[data-state="off"] .sound-btn__slash { opacity: 1; }
+.sound-btn[data-state="off"] .sound-btn__wave { opacity: 0; }
 @keyframes soundPulse {
   0%, 100% { opacity: .55; }
   50% { opacity: 1; }
