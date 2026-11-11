@@ -1,84 +1,70 @@
 /* ══════════════════════════════════════════════════════════════════
-   main.js — 地标 = 相册。相册墙 → 相册 → 单张。
+   main.js — 图册。照片原样显示，只做编排。
    ══════════════════════════════════════════════════════════════════ */
 
-import { createPress, createFallbackPress } from './ink.js';
 import { readExif } from './exif.js';
 
-/* 起始四本：空相册，等你放照片进去 */
+/* ───────── 起始三本 ───────── */
 const SEED = [
-  { id: 'kyoto',      name: '京都',        coord: '35.01°N 135.77°E', date: '', note: '', inks: { c: '#1B3A82', m: '#D8452C', y: '#EFC24B', k: '#161510' }, angles: [75, 15, 45, 0], seed: 1.61 },
-  { id: 'reykjavik',  name: '雷克雅未克',  coord: '64.15°N 21.94°W', date: '', note: '', inks: { c: '#2C7BC4', m: '#2E6B4F', y: '#E4C558', k: '#141A18' }, angles: [45, 15, 75, 90], seed: 2.94 },
-  { id: 'hongkong',   name: '香港',        coord: '22.32°N 114.17°E', date: '', note: '', inks: { c: '#E6007E', m: '#00A0B0', y: '#F5E13C', k: '#101014' }, angles: [45, 75, 0, 15], seed: 5.77 }
+  { id: 'kyoto',     name: '京都',       coord: '35.01°N 135.77°E', date: '', note: '', accent: '#1B3A82' },
+  { id: 'reykjavik', name: '雷克雅未克', coord: '64.15°N 21.94°W', date: '', note: '', accent: '#1F6F5C' },
+  { id: 'hongkong',  name: '香港',       coord: '22.32°N 114.17°E', date: '', note: '', accent: '#C0397A' }
 ];
 
-const INK_SETS = [
-  { c: '#1B3A82', m: '#D8452C', y: '#EFC24B', k: '#161510' },
-  { c: '#2C7BC4', m: '#2E6B4F', y: '#E4C558', k: '#141A18' },
-  { c: '#B0481E', m: '#1B2E6B', y: '#DFA42A', k: '#1A1510' },
-  { c: '#E6007E', m: '#00A0B0', y: '#F5E13C', k: '#101014' },
-  { c: '#5C3FA8', m: '#C9432F', y: '#E8B84B', k: '#151318' },
-  { c: '#1F6F5C', m: '#C64B22', y: '#E8C24A', k: '#14120E' },
-  { c: '#8A2B4E', m: '#3A6B8F', y: '#E9C97A', k: '#121014' },
-  { c: '#1341E0', m: '#E8402A', y: '#F2C300', k: '#12120E' }
-];
-const ANGLE_SETS = [[45, 75, 15, 0], [75, 15, 45, 90], [15, 45, 75, 0], [30, 60, 0, 90]];
+const ACCENTS = ['#1B3A82', '#1F6F5C', '#C0397A', '#B0481E', '#5C3FA8', '#1F6FA8', '#8A2B4E', '#3B7A57'];
 
-const LS = 'atlas.landmarks.v3';
+const LS_LM = 'atlas.landmarks.v4';
+const LS_SITE = 'atlas.site.v1';
+const LS_THEME = 'atlas.theme';
 const DB_NAME = 'atlas-plates';
 const DB_STORE = 'plates';
 const MAX_PX = 2400;
-const MAX_BYTES = 24 * 1024 * 1024;
+const MAX_BYTES = 32 * 1024 * 1024;
 
-/* ───────── 工具 ───────── */
+const DEFAULT_SITE = {
+  name: 'ATLAS', cn: '图册',
+  title: '去过的地方',
+  lede: '每个地标是一本相册。先在地图上钉一个点，再把那里的照片放进去——同一座城市的片子待在一起，翻起来才像一次回来。',
+  accent: '#1B3A82'
+};
+
+/* ───────── 小工具 ───────── */
 const $ = (s, r = document) => r.querySelector(s);
 const el = (t, c, h) => { const n = document.createElement(t); if (c) n.className = c; if (h != null) n.innerHTML = h; return n; };
-const nextTick = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+const pad2 = n => String(n).padStart(2, '0');
 
-/* ───────── 明暗两套房间：纸不变，房间变 ───────── */
-const THEME_KEY = 'atlas.theme';
-let press = null;
-let baker = null;
+/* ───────── 状态 ───────── */
+const state = {
+  landmarks: [],
+  photos: [],
+  current: null,
+  site: null,
+  view: 'wall'
+};
 
-function paintPaper() {
-  const cs = getComputedStyle(document.documentElement);
-  const hex = (cs.getPropertyValue('--plate-paper') || '#F5F3EC').trim();
-  if (press && press.setPaper) press.setPaper(hex);
-  if (baker && baker.setPaper) baker.setPaper(hex);
-}
+const photosOf = id => state.photos.filter(p => p.landmarkId === id).sort((a, b) => b.t - a.t);
+const coverOf = lm => {
+  const list = photosOf(lm.id);
+  return list.find(p => p.id === lm.coverId) || list[0] || null;
+};
+const currentLandmark = () => state.landmarks.find(l => l.id === state.current);
 
-function applyTheme(mode) {
-  const t = mode === 'dark' ? 'dark' : 'light';
-  document.documentElement.dataset.theme = t;
-  const btn = document.getElementById('btn-theme');
-  if (btn) btn.setAttribute('aria-pressed', String(t === 'dark'));
-  paintPaper();
-}
-
-function initTheme() {
-  let saved = null;
-  try { saved = localStorage.getItem(THEME_KEY); } catch (e) {}
-  const mode = saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  applyTheme(mode);
-}
-
-function toggleTheme() {
-  const now = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
-  const next = now === 'dark' ? 'light' : 'dark';
-  try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
-  applyTheme(next);
-  if (albumEl.classList.contains('is-open')) {
-    const list = photosOf(state.current);
-    renderHero(list[0] || null, 0);
+/* 每张照片只创建一次 objectURL */
+const urlCache = new Map();
+function urlFor(photo) {
+  if (!urlCache.has(photo.id)) {
+    try { urlCache.set(photo.id, URL.createObjectURL(photo.blob)); }
+    catch (e) { return ''; }
   }
+  return urlCache.get(photo.id);
 }
 
 /* ───────── IndexedDB ───────── */
 let dbp = null;
 function db() {
   if (!dbp) dbp = new Promise((res, rej) => {
-    const req = indexedDB.open(DB_NAME, 2);
+    const req = indexedDB.open(DB_NAME, 3);
     req.onupgradeneeded = e => {
       const d = req.result;
       if (!d.objectStoreNames.contains(DB_STORE)) {
@@ -98,7 +84,10 @@ async function dbAll() {
   const d = await db();
   return new Promise((res, rej) => {
     const q = d.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).getAll();
-    q.onsuccess = () => res((q.result || []).map(normalizePhoto));
+    q.onsuccess = () => res((q.result || []).map(p => {
+      if (!p.landmarkId && p.chapterId) p.landmarkId = p.chapterId;
+      return p;
+    }));
     q.onerror = () => rej(q.error);
   });
 }
@@ -120,100 +109,152 @@ async function dbDel(id) {
     t.onerror = () => rej(t.error);
   });
 }
-/* 兼容早期写作 chapterId 的记录 */
-function normalizePhoto(p) {
-  if (!p.landmarkId && p.chapterId) p.landmarkId = p.chapterId;
-  return p;
-}
 
-/* ───────── 状态 ───────── */
-const state = {
-  landmarks: [],
-  photos: [],
-  current: null,
-  params: { cell: 5.6, offsetPx: 7.3, screen: 0 },
-  site: null,
-  view: "wall"
-};
-
-const photosOf = id => state.photos.filter(p => p.landmarkId === id).sort((a, b) => b.t - a.t);
-const coverOf = lm => {
-  const list = photosOf(lm.id);
-  return list.find(p => p.id === lm.coverId) || list[0] || null;
-};
-const currentLandmark = () => state.landmarks.find(l => l.id === state.current);
-
-/* ══════════════════════════════════════════════════════════════════
-   site.js 片段：站点身份 · 三视图 · 索引预览 · 地图
-   （由 patch 脚本内联进 main.js）
-   ══════════════════════════════════════════════════════════════════ */
-
-/* ───────── 站点身份 ───────── */
-const SITE_KEY = 'atlas.site.v1';
-const DEFAULT_SITE = {
-  name: 'ATLAS',
-  cn: '图册',
-  title: '去过的地方',
-  lede: '一个地标就是一本相册。先在地图上钉一个点，再把那里的照片放进去——同一座城市的片子待在一起，翻起来才像一次回来。',
-  accent: '#1B3A82'
-};
-const ACCENT_POOL = ['#1B3A82', '#B0481E', '#1F6F5C', '#E6007E', '#5C3FA8', '#1341E0', '#8A2B4E', '#C64B22'];
-
+/* ───────── 站点 ───────── */
 function loadSite() {
   try {
-    const raw = localStorage.getItem(SITE_KEY);
+    const raw = localStorage.getItem(LS_SITE);
     if (raw) return { ...DEFAULT_SITE, ...JSON.parse(raw) };
   } catch (e) {}
   return { ...DEFAULT_SITE };
 }
-
 function applySite(site) {
   state.site = site;
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  const set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
   set('site-name', site.name);
   set('site-cn', site.cn);
-  set('site-title', site.title);
-  set('site-lede', site.lede);
   set('site-sig', site.name);
+  set('site-title', site.title);
+  set('site-lede', site.lede || '');
   const lede = document.getElementById('site-lede');
   if (lede) lede.hidden = !site.lede;
   document.documentElement.style.setProperty('--site', site.accent);
-
-  document.title = site.name + ' · ' + site.cn;
+  document.title = (site.title || site.name) + ' · ' + site.cn;
   const md = document.querySelector('meta[name="description"]');
   if (md) md.setAttribute('content', site.lede || site.title);
-  const og = document.querySelector('meta[property="og:title"]');
-  if (og) og.setAttribute('content', site.name + ' · ' + site.cn);
 }
 
-/* ───────── 视图切换 ───────── */
-const VIEW_KEYS = ['wall', 'index', 'atlas'];
+/* ───────── 主题 ───────── */
+function applyTheme(mode) {
+  const t = mode === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = t;
+}
+function initTheme() {
+  let saved = null;
+  try { saved = localStorage.getItem(LS_THEME); } catch (e) {}
+  const mode = saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  applyTheme(mode);
+}
+function toggleTheme() {
+  const now = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+  const next = now === 'dark' ? 'light' : 'dark';
+  try { localStorage.setItem(LS_THEME, next); } catch (e) {}
+  applyTheme(next);
+}
 
-function setView(v, animate = true) {
-  if (!VIEW_KEYS.includes(v)) v = 'wall';
+/* ───────── 地标持久化 ───────── */
+function loadLandmarks() {
+  try {
+    const raw = localStorage.getItem(LS_LM);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr) && arr.length) return arr;
+    }
+  } catch (e) {}
+  try {
+    const old = localStorage.getItem('atlas.landmarks.v3');
+    if (old) {
+      const arr = JSON.parse(old);
+      if (Array.isArray(arr) && arr.length) {
+        return arr.map((l, i) => ({
+          id: l.id, name: l.name, coord: l.coord || '', date: l.date || '',
+          note: l.note || '', accent: (l.inks && l.inks.c) || ACCENTS[i % ACCENTS.length],
+          coverId: l.coverId || null
+        }));
+      }
+    }
+  } catch (e) {}
+  return SEED.map(l => ({ ...l }));
+}
+const saveLandmarks = () => {
+  try { localStorage.setItem(LS_LM, JSON.stringify(state.landmarks)); } catch (e) {}
+};
+
+/* ───────── 相册墙 ───────── */
+function renderWall() {
+  const grid = $('#wall-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+
+  state.landmarks.forEach((lm, i) => {
+    const photos = photosOf(lm.id);
+    const cover = coverOf(lm);
+
+    const card = el('button', 'card');
+    card.type = 'button';
+    card.style.animationDelay = Math.min(i, 5) * 60 + 'ms';
+    card.style.setProperty('--accent', lm.accent);
+    card.setAttribute('aria-label', lm.name + ' · ' + photos.length + ' 张照片');
+
+    const frame = el('div', 'card__frame' + (cover ? '' : ' is-empty'));
+    if (cover) {
+      const img = el('img');
+      img.alt = lm.name + ' 封面';
+      img.loading = i > 2 ? 'lazy' : 'eager';
+      img.decoding = 'async';
+      img.addEventListener('load', () => img.classList.add('is-in'), { once: true });
+      img.src = urlFor(cover);
+      if (img.complete) img.classList.add('is-in');
+      frame.appendChild(img);
+    } else {
+      frame.appendChild(el('span', 'card__ghost', esc(lm.name)));
+    }
+    card.appendChild(frame);
+
+    const body = el('div', 'card__body');
+    body.innerHTML =
+      '<span><span class="card__name">' + esc(lm.name) + '</span>' +
+      '<span class="card__sub">' + esc(lm.coord || lm.date || '—') + '</span></span>' +
+      '<span class="card__meta">' + (photos.length ? photos.length + ' 张' : '空') + '</span>';
+    card.appendChild(body);
+
+    card.addEventListener('click', () => openAlbum(lm.id));
+    grid.appendChild(card);
+  });
+
+  syncStats();
+}
+
+function syncStats() {
+  const lm = state.landmarks.length;
+  const ph = state.photos.length;
+  const a = $('#stat-landmarks'); if (a) a.textContent = lm;
+  const b = $('#stat-photos'); if (b) b.textContent = ph;
+  const c = $('#intro-count'); if (c) c.textContent = lm + ' 个地标 · ' + ph + ' 张照片';
+  const d = $('#colophon-stat'); if (d) d.textContent = lm + ' 个地标 · ' + ph + ' 张照片';
+  if (state.view === 'index') renderIndex();
+  if (state.view === 'atlas') renderMap();
+}
+
+/* ───────── 视图 ───────── */
+const VIEWS = ['wall', 'index', 'atlas'];
+function setView(v) {
+  if (!VIEWS.includes(v)) v = 'wall';
   state.view = v;
   try { localStorage.setItem('atlas.view', v); } catch (e) {}
-
   document.querySelectorAll('.views button').forEach(b => {
-    const on = b.dataset.view === v;
-    b.setAttribute('aria-selected', String(on));
+    b.setAttribute('aria-selected', String(b.dataset.view === v));
   });
-
-  VIEW_KEYS.forEach(k => {
-    const el = document.getElementById('view-' + k);
-    if (!el) return;
+  VIEWS.forEach(k => {
+    const n = document.getElementById(k);
+    if (!n) return;
     if (k === v) {
-      el.hidden = false;
-      if (animate) {
-        el.style.animation = 'none';
-        void el.offsetWidth;
-        el.style.animation = '';
-      }
-    } else {
-      el.hidden = true;
-    }
+      n.hidden = false;
+      n.style.animation = 'none';
+      void n.offsetWidth;
+      n.style.animation = '';
+    } else n.hidden = true;
   });
-
   if (v === 'index') renderIndex();
   if (v === 'atlas') renderMap();
 }
@@ -223,57 +264,46 @@ function renderIndex() {
   const list = $('#idx-list');
   if (!list) return;
   list.innerHTML = '';
-
   if (!state.landmarks.length) {
-    list.innerHTML = '<p class="idx-empty">还没有地标。点上面的「新建地标」钉第一个。</p>';
+    list.innerHTML = '<p class="idx-empty">还没有地标。</p>';
     return;
   }
-
   state.landmarks.forEach((lm, i) => {
     const photos = photosOf(lm.id);
     const row = el('button', 'idx-row');
     row.type = 'button';
-    row.style.setProperty('--ac', lm.inks.c);
+    row.style.setProperty('--ac', lm.accent);
     row.innerHTML =
-      '<span class="idx-row__no">' + String(i + 1).padStart(2, '0') + '</span>' +
+      '<span class="idx-row__no">' + pad2(i + 1) + '</span>' +
       '<span class="idx-row__name"><i class="idx-row__dot"></i>' + esc(lm.name) + '</span>' +
       '<span class="idx-row__coord">' + esc(lm.coord || '—') + '</span>' +
       '<span class="idx-row__date">' + esc(lm.date || '—') + '</span>' +
       '<span class="idx-row__count">' + photos.length + ' 张</span>' +
       '<span class="idx-row__arrow">→</span>';
-
     row.addEventListener('click', () => openAlbum(lm.id));
     row.addEventListener('mouseenter', () => showPeek(lm));
     row.addEventListener('mouseleave', hidePeek);
-    row.addEventListener('focus', () => showPeek(lm));
-    row.addEventListener('blur', hidePeek);
     list.appendChild(row);
   });
 }
 
-/* 跟随指针的预览 */
 const peekEl = document.createElement('div');
 peekEl.className = 'peek';
 peekEl.innerHTML = '<img alt="">';
 document.body.appendChild(peekEl);
-
 let peekOn = false;
 function showPeek(lm) {
   const cover = coverOf(lm);
   if (!cover) return;
-  peekEl.querySelector('img').src = cover.thumb;
+  peekEl.querySelector('img').src = urlFor(cover);
   peekEl.classList.add('is-on');
   peekOn = true;
 }
-function hidePeek() {
-  peekEl.classList.remove('is-on');
-  peekOn = false;
-}
+function hidePeek() { peekEl.classList.remove('is-on'); peekOn = false; }
 document.addEventListener('mousemove', e => {
   if (!peekOn) return;
-  const w = 190, h = 143;
-  peekEl.style.left = Math.min(e.clientX + 20, window.innerWidth - w - 20) + 'px';
-  peekEl.style.top = Math.min(Math.max(e.clientY - h * 0.55, 12), window.innerHeight - h - 20) + 'px';
+  peekEl.style.left = Math.min(e.clientX + 22, window.innerWidth - 220) + 'px';
+  peekEl.style.top = Math.min(Math.max(e.clientY - 76, 12), window.innerHeight - 170) + 'px';
 });
 
 /* ───────── 地图 ───────── */
@@ -283,8 +313,7 @@ function parseCoord(s) {
   if (!m) return null;
   const lat = parseFloat(m[1]) * (m[2].toUpperCase() === 'S' ? -1 : 1);
   const lng = parseFloat(m[3]) * (m[4].toUpperCase() === 'W' ? -1 : 1);
-  if (!isFinite(lat) || !isFinite(lng)) return null;
-  return { lat, lng };
+  return isFinite(lat) && isFinite(lng) ? { lat, lng } : null;
 }
 
 function renderMap() {
@@ -292,532 +321,209 @@ function renderMap() {
   const pins = $('#map-pins');
   if (!grid || !pins) return;
 
-  grid.innerHTML = '';
-  const line = (x1, y1, x2, y2, w, o) =>
+  let svg = '';
+  const line = (x1, y1, x2, y2, o) =>
     '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 +
-    '" stroke="rgba(233,231,224,' + o + ')" stroke-width="' + w + '"/>';
-
+    '" stroke="rgba(244,242,236,' + o + ')" stroke-width="1"/>';
   for (let lng = -180; lng <= 180; lng += 30) {
     const x = ((lng + 180) / 360) * 100;
-    grid.innerHTML += line(x + '%', '0', x + '%', '100%', 1, lng === 0 ? 0.24 : 0.11);
+    svg += line(x + '%', '0', x + '%', '100%', lng === 0 ? 0.2 : 0.08);
   }
   for (let lat = -60; lat <= 60; lat += 30) {
     const y = ((90 - lat) / 180) * 100;
-    grid.innerHTML += line('0', y + '%', '100%', y + '%', 1, lat === 0 ? 0.24 : 0.11);
+    svg += line('0', y + '%', '100%', y + '%', lat === 0 ? 0.2 : 0.08);
   }
+  grid.innerHTML = svg;
 
   pins.innerHTML = '';
-  let unlocated = 0;
-
-  state.landmarks.forEach((lm, i) => {
+  let un = 0;
+  state.landmarks.forEach(lm => {
     const c = parseCoord(lm.coord);
     const n = photosOf(lm.id).length;
+    const d = 14 + Math.min(20, n * 2.4);
     const pin = document.createElement('button');
     pin.type = 'button';
     pin.className = 'map__pin';
-    pin.style.setProperty('--ac', lm.inks.c);
-    pin.style.setProperty('--d', (14 + Math.min(18, n * 2.4)) + 'px');
-    pin.setAttribute('aria-label', lm.name + ' · ' + n + ' 张');
-
+    pin.style.setProperty('--ac', lm.accent);
+    pin.style.setProperty('--d', d + 'px');
+    pin.setAttribute('aria-label', lm.name);
+    let x, y;
     if (c) {
-      pin.style.left = (((c.lng + 180) / 360) * 100) + '%';
-      pin.style.top = (((90 - c.lat) / 180) * 100) + '%';
+      x = ((c.lng + 180) / 360) * 100;
+      y = ((90 - c.lat) / 180) * 100;
     } else {
-      unlocated += 1;
-      pin.style.left = (94 - unlocated * 5) + '%';
-      pin.style.top = '93%';
+      un += 1;
+      x = 94 - un * 5;
+      y = 93;
     }
-
+    pin.style.left = x + '%';
+    pin.style.top = y + '%';
     pin.addEventListener('click', () => openAlbum(lm.id));
     pins.appendChild(pin);
 
     const lab = document.createElement('span');
     lab.className = 'map__label';
     lab.textContent = lm.name;
-    if (c) {
-      lab.style.left = (((c.lng + 180) / 360) * 100) + '%';
-      lab.style.top = 'calc(' + (((90 - c.lat) / 180) * 100) + '% + ' + (14 + Math.min(18, n * 2.4) / 2 + 7) + 'px)';
-      lab.style.translate = '-50% 0';
-    } else {
-      lab.style.left = (94 - unlocated * 5) + '%';
-      lab.style.top = 'calc(93% - 22px)';
-      lab.style.translate = '-50% 0';
-    }
+    lab.style.left = x + '%';
+    lab.style.top = 'calc(' + y + '% + ' + (d / 2 + 7) + 'px)';
+    lab.style.translate = '-50% 0';
     pins.appendChild(lab);
   });
 }
 
-/* ───────── 数字滚动 ───────── */
-function countTo(node, to) {
-  if (!node) return;
-  const from = Number(node.dataset.v || 0);
-  if (from === to) { node.textContent = String(to); return; }
-  node.dataset.v = String(to);
-  const t0 = performance.now();
-  const step = now => {
-    const p = Math.min(1, (now - t0) / 520);
-    const e = 1 - Math.pow(1 - p, 3);
-    node.textContent = String(Math.round(from + (to - from) * e));
-    if (p < 1) requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
-}
-
-/* ───────── 开篇标尺 + 标题视差 ───────── */
-function paintIntroRule() {
-  const yearEl = $('#intro-year');
-  const coordEl = $('#intro-coords');
-  const now = new Date();
-  if (yearEl) yearEl.textContent = String(now.getFullYear());
-  const located = state.landmarks.filter(l => parseCoord(l.coord));
-  if (coordEl) {
-    coordEl.textContent = located.length
-      ? located.length + ' / ' + state.landmarks.length + ' 已定位'
-      : state.landmarks.length + ' 个地标';
-  }
-}
-
-let introRaf = 0;
-window.addEventListener('scroll', () => {
-  if (introRaf) return;
-  introRaf = requestAnimationFrame(() => {
-    introRaf = 0;
-    const t = document.getElementById('site-title');
-    if (!t) return;
-    const y = Math.min(window.scrollY, 620);
-    t.style.translate = '0 ' + (y * 0.07).toFixed(1) + 'px';
-    t.style.opacity = String(Math.max(0.25, 1 - y / 900));
-  });
-}, { passive: true });
-
-/* ───────── 设置对话框 ───────── */
-function openSettings() {
-  const s = state.site || DEFAULT_SITE;
-  $('#s-name').value = s.name;
-  $('#s-cn').value = s.cn;
-  $('#s-title').value = s.title;
-  $('#s-lede').value = s.lede;
-  paintSwatches(s.accent);
-  $('#dlg-site').showModal();
-  setTimeout(() => $('#s-name').focus(), 60);
-}
-
-function paintSwatches(current) {
-  const box = $('#swatches');
-  if (!box) return;
-  box.innerHTML = '';
-  ACCENT_POOL.forEach(c => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.style.background = c;
-    b.setAttribute('aria-pressed', String(c.toUpperCase() === String(current).toUpperCase()));
-    b.addEventListener('click', () => {
-      [...box.children].forEach(x => x.setAttribute('aria-pressed', 'false'));
-      b.setAttribute('aria-pressed', 'true');
-      box.dataset.pick = c;
-    });
-    box.appendChild(b);
-  });
-  box.dataset.pick = current;
-}
-
-function loadLandmarks() {
-  try {
-    const raw = localStorage.getItem(LS);
-    const arr = raw ? JSON.parse(raw) : null;
-    if (Array.isArray(arr) && arr.length) return arr;
-  } catch {}
-  return SEED.map(x => ({ ...x }));
-}
-const saveLandmarks = () => {
-  try { localStorage.setItem(LS, JSON.stringify(state.landmarks)); } catch {}
-};
-
-/* ───────── 引擎 ───────── */
-const stage = $('#stage');
-press = createPress(stage);
-if (!press.ok) {
-  const fresh = stage.cloneNode(false); fresh.id = 'stage';
-  stage.replaceWith(fresh);
-  press = createFallbackPress(fresh);
-}
-
-const bakeCanvas = document.createElement('canvas');
-bakeCanvas.width = 960; bakeCanvas.height = 720;
-bakeCanvas.setAttribute('aria-hidden', 'true');
-bakeCanvas.style.cssText = 'position:fixed;left:-12000px;top:0;width:960px;height:720px;pointer-events:none;opacity:0;';
-document.body.appendChild(bakeCanvas);
-baker = createPress(bakeCanvas);
-if (!baker.ok) baker = createFallbackPress(bakeCanvas);
-
-/* ───────── 主题 ───────── */
-function paintAccent(lm) {
-  const r = document.documentElement.style;
-  const inks = lm ? lm.inks : INK_SETS[0];
-  r.setProperty('--accent', inks.c);
-  r.setProperty('--ink-c', inks.c);
-  r.setProperty('--ink-m', inks.m);
-  r.setProperty('--ink-y', inks.y);
-  r.setProperty('--ink-k', inks.k);
-}
-
-/* ───────── 相册墙 ───────── */
-function renderShelf() {
-  const grid = $('#shelf-grid');
-  grid.innerHTML = '';
-
-  state.landmarks.forEach((lm, i) => {
-    const photos = photosOf(lm.id);
-    const cover = coverOf(lm);
-
-    const card = el('button', 'album-card');
-    card.type = 'button';
-    card.style.animationDelay = `${Math.min(i, 8) * 60}ms`;
-    card.style.setProperty('--ink-c', lm.inks.c);
-    card.style.setProperty('--ink-m', lm.inks.m);
-    card.style.setProperty('--ac', lm.inks.c);
-
-    const frame = el('div', 'album-card__frame' + (cover ? '' : ' is-empty'));
-    if (cover) frame.style.setProperty('--src', `url("${cover.thumb}")`);
-    if (!cover) frame.appendChild(el('span', 'album-card__ghost', esc(lm.name)));
-    frame.appendChild(el('span', 'album-card__marks', '<i></i><i></i><i></i><i></i>'));
-    if (cover) {
-      const img = el('img');
-      img.alt = `${lm.name} 相册封面`;
-      img.loading = i > 2 ? 'lazy' : 'eager';
-      img.decoding = 'async';
-      img.addEventListener('load', () => img.classList.add('is-in'), { once: true });
-      img.src = cover.thumb;
-      if (img.complete) img.classList.add('is-in');
-      frame.appendChild(img);
-    }
-    const meta = lm.coord || lm.date || (photos.length ? photos.length + ' 张' : '空相册');
-    const body = el('div', 'album-card__body',
-      '<div class="album-card__row">' +
-        '<span class="album-card__name">' + esc(lm.name) + '</span>' +
-        '<span class="album-card__count">' + photos.length + ' 张</span>' +
-      '</div>' +
-      '<span class="album-card__meta">' + esc(meta) + '</span>');
-    frame.appendChild(body);
-    card.appendChild(frame);
-
-    card.addEventListener('click', () => openAlbum(lm.id));
-    grid.appendChild(card);
-  });
-
-  syncStats();
-}
-
-let pageRaf = 0;
-window.addEventListener('scroll', () => {
-  if (pageRaf) return;
-  pageRaf = requestAnimationFrame(() => {
-    pageRaf = 0;
-    const max = Math.max(1, document.body.scrollHeight - window.innerHeight);
-    const p = Math.min(1, Math.max(0, window.scrollY / max));
-    const no = document.getElementById('pager-no');
-    const bar = document.getElementById('pager-bar');
-    if (no) no.textContent = String(Math.min(4, 1 + Math.floor(p * 3.999))).padStart(2, '0');
-    if (bar) bar.style.top = (p * 48).toFixed(1) + 'px';
-  });
-}, { passive: true });
-
-function syncStats() {
-  const n = state.landmarks.length;
-  const p = state.photos.length;
-  countTo($('#stat-landmarks'), n);
-  countTo($('#stat-photos'), p);
-  const cs = $('#colophon-stat');
-  if (cs) cs.textContent = n + ' 个地标 · ' + p + ' 张照片';
-  const wc = document.getElementById('wall-count');
-  if (wc) wc.textContent = n + ' 本';
-  paintIntroRule();
-  if (state.view === 'index') renderIndex();
-  if (state.view === 'atlas') renderMap();
-
-}
-
-/* ───────── 打开 / 关闭相册 ───────── */
+/* ───────── 相册 ───────── */
 const albumEl = $('#album');
 
 function openAlbum(id) {
   state.current = id;
   const lm = currentLandmark();
-  paintAccent(lm);
+  if (!lm) return;
+  document.documentElement.style.setProperty('--accent', lm.accent);
 
-  const lmIdx = state.landmarks.findIndex(x => x.id === lm.id);
-  const noEl = $('#album-no');
-  if (noEl) noEl.textContent = String(lmIdx + 1).padStart(2, '0');
-  $('#album-name').textContent = lm.name;
-  const metaBits = [lm.coord, lm.date].filter(Boolean);
   const list = photosOf(lm.id);
-  metaBits.push(`${list.length} 张照片`);
-  $('#album-meta').textContent = metaBits.join('  ·  ');
+  const meta = [lm.coord, lm.date, list.length + ' 张'].filter(Boolean).join('  ·  ');
+  $('#album-name').textContent = lm.name;
+  $('#album-meta').textContent = meta;
   $('#album-note').textContent = lm.note || '';
   $('#album-crumb').textContent = lm.name;
 
-  renderStream(list);
-  renderHero(list[0] || null, 0);
+  renderLead(list[0] || null, 0);
+  renderStrip(list);
 
   albumEl.classList.add('is-open');
   albumEl.setAttribute('aria-hidden', 'false');
   document.body.classList.add('is-locked');
   $('#album-scroll').scrollTop = 0;
-  setTimeout(() => press.setVisible(true), 60);
 }
 
 function closeAlbum() {
   albumEl.classList.remove('is-open');
   albumEl.setAttribute('aria-hidden', 'true');
   document.body.classList.remove('is-locked');
-  press.setVisible(false);
-  renderShelf();
+  renderWall();
 }
 
-$('#album-close').addEventListener('click', closeAlbum);
-
-/* 删一本：第一次点变成“确定删除？”，两秒后复原 */
-{
-  const del = $('#album-delete');
-  let armed = 0;
-  if (del) del.addEventListener('click', async () => {
-    const lm = currentLandmark();
-    if (!lm) return;
-    if (!armed) {
-      armed = setTimeout(() => { armed = 0; del.textContent = '删这一本'; }, 2600);
-      del.textContent = '确定删除？';
-      del.classList.add('is-armed');
-      return;
-    }
-    clearTimeout(armed); armed = 0;
-    const list = photosOf(lm.id);
-    for (const p of list) await dbDel(p.id);
-    state.photos = state.photos.filter(p => p.landmarkId !== lm.id);
-    state.landmarks = state.landmarks.filter(x => x.id !== lm.id);
-    saveLandmarks();
-    closeAlbum();
-    renderShelf();
-    note('「' + lm.name + '」已删除 · ' + list.length + ' 张照片一并移出');
-  });
-}
-document.addEventListener('keydown', e => {
-  if (lb.open) {
-    if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); }
-    else if (e.key === 'ArrowLeft') { e.preventDefault(); lbShow(Math.max(0, lb.index - 1)); }
-    else if (e.key === 'ArrowRight') { e.preventDefault(); lbShow(Math.min(lb.list.length - 1, lb.index + 1)); }
+function renderLead(photo, index) {
+  const img = $('#lead-img');
+  const lead = $('#lead');
+  if (!img || !lead) return;
+  if (!photo) {
+    lead.hidden = true;
     return;
   }
-  if (e.key === 'Escape' && albumEl.classList.contains('is-open') && !$('#dlg').open) closeAlbum();
-});
-
-window.addEventListener('resize', () => {
-  if (lb.open) { fitLbCanvas(); lbPress.setParams({}); }
-});
-
-/* ───────── 灯箱 ───────── */
-const lbEl = $('#lb');
-const lbCanvas = $('#lb-canvas');
-let lbPress = createPress(lbCanvas);
-if (!lbPress.ok) lbPress = createFallbackPress(lbCanvas);
-
-const lb = { list: [], index: 0, open: false };
-let lbToken = 0;
-
-async function openLightbox(list, index) {
-  lb.list = list;
-  lb.index = index;
-  lb.open = true;
-  lbEl.classList.add('is-open');
-  lbEl.setAttribute('aria-hidden', 'false');
-  document.body.classList.add('is-locked');
-  paintPaper();
-  await lbShow(index);
-  const close = $('#lb-close');
-  if (close) close.focus({ preventScroll: true });
-}
-
-function closeLightbox() {
-  lb.open = false;
-  lbEl.classList.remove('is-open');
-  lbEl.setAttribute('aria-hidden', 'true');
-  document.body.classList.remove('is-locked');
-}
-
-async function lbShow(index) {
-  const photo = lb.list[index];
-  if (!photo) return;
-  lb.index = index;
-  const token = ++lbToken;
-
-  $('#lb-no').textContent = String(index + 1).padStart(2, '0') + ' / ' + String(lb.list.length).padStart(2, '0');
-  $('#lb-name').textContent = photo.name;
+  lead.hidden = false;
+  img.src = urlFor(photo);
+  img.alt = photo.name;
+  $('#lead-no').textContent = pad2(index + 1);
+  $('#lead-name').textContent = photo.name;
+  $('#lead-dim').textContent = photo.w + '×' + photo.h;
 
   const x = photo.exif;
   const bits = x ? [x.camera, x.fl, x.f, x.ss, x.iso, x.date].filter(Boolean) : [];
-  $('#lb-exif').innerHTML = bits.map(v => '<span>' + esc(v) + '</span>').join('');
-  $('#lb-prev').disabled = index === 0;
-  $('#lb-next').disabled = index === lb.list.length - 1;
+  $('#exif').innerHTML = bits.map(v => '<span>' + esc(v) + '</span>').join('');
 
-  const lm = state.landmarks.find(l => l.id === photo.landmarkId) || state.landmarks[0];
-  lbPress.setAtelier({ ...lm, inkC: lm.inks.c, inkM: lm.inks.m, inkY: lm.inks.y, inkK: lm.inks.k });
-  lbPress.setParams({ ...state.params, reveal: 4 });
-
-  const img = await blobToCanvas(photo.blob);
-  if (token !== lbToken) return;
-  lbPress.setImage(img.canvas, img.w, img.h);
-  fitLbCanvas();
-  lbPress.setParams({ reveal: 4 });
+  const list = photosOf(photo.landmarkId);
+  const idx = Math.max(0, list.findIndex(p => p.id === photo.id));
+  img.onclick = () => openLightbox(list, idx);
 }
 
-function fitLbCanvas() {
-  const stage = $('#lb-stage');
-  const maxW = Math.max(120, stage.clientWidth - 2);
-  const maxH = Math.max(120, stage.clientHeight - 2);
-  const ar = lbPress.aspect || 1.6;
-  let w = maxW;
-  let h = w / ar;
-  if (h > maxH) { h = maxH; w = h * ar; }
-  lbCanvas.style.width = Math.round(w) + 'px';
-  lbCanvas.style.height = Math.round(h) + 'px';
-}
-
-$('#lb-close').addEventListener('click', closeLightbox);
-$('#lb-prev').addEventListener('click', () => lbShow(Math.max(0, lb.index - 1)));
-$('#lb-next').addEventListener('click', () => lbShow(Math.min(lb.list.length - 1, lb.index + 1)));
-lbEl.addEventListener('click', e => {
-  if (e.target === lbEl || e.target.id === 'lb-stage') closeLightbox();
-});
-
-/* ───────── 相册主图 ───────── */
-let heroToken = 0;
-
-async function renderHero(photo, index) {
-  const lm = currentLandmark();
-  const token = ++heroToken;
-  const veil = $('#veil');
-
-  press.setAtelier({ ...lm, inkC: lm.inks.c, inkM: lm.inks.m, inkY: lm.inks.y, inkK: lm.inks.k });
-  press.setParams(state.params);
-
-  if (!photo) {
-    press.clearImage();
-    $('#hero-no').textContent = '—';
-    $('#hero-name').textContent = '这一本还是空的';
-    $('#hero-dim').textContent = '往下，添加第一张照片';
-    const ex = $('#exif'); if (ex) ex.innerHTML = '';
-    veil.classList.add('is-done');
-    press.setParams({ reveal: 4 });
-    return;
-  }
-
-  $('#hero-no').textContent = String(index + 1).padStart(2, '0');
-  $('#hero-name').textContent = photo.name;
-  $('#hero-dim').textContent = `${photo.w}×${photo.h}`;
-  renderExif(photo);
-  const heroList = photosOf(photo.landmarkId);
-  const heroIdx = Math.max(0, heroList.findIndex(x => x.id === photo.id));
-  $('#hero').style.cursor = 'zoom-in';
-  $('#hero').onclick = () => openLightbox(heroList, heroIdx);
-
-  veil.classList.remove('is-done');
-  $('#veil-text').textContent = '上版';
-
-  const img = await blobToCanvas(photo.blob);
-  if (token !== heroToken) return;
-  press.setImage(img.canvas, img.w, img.h);
-  veil.classList.add('is-done');
-  develop(1200);
-}
-
-function renderExif(photo) {
-  const box = $('#exif');
-  if (!box) return;
-  const x = photo.exif;
-  if (!x) { box.innerHTML = ''; return; }
-  const bits = [x.camera, x.fl, x.f, x.ss, x.iso, x.date].filter(Boolean);
-  box.innerHTML = bits.map((v, i) => i === 0 ? `<span><b>${esc(v)}</b></span>` : `<span>${esc(v)}</span>`).join('');
-}
-
-function develop(dur = 1100) {
-  if (!press.ok) return;
-  const t0 = performance.now();
-  const tick = now => {
-    const t = Math.min(1, (now - t0) / dur);
-    const e = 1 - Math.pow(1 - t, 3);
-    press.setParams({ reveal: e * 4 });
-    if (t < 1) requestAnimationFrame(tick);
-    else press.setParams({ reveal: 4 });
-  };
-  requestAnimationFrame(tick);
-}
-
-/* ───────── 照片流 ───────── */
-function renderStream(list) {
-  const wrap = $('#stream');
-  wrap.innerHTML = '';
+function renderStrip(list) {
+  const strip = $('#strip');
+  if (!strip) return;
+  strip.innerHTML = '';
   if (!list.length) return;
 
   list.forEach((p, i) => {
-    const card = el('div', 'shot');
-    const r = i % 7;
-    if (r === 0) card.classList.add('shot--wide');
-    else if (r === 1 || r === 2) card.classList.add('shot--small');
-    else if (r === 5) card.classList.add('shot--tall');
-    card.style.animationDelay = `${Math.min(i, 9) * 50}ms`;
+    const card = el('button', 'shot');
+    card.type = 'button';
+    card.style.animationDelay = Math.min(i, 8) * 45 + 'ms';
 
     const frame = el('div', 'shot__frame');
-    frame.style.setProperty('--src', `url("${p.thumb}")`);
-    frame.style.setProperty('--ink-c', currentLandmark().inks.c);
-    frame.style.setProperty('--ink-m', currentLandmark().inks.m);
     const img = el('img');
     img.alt = p.name;
     img.loading = i > 4 ? 'lazy' : 'eager';
     img.decoding = 'async';
     img.addEventListener('load', () => img.classList.add('is-in'), { once: true });
-    img.src = p.thumb;
+    img.src = urlFor(p);
     if (img.complete) img.classList.add('is-in');
     frame.appendChild(img);
-
-    frame.addEventListener('click', () => openLightbox(list, i));
     card.appendChild(frame);
 
     const bar = el('div', 'shot__bar');
-    const name = el('span', 'shot__name', esc(p.name));
-    const right = el('span', null, `${String(i + 1).padStart(2, '0')}`);
-
-    const coverBtn = el('button', 'shot__del');
-    coverBtn.type = 'button';
-    coverBtn.textContent = currentLandmark().coverId === p.id ? '封面' : '设为封面';
-    coverBtn.addEventListener('click', ev => {
-      ev.stopPropagation();
-      currentLandmark().coverId = currentLandmark().coverId === p.id ? null : p.id;
-      saveLandmarks();
-      renderStream(photosOf(state.current));
-      note(currentLandmark().coverId === p.id ? '已设为这本的封面' : '封面已交回最新一张');
-    });
-
+    bar.innerHTML =
+      '<span class="shot__name">' + esc(p.name) + '</span>' +
+      '<span>' + pad2(i + 1) + '</span>';
     const del = el('button', 'shot__del');
     del.type = 'button';
     del.textContent = '删除';
-    del.addEventListener('click', ev => {
-      ev.stopPropagation();
-      removePhoto(p);
-    });
-
-    bar.appendChild(name);
-    const tools = el('span', null);
-    tools.style.display = 'flex';
-    tools.style.gap = '6px';
-    tools.appendChild(coverBtn);
-    tools.appendChild(del);
-    tools.appendChild(right);
-    bar.appendChild(tools);
+    del.addEventListener('click', e => { e.stopPropagation(); removePhoto(p); });
+    bar.appendChild(del);
     card.appendChild(bar);
-    wrap.appendChild(card);
+
+    card.addEventListener('click', () => {
+      renderLead(p, i);
+      $('#lead').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    strip.appendChild(card);
   });
 }
 
-/* ───────── 图像 ───────── */
+/* ───────── 大图 ───────── */
+const lbEl = $('#lb');
+const lbImg = $('#lb-img');
+const lbState = { list: [], index: 0, open: false };
+
+function openLightbox(list, index) {
+  lbState.list = list;
+  lbState.open = true;
+  lbEl.classList.add('is-open');
+  lbEl.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('is-locked');
+  lbShow(index);
+  $('#lb-close').focus({ preventScroll: true });
+}
+function closeLightbox() {
+  lbState.open = false;
+  lbEl.classList.remove('is-open');
+  lbEl.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('is-locked');
+}
+function lbShow(i) {
+  const p = lbState.list[i];
+  if (!p) return;
+  lbState.index = i;
+  lbImg.src = urlFor(p);
+  lbImg.alt = p.name;
+  $('#lb-no').textContent = pad2(i + 1) + ' / ' + pad2(lbState.list.length);
+  $('#lb-name').textContent = p.name;
+  const x = p.exif;
+  const bits = x ? [x.camera, x.fl, x.f, x.ss, x.iso, x.date].filter(Boolean) : [];
+  $('#lb-exif').innerHTML = bits.map(v => '<span>' + esc(v) + '</span>').join('');
+  $('#lb-prev').disabled = i === 0;
+  $('#lb-next').disabled = i === lbState.list.length - 1;
+}
+
+$('#album-close').addEventListener('click', closeAlbum);
+$('#lb-close').addEventListener('click', closeLightbox);
+$('#lb-prev').addEventListener('click', () => lbShow(Math.max(0, lbState.index - 1)));
+$('#lb-next').addEventListener('click', () => lbShow(Math.min(lbState.list.length - 1, lbState.index + 1)));
+lbEl.addEventListener('click', e => { if (e.target === lbEl || e.target.id === 'lb-stage') closeLightbox(); });
+
+document.addEventListener('keydown', e => {
+  if (lbState.open) {
+    if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); lbShow(Math.max(0, lbState.index - 1)); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); lbShow(Math.min(lbState.list.length - 1, lbState.index + 1)); }
+    return;
+  }
+  if (e.key === 'Escape') {
+    if ($('#dlg')?.open) return;
+    if ($('#dlg-site')?.open) return;
+    if (albumEl.classList.contains('is-open')) closeAlbum();
+  }
+});
+
+/* ───────── 图像处理 ───────── */
 function decodeImage(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -840,59 +546,48 @@ function fitCanvas(img, maxPx) {
   return c;
 }
 
-async function blobToCanvas(blob) {
-  const url = URL.createObjectURL(blob);
-  try {
-    const img = await new Promise((res, rej) => {
-      const i = new Image();
-      i.onload = () => res(i);
-      i.onerror = () => rej(new Error('decode'));
-      i.src = url;
-    });
-    const c = fitCanvas(img, MAX_PX);
-    return { canvas: c, w: c.width, h: c.height };
-  } finally { URL.revokeObjectURL(url); }
+async function makeThumb(canvas) {
+  const w = 720;
+  const h = Math.max(1, Math.round(canvas.height * (w / canvas.width)));
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(canvas, 0, 0, w, h);
+  return c.toDataURL('image/jpeg', 0.84);
 }
 
-async function bake(canvas, lm) {
-  baker.setAtelier({ ...lm, inkC: lm.inks.c, inkM: lm.inks.m, inkY: lm.inks.y, inkK: lm.inks.k });
-  baker.setParams({ ...state.params, reveal: 4 });
-  baker.setImage(canvas, canvas.width, canvas.height);
-  await nextTick();
-  return baker.snapshot(900);
-}
-
-/* ───────── 添加照片 ───────── */
+/* ───────── 上传 ───────── */
 let busy = false;
-
 async function addPhotos(files) {
-  if (busy || !files?.length) return;
+  if (busy || !files || !files.length) return;
   const lm = currentLandmark();
   if (!lm) return;
   busy = true;
 
   const list = [...files].filter(f =>
-    /^image\//.test(f.type) || /\.(jpe?g|png|webp|avif|gif|bmp)$/i.test(f.name)
-  );
-  let ok = 0, skipped = 0;
+    /^image\//.test(f.type) || /\.(jpe?g|png|webp|avif|gif|bmp)$/i.test(f.name));
+  let ok = 0, skip = 0;
 
   for (let i = 0; i < list.length; i++) {
     const f = list[i];
-    note(`正在制版 ${i + 1} / ${list.length}`);
-    if (f.size > MAX_BYTES) { skipped++; continue; }
+    showNote('正在保存 ' + (i + 1) + ' / ' + list.length);
+    if (f.size > MAX_BYTES) { skip++; continue; }
     let img;
-    try { img = await decodeImage(f); } catch { skipped++; continue; }
+    try { img = await decodeImage(f); } catch (e) { skip++; continue; }
 
     const full = fitCanvas(img, MAX_PX);
-    const blob = await new Promise(res => full.toBlob(res, 'image/jpeg', 0.92));
-    const thumb = await bake(full, lm);
+    const blob = await new Promise(r => full.toBlob(r, 'image/jpeg', 0.93));
+    const thumb = await makeThumb(full);
     const exif = await readExif(f).catch(() => null);
 
     const rec = {
-      id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7),
       landmarkId: lm.id,
-      name: f.name.replace(/\.[^.]+$/, '').slice(0, 46) || '未命名',
-      blob, thumb, w: full.width, h: full.height, t: Date.now(), exif
+      name: (f.name.replace(/\.[^.]+$/, '') || '未命名').slice(0, 46),
+      blob, thumb, exif,
+      w: full.width, h: full.height,
+      t: Date.now() + i
     };
     await dbPut(rec);
     state.photos.unshift(rec);
@@ -901,41 +596,47 @@ async function addPhotos(files) {
 
   busy = false;
   const fresh = photosOf(lm.id);
-  renderStream(fresh);
-  renderHero(fresh[0] || null, 0);
-  renderShelf();
-  $('#veil').classList.add('is-done');
-
-  note(ok
-    ? `已上版 ${ok} 张${skipped ? ` · ${skipped} 张跳过` : ''} · 记入「${lm.name}」`
-    : '没有可用的图片');
+  renderLead(fresh[0] || null, 0);
+  renderStrip(fresh);
+  syncStats();
+  showNote(ok ? '已加入 ' + ok + ' 张' + (skip ? ' · ' + skip + ' 张跳过' : '') : '没有可用的图片');
 }
 
 async function removePhoto(p) {
   await dbDel(p.id);
+  const u = urlCache.get(p.id);
+  if (u) { try { URL.revokeObjectURL(u); } catch (e) {} urlCache.delete(p.id); }
   state.photos = state.photos.filter(x => x.id !== p.id);
   const lm = currentLandmark();
-  if (lm.coverId === p.id) { lm.coverId = null; saveLandmarks(); }
+  if (lm && lm.coverId === p.id) { lm.coverId = null; saveLandmarks(); }
   const fresh = photosOf(lm.id);
-  renderStream(fresh);
-  renderHero(fresh[0] || null, 0);
-  renderShelf();
-  note('已从这一本里取下');
+  renderLead(fresh[0] || null, 0);
+  renderStrip(fresh);
+  syncStats();
+  showNote('已移除');
 }
 
-/* ───────── 拖放与选择 ───────── */
-const addPhoto = $('#add-photo');
-const fileInput = $('#file');
+/* ───────── 提示 ───────── */
+let noteTimer = 0;
+function showNote(msg, isError) {
+  const n = $('#note');
+  if (!n) return;
+  n.textContent = msg;
+  n.classList.toggle('is-error', !!isError);
+  clearTimeout(noteTimer);
+  if (msg && !isError) noteTimer = setTimeout(() => { n.textContent = ''; }, 5200);
+}
 
+/* ───────── 拖放 ───────── */
+const addEl = $('#add-photo');
+const fileInput = $('#file');
 ['dragenter', 'dragover'].forEach(ev =>
-  addPhoto.addEventListener(ev, e => { e.preventDefault(); addPhoto.classList.add('is-drag'); })
-);
+  addEl.addEventListener(ev, e => { e.preventDefault(); addEl.classList.add('is-drag'); }));
 ['dragleave', 'dragend'].forEach(ev =>
-  addPhoto.addEventListener(ev, () => addPhoto.classList.remove('is-drag'))
-);
-addPhoto.addEventListener('drop', e => {
+  addEl.addEventListener(ev, () => addEl.classList.remove('is-drag')));
+addEl.addEventListener('drop', e => {
   e.preventDefault();
-  addPhoto.classList.remove('is-drag');
+  addEl.classList.remove('is-drag');
   addPhotos(e.dataTransfer?.files);
 });
 fileInput.addEventListener('change', () => {
@@ -946,300 +647,250 @@ window.addEventListener('dragover', e => e.preventDefault());
 window.addEventListener('drop', e => {
   if (!albumEl.classList.contains('is-open')) return;
   e.preventDefault();
-  addPhotos(e.dataTransfer?.files);
+  if (e.dataTransfer?.files?.length) addPhotos(e.dataTransfer.files);
 });
 
-/* ───────── 参数 ───────── */
-const cellInput = $('#cell');
-const offsetInput = $('#offset');
-
-function syncParams() {
-  state.params.cell = Number(cellInput.value) / 10;
-  state.params.offsetPx = 1.2 + (Number(offsetInput.value) / 100) * 18;
-  $('#cell-val').textContent = state.params.cell.toFixed(1);
-  $('#offset-val').textContent = state.params.offsetPx.toFixed(1);
-  press.setParams(state.params);
+/* ───────── 菜单 ───────── */
+const menuBtn = $('#btn-menu');
+const menuPop = $('#menu-pop');
+function closeMenu() {
+  menuPop.hidden = true;
+  menuBtn.setAttribute('aria-expanded', 'false');
 }
-[cellInput, offsetInput].forEach(i => i.addEventListener('input', syncParams));
-
-/* 指针：套印漂移 */
-let pRaf = 0;
-stage.addEventListener('pointermove', e => {
-  if (pRaf) return;
-  pRaf = requestAnimationFrame(() => {
-    pRaf = 0;
-    const r = stage.getBoundingClientRect();
-    press.pointer(((e.clientX - r.left) / r.width) * 2 - 1, -(((e.clientY - r.top) / r.height) * 2 - 1));
-  });
+menuBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  const open = menuPop.hidden;
+  menuPop.hidden = !open;
+  menuBtn.setAttribute('aria-expanded', String(open));
 });
-stage.addEventListener('pointerleave', () => press.pointer(0, 0));
+document.addEventListener('click', closeMenu);
+menuPop.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  closeMenu();
+  const act = b.dataset.act;
+  if (act === 'new') openDialog();
+  if (act === 'settings') openSettings();
+  if (act === 'theme') toggleTheme();
+  if (act === 'export') exportStandalone();
+});
+
+/* ───────── 色板 ───────── */
+function paintSwatches(box, current, onPick) {
+  if (!box) return;
+  box.innerHTML = '';
+  box.dataset.pick = current || ACCENTS[0];
+  ACCENTS.forEach(c => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.style.background = c;
+    b.setAttribute('aria-pressed', String(c.toUpperCase() === String(current).toUpperCase()));
+    b.addEventListener('click', () => {
+      [...box.children].forEach(x => x.setAttribute('aria-pressed', 'false'));
+      b.setAttribute('aria-pressed', 'true');
+      box.dataset.pick = c;
+      if (onPick) onPick(c);
+    });
+    box.appendChild(b);
+  });
+}
 
 /* ───────── 新建地标 ───────── */
 const dlg = $('#dlg');
-let draftInk = INK_SETS[0];
-let draftAngles = ANGLE_SETS[0];
-
-function paintInks() {
-  const box = $('#inks-dots');
-  box.innerHTML = '';
-  [draftInk.c, draftInk.m, draftInk.y, draftInk.k].forEach(c => {
-    const i = document.createElement('i');
-    i.style.background = c;
-    box.appendChild(i);
-  });
-}
-
 function openDialog() {
   $('#dlg-form').reset();
-  draftInk = INK_SETS[Math.floor(Math.random() * INK_SETS.length)];
-  draftAngles = ANGLE_SETS[Math.floor(Math.random() * ANGLE_SETS.length)];
-  paintInks();
+  paintSwatches($('#swatches-new'), ACCENTS[Math.floor(Math.random() * ACCENTS.length)]);
   dlg.showModal();
-  setTimeout(() => $('#f-name').focus(), 60);
+  setTimeout(() => $('#f-name').focus(), 50);
 }
-
-$('#btn-new').addEventListener('click', openDialog);
-$('#btn-new-2').addEventListener('click', openDialog);
+$('#btn-new')?.addEventListener('click', openDialog);
 $('#dlg-cancel').addEventListener('click', () => dlg.close());
-$('#ink-shuffle').addEventListener('click', () => {
-  const i = INK_SETS.indexOf(draftInk);
-  draftInk = INK_SETS[(i + 1) % INK_SETS.length];
-  draftAngles = ANGLE_SETS[INK_SETS.indexOf(draftInk) % ANGLE_SETS.length];
-  paintInks();
-});
-
 $('#dlg-form').addEventListener('submit', e => {
   e.preventDefault();
   const name = ($('#f-name').value || '').trim();
   if (!name) return;
   const lm = {
-    id: `lm-${Date.now().toString(36)}`,
+    id: 'lm-' + Date.now().toString(36),
     name: name.slice(0, 16),
     coord: ($('#f-coord').value || '').trim(),
     date: ($('#f-date').value || '').trim(),
     note: ($('#f-note').value || '').trim(),
-    inks: { ...draftInk },
-    angles: draftAngles.slice(),
-    seed: Math.random() * 9
+    accent: $('#swatches-new').dataset.pick || ACCENTS[0]
   };
   state.landmarks.push(lm);
   saveLandmarks();
   dlg.close();
-  renderShelf();
-  paintAccent(lm);
-  note(`「${lm.name}」已建 · 点进去放照片`);
-  requestAnimationFrame(() => {
-    const cards = document.querySelectorAll('.album-card');
-    cards[cards.length - 1]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  });
+  renderWall();
+  if (state.view === 'index') renderIndex();
+  if (state.view === 'atlas') renderMap();
+  setTimeout(() => openAlbum(lm.id), 120);
 });
 
-/* ───────── 导出一个自包含的 HTML ───────── */
-function buildExportHTML() {
+/* ───────── 站点设置 ───────── */
+function openSettings() {
+  const s = state.site || DEFAULT_SITE;
+  $('#s-name').value = s.name;
+  $('#s-cn').value = s.cn;
+  $('#s-title').value = s.title;
+  $('#s-lede').value = s.lede;
+  $('#dlg-site').showModal();
+  setTimeout(() => $('#s-name').focus(), 50);
+}
+$('#site-cancel').addEventListener('click', () => $('#dlg-site').close());
+$('#site-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const next = {
+    ...state.site,
+    name: ($('#s-name').value || '').trim() || DEFAULT_SITE.name,
+    cn: ($('#s-cn').value || '').trim() || DEFAULT_SITE.cn,
+    title: ($('#s-title').value || '').trim() || DEFAULT_SITE.title,
+    lede: ($('#s-lede').value || '').trim()
+  };
+  applySite(next);
+  try { localStorage.setItem(LS_SITE, JSON.stringify(next)); } catch (err) {}
+  $('#dlg-site').close();
+  showNote('已保存');
+});
+
+/* ───────── 删除整本 ───────── */
+{
+  const del = $('#album-delete');
+  let armed = 0;
+  del.addEventListener('click', async () => {
+    const lm = currentLandmark();
+    if (!lm) return;
+    if (!armed) {
+      armed = setTimeout(() => { armed = 0; del.textContent = '删这一本'; del.classList.remove('is-armed'); }, 2600);
+      del.textContent = '确定删除？';
+      del.classList.add('is-armed');
+      return;
+    }
+    clearTimeout(armed); armed = 0;
+    del.textContent = '删这一本';
+    del.classList.remove('is-armed');
+    const list = photosOf(lm.id);
+    for (const p of list) {
+      await dbDel(p.id);
+      const u = urlCache.get(p.id);
+      if (u) { try { URL.revokeObjectURL(u); } catch (e) {} urlCache.delete(p.id); }
+    }
+    state.photos = state.photos.filter(p => p.landmarkId !== lm.id);
+    state.landmarks = state.landmarks.filter(x => x.id !== lm.id);
+    saveLandmarks();
+    closeAlbum();
+    renderWall();
+    showNote('「' + lm.name + '」已删除');
+  });
+}
+
+/* ───────── 导出 ───────── */
+function buildExport() {
   const groups = state.landmarks
     .map(lm => ({ lm, list: photosOf(lm.id) }))
     .filter(g => g.list.length);
-
   const total = groups.reduce((a, g) => a + g.list.length, 0);
   const date = new Date().toISOString().slice(0, 10);
 
-  const nav = groups.map(g =>
-    '<a href="#' + g.lm.id + '">' + esc(g.lm.name) + '</a>').join('');
+  const nav = groups.map(g => '<a href="#' + g.lm.id + '">' + esc(g.lm.name) + '</a>').join('');
 
   const sections = groups.map(g => {
-    const shots = g.list.map((p, i) => {
-      const cls = i % 7 === 0 ? ' wide' : (i % 7 === 1 || i % 7 === 2) ? ' small' : '';
-      const x = p.exif;
-      const meta = x ? [x.camera, x.fl, x.f, x.ss, x.iso].filter(Boolean).join(' · ') : '';
-      return '<figure class="shot' + cls + '">' +
-        '<img src="' + p.thumb + '" alt="' + esc(p.name) + '" loading="' + (i > 2 ? 'lazy' : 'eager') + '">' +
-        '<figcaption><span>' + esc(p.name) + '</span><em>' + esc(meta) + '</em></figcaption>' +
-        '</figure>';
-    }).join('');
-
-    const metaBits = [g.lm.coord, g.lm.date].filter(Boolean).join('  ·  ');
-    return '<section class="ch" id="' + g.lm.id + '" style="--ac:' + g.lm.inks.c + '">' +
+    const shots = g.list.map(p =>
+      '<figure><img src="' + p.thumb + '" alt="' + esc(p.name) + '" loading="lazy">' +
+      '<figcaption>' + esc(p.name) + '</figcaption></figure>').join('');
+    const meta = [g.lm.coord, g.lm.date].filter(Boolean).join('  ·  ');
+    return '<section class="ch" id="' + g.lm.id + '" style="--ac:' + g.lm.accent + '">' +
       '<header><h2>' + esc(g.lm.name) + '</h2>' +
-      '<p class="meta">' + esc(metaBits) + (metaBits ? '  ·  ' : '') + g.list.length + ' 张</p>' +
+      '<p class="meta">' + esc(meta) + (meta ? '  ·  ' : '') + g.list.length + ' 张</p>' +
       (g.lm.note ? '<p class="note">' + esc(g.lm.note) + '</p>' : '') +
       '</header><div class="grid">' + shots + '</div></section>';
   }).join('');
 
   return '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<title>ATLAS · 图册</title>' +
+    '<title>' + esc(state.site.name) + ' · ' + esc(state.site.cn) + '</title>' +
     '<style>' + EXPORT_CSS + '</style></head><body>' +
-    '<header class="top"><span class="mark">ATLAS<em>图册</em></span>' +
-    '<nav>' + nav + '</nav>' +
-    '<span class="stat">' + groups.length + ' 个地标 · ' + total + ' 张照片</span></header>' +
-    '<div class="hero"><h1>去过的地方</h1>' +
-    '<p>一个地标就是一本相册。同一座城市的片子待在一起，翻起来才像一次回来。</p></div>' +
+    '<header class="top"><span class="mark">' + esc(state.site.name) + '<em>' + esc(state.site.cn) + '</em></span>' +
+    '<nav>' + nav + '</nav><span class="stat">' + groups.length + ' 地标 · ' + total + ' 张</span></header>' +
+    '<div class="hero"><h1>' + esc(state.site.title) + '</h1>' +
+    (state.site.lede ? '<p>' + esc(state.site.lede) + '</p>' : '') + '</div>' +
     '<main>' + sections + '</main>' +
-    '<footer><p>ATLAS · 图册 · ' + date + '</p>' +
-    '<p>每张照片都经过四色分版与加网，再加一点故意的错位。</p></footer>' +
-    '</body></html>';
+    '<footer><p>' + esc(state.site.name) + ' · ' + date + '</p></footer></body></html>';
 }
 
 const EXPORT_CSS = `
 *{box-sizing:border-box}
-body{margin:0;background:#E9E7E0;color:#12120E;
-  font-family:"Archivo","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
-  font-size:15px;line-height:1.7;font-variant-numeric:tabular-nums;
-  -webkit-font-smoothing:antialiased}
+body{margin:0;background:#F4F2EC;color:#14130F;font-family:"Archivo","PingFang SC","Microsoft YaHei",system-ui,sans-serif;font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased}
 a{color:inherit}
-.top{position:sticky;top:0;z-index:9;display:flex;align-items:center;gap:24px;
-  height:54px;padding:0 clamp(16px,4vw,64px);
-  background:rgba(233,231,224,.9);backdrop-filter:blur(14px);
-  border-bottom:1px solid #C6C2B6}
-.mark{font-weight:800;font-size:13px;letter-spacing:.16em}
-.mark em{font-style:normal;font-size:10px;letter-spacing:.2em;color:#6E6C62;margin-left:8px}
-.top nav{display:flex;gap:18px;font-size:12px;letter-spacing:.1em;color:#3C3B34}
+.top{position:sticky;top:0;z-index:9;display:flex;align-items:center;gap:26px;height:56px;padding:0 clamp(16px,4vw,64px);background:rgba(244,242,236,.9);backdrop-filter:blur(16px);border-bottom:1px solid #D8D4C9}
+.mark{font-weight:800;font-size:14px;letter-spacing:.16em}
+.mark em{font-style:normal;font-size:10px;letter-spacing:.22em;color:#7A776D;margin-left:9px}
+.top nav{display:flex;gap:20px;font-size:12.5px;letter-spacing:.08em;color:#3F3D36}
 .top nav a{text-decoration:none;padding-bottom:2px;border-bottom:1px solid transparent}
-.top nav a:hover{border-bottom-color:#12120E}
-.stat{margin-left:auto;font-family:Consolas,ui-monospace,monospace;font-size:10px;
-  letter-spacing:.12em;text-transform:uppercase;color:#6E6C62;white-space:nowrap}
-.hero{padding:clamp(40px,7vw,110px) clamp(16px,4vw,64px) clamp(24px,3vw,44px)}
-.hero h1{margin:0 0 0 -.05em;font-size:clamp(2.4rem,6.4vw,5rem);line-height:.95;letter-spacing:-.01em}
-.hero p{margin:16px 0 0;max-width:34em;color:#3C3B34;font-size:14px;line-height:1.85}
-.ch{padding:clamp(30px,4.4vw,64px) clamp(16px,4vw,64px);border-top:1px solid #C6C2B6}
-.ch header{display:grid;grid-template-columns:1fr auto;gap:8px 24px;align-items:end;margin-bottom:clamp(18px,2.4vw,32px)}
-.ch h2{margin:0 0 0 -.05em;font-size:clamp(1.8rem,4.4vw,3.2rem);line-height:.98;letter-spacing:-.01em}
-.ch .meta{margin:0;grid-column:2;grid-row:1;font-family:Consolas,ui-monospace,monospace;
-  font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#6E6C62;white-space:nowrap}
-.ch .note{margin:0;grid-column:1/-1;max-width:40em;color:#3C3B34;font-size:13.5px;line-height:1.8}
-.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:clamp(12px,1.6vw,26px)}
-.shot{margin:0;grid-column:span 4}
-.shot.wide{grid-column:span 6}
-.shot.small{grid-column:span 3}
-.shot img{display:block;width:100%;height:auto;background:#DCD9CF;
-  box-shadow:0 1px 2px rgba(24,20,12,.06),0 10px 28px -16px rgba(24,20,12,.3);
-  transition:transform .8s cubic-bezier(.16,1,.3,1),box-shadow .5s}
-.shot img:hover{transform:scale(1.015);box-shadow:0 2px 4px rgba(24,20,12,.07),0 26px 56px -26px rgba(24,20,12,.4)}
-.shot figcaption{display:flex;justify-content:space-between;gap:12px;padding-top:8px;
-  font-family:Consolas,ui-monospace,monospace;font-size:9px;letter-spacing:.12em;
-  text-transform:uppercase;color:#6E6C62}
-.shot figcaption em{font-style:normal;opacity:.7;text-align:right}
-footer{padding:clamp(36px,5vw,72px) clamp(16px,4vw,64px) 56px;border-top:1px solid #12120E;margin-top:clamp(30px,4vw,64px)}
-footer p{margin:0 0 6px;font-family:Consolas,ui-monospace,monospace;font-size:10px;
-  letter-spacing:.14em;text-transform:uppercase;color:#6E6C62}
-@media(max-width:980px){
-  .grid{grid-template-columns:repeat(6,1fr)}
-  .shot,.shot.wide,.shot.small{grid-column:span 3}
-  .shot.wide{grid-column:span 6}
-  .ch header{grid-template-columns:1fr}
-  .ch .meta{grid-column:1;grid-row:auto}
-}
-@media(max-width:640px){
-  .top nav{display:none}
-  .grid{grid-template-columns:1fr}
-  .shot,.shot.wide,.shot.small{grid-column:span 1}
-  .shot figcaption{font-size:9.5px}
-}
+.top nav a:hover{border-bottom-color:#14130F}
+.stat{margin-left:auto;font-family:Consolas,ui-monospace,monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#7A776D}
+.hero{padding:clamp(44px,8vw,124px) clamp(16px,4vw,64px) clamp(24px,3vw,44px);max-width:1000px}
+.hero h1{margin:0;font-size:clamp(2.4rem,6vw,4.8rem);line-height:1.03;letter-spacing:-.02em}
+.hero p{margin:20px 0 0;max-width:32em;color:#3F3D36;font-size:14.5px;line-height:1.86}
+.ch{padding:clamp(32px,4.6vw,68px) clamp(16px,4vw,64px);border-top:1px solid #D8D4C9}
+.ch header{display:grid;grid-template-columns:1fr auto;gap:6px 24px;align-items:baseline;margin-bottom:clamp(18px,2.4vw,32px)}
+.ch h2{margin:0;font-size:clamp(1.8rem,4vw,2.9rem);line-height:1.05;letter-spacing:-.02em}
+.ch .meta{margin:0;grid-column:2;grid-row:1;font-family:Consolas,ui-monospace,monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#7A776D;white-space:nowrap}
+.ch .note{margin:0;grid-column:1/-1;max-width:38em;color:#3F3D36;font-size:13.5px;line-height:1.8}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(12px,1.6vw,26px)}
+figure{margin:0}
+figure img{display:block;width:100%;height:auto;background:#E7E4DB;box-shadow:0 1px 2px rgba(24,20,12,.05),0 14px 34px -22px rgba(24,20,12,.3);transition:transform .7s cubic-bezier(.16,1,.3,1),box-shadow .45s}
+figure img:hover{transform:scale(1.015);box-shadow:0 2px 5px rgba(24,20,12,.06),0 30px 62px -30px rgba(24,20,12,.38)}
+figcaption{padding-top:8px;font-family:Consolas,ui-monospace,monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#7A776D;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+footer{padding:clamp(36px,5vw,72px) clamp(16px,4vw,64px) 56px;border-top:1px solid #14130F}
+footer p{margin:0;font-family:Consolas,ui-monospace,monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#7A776D}
+@media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}.ch header{grid-template-columns:1fr}.ch .meta{grid-column:1;grid-row:auto}}
+@media(max-width:600px){.top nav{display:none}.grid{grid-template-columns:1fr}}
 @media(prefers-color-scheme:dark){
-  body{background:#121210;color:#EFEDE5}
-  .top{background:rgba(18,18,16,.92);border-color:#2A2A26}
-  .top nav,.hero p,.ch .note{color:#B6B3A8}
-  .mark em,.stat,.ch .meta,.shot figcaption,footer p{color:#7E7B72}
-  .ch{border-color:#2A2A26}
-  .shot img{background:#0A0A09;box-shadow:none;border:1px solid #2A2A26}
-  footer{border-color:#EFEDE5}
-}
-`;
+body{background:#121211;color:#F0EEE6}
+.top{background:rgba(18,18,17,.92);border-color:#2B2A26}
+.top nav,.hero p,.ch .note{color:#BCB9AE}
+.mark em,.stat,.ch .meta,figcaption,footer p{color:#837F75}
+.ch{border-color:#2B2A26}
+figure img{background:#0A0A09;box-shadow:none;border:1px solid #2B2A26}
+footer{border-color:#F0EEE6}
+}`;
 
 function exportStandalone() {
   const groups = state.landmarks.map(lm => ({ lm, list: photosOf(lm.id) })).filter(g => g.list.length);
-  if (!groups.length) { note('先放几张照片，再导出', true); return; }
-  const total = groups.reduce((a, g) => a + g.list.length, 0);
-  const html = buildExportHTML();
-  try { window.__exportSize = html.length; } catch (e) {}
+  if (!groups.length) { showNote('先放几张照片，再导出', true); return; }
+  const html = buildExport();
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'atlas-' + new Date().toISOString().slice(0, 10) + '.html';
+  a.download = 'album-' + new Date().toISOString().slice(0, 10) + '.html';
   document.body.appendChild(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
-  note('已导出 ' + total + ' 张 · 单个 HTML，双击可看，也能直接拖到任何托管平台');
+  showNote('已导出 · 单个 HTML，双击可看，也能直接发给别人');
 }
 
-/* ───────── 提示 ───────── */
-let noteTimer = 0;
-function note(msg, isError = false) {
-  const n = $('#note');
-  n.textContent = msg;
-  n.classList.toggle('is-error', !!isError);
-  clearTimeout(noteTimer);
-  if (msg && !isError) noteTimer = setTimeout(() => { n.textContent = ''; }, 6000);
-}
-
-/* ───────── 顶栏滚动阴影 ───────── */
-{
-  const bar = document.querySelector('.bar');
-  let last = false;
-  const onScroll = () => {
-    const stuck = window.scrollY > 8;
-    if (stuck !== last) { bar.classList.toggle('is-stuck', stuck); last = stuck; }
-  };
-  window.addEventListener('scroll', onScroll, { passive: true });
-  onScroll();
-}
-
-/* ───────── 主题按钮 ───────── */
-{
-  const btn = document.getElementById('btn-theme');
-  if (btn) btn.addEventListener('click', toggleTheme);
-  const btnEx = document.getElementById('btn-export');
-  if (btnEx) btnEx.addEventListener('click', () => { exportStandalone(); });
-
-  document.querySelectorAll('.views button').forEach(b => {
-    b.addEventListener('click', () => setView(b.dataset.view));
-  });
-
-  const btnSet = document.getElementById('btn-settings');
-  if (btnSet) btnSet.addEventListener('click', openSettings);
-
-  const siteForm = document.getElementById('site-form');
-  if (siteForm) siteForm.addEventListener('submit', ev2 => {
-    ev2.preventDefault();
-    const next = {
-      name: ($('#s-name').value || '').trim() || DEFAULT_SITE.name,
-      cn: ($('#s-cn').value || '').trim() || DEFAULT_SITE.cn,
-      title: ($('#s-title').value || '').trim() || DEFAULT_SITE.title,
-      lede: ($('#s-lede').value || '').trim(),
-      accent: $('#swatches').dataset.pick || DEFAULT_SITE.accent
-    };
-    applySite(next);
-    try { localStorage.setItem(SITE_KEY, JSON.stringify(next)); } catch (err) {}
-    $('#dlg-site').close();
-    note('站点设置已保存');
-  });
-
-  const siteCancel = document.getElementById('site-cancel');
-  if (siteCancel) siteCancel.addEventListener('click', () => $('#dlg-site').close());
-  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
-    let saved = null;
-    try { saved = localStorage.getItem(THEME_KEY); } catch (err) {}
-    if (!saved) applyTheme(e.matches ? 'dark' : 'light');
-  });
-}
+/* ───────── 顶栏与全局事件 ───────── */
+document.querySelectorAll('.views button').forEach(b => {
+  b.addEventListener('click', () => setView(b.dataset.view));
+});
 
 /* ───────── 启动 ───────── */
 async function boot() {
   initTheme();
   state.site = loadSite();
   applySite(state.site);
-  const savedView = (() => { try { return localStorage.getItem('atlas.view'); } catch (e) { return null; } })();
   state.landmarks = loadLandmarks();
-  syncParams();
-  paintAccent(state.landmarks[0]);
 
   try { state.photos = await dbAll(); }
-  catch (err) { state.photos = []; if (window.console) console.warn('[atlas] idb', err); }
+  catch (e) { state.photos = []; }
 
-  renderShelf();
-  setView(savedView || 'wall', false);
+  renderWall();
+
+  let savedView = null;
+  try { savedView = localStorage.getItem('atlas.view'); } catch (e) {}
+  setView(savedView || 'wall');
 }
 
 boot();

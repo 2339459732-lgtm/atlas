@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>ATLAS · 图册</title>
-<meta name="description" content="一个地标一本相册。墙、索引、地图三种看法。" />
-<meta name="theme-color" content="#E9E7E0" />
-<meta property="og:title" content="ATLAS · 图册" />
+<title>图册 · 去过的地方</title>
+<meta name="description" content="一个地标一本相册。照片原样，只做编排。" />
+<meta name="theme-color" content="#F4F2EC" />
+<meta property="og:title" content="图册 · 去过的地方" />
 <meta property="og:description" content="一个地标就是一本相册。" />
 <meta property="og:type" content="website" />
 <link rel="preload" href="assets/fonts/archivo-var-latin.woff2" as="font" type="font/woff2" crossorigin />
@@ -21,15 +21,7 @@ try {
 </head>
 <body>
 
-<a class="skip" href="#views">跳到正文</a>
-
-<div class="axes" aria-hidden="true"><i></i><i></i></div>
-
-<aside class="pager" aria-hidden="true">
-  <span class="pager__no" id="pager-no">01</span>
-  <span class="pager__track"><i id="pager-bar"></i></span>
-  <span class="pager__no">04</span>
-</aside>
+<a class="skip" href="#wall">跳到相册</a>
 
 <header class="bar">
   <a class="mark" href="#" aria-label="回到顶部">
@@ -37,39 +29,31 @@ try {
     <span class="mark__cn" id="site-cn">图册</span>
   </a>
 
-  <div class="views" role="tablist" id="views" aria-label="视图">
-    <button type="button" role="tab" data-view="wall" aria-selected="true">墙</button>
+  <nav class="views" role="tablist" id="views" aria-label="视图">
+    <button type="button" role="tab" data-view="wall" aria-selected="true">相册</button>
     <button type="button" role="tab" data-view="index" aria-selected="false">索引</button>
-    <button type="button" role="tab" data-view="atlas" aria-selected="false">图</button>
-  </div>
-
-  <p class="bar__stat">
-    <span id="stat-landmarks">0</span> 个地标<span class="bar__dot">·</span><span id="stat-photos">0</span> 张
-  </p>
+    <button type="button" role="tab" data-view="atlas" aria-selected="false">地图</button>
+  </nav>
 
   <div class="bar__end">
-    <button type="button" class="btn-icon" id="btn-settings" aria-label="站点设置" title="站点设置">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
-        <circle cx="12" cy="12" r="2.6"/>
-        <path d="M12 3v2.4M12 18.6V21M21 12h-2.4M5.4 12H3M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7M18.4 18.4l-1.7-1.7M7.3 7.3L5.6 5.6" stroke-linecap="square"/>
-      </svg>
-    </button>
-    <button type="button" class="btn-icon" id="btn-export" aria-label="导出为一个 HTML 文件" title="导出为一个 HTML 文件，可直接发给别人">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
-        <path d="M12 3.5v11m0 0 3.6-3.6M12 14.5 8.4 10.9" stroke-linecap="square"/>
-        <path d="M3.5 15.5V20h17v-4.5" stroke-linecap="square"/>
-      </svg>
-    </button>
-    <button type="button" class="btn-icon" id="btn-theme" aria-label="切换明暗" aria-pressed="false">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
-        <circle cx="12" cy="12" r="4.2"/>
-        <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.1 5.1l1.4 1.4M17.5 17.5l1.4 1.4M18.9 5.1l-1.4 1.4M6.5 17.5l-1.4 1.4" stroke-linecap="square"/>
-      </svg>
-    </button>
-    <button type="button" class="btn btn--line" id="btn-new">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="square"/></svg>
-      新建地标
-    </button>
+    <span class="bar__stat"><span id="stat-landmarks">0</span> 地标 · <span id="stat-photos">0</span> 张</span>
+
+    <div class="menu" id="menu">
+      <button type="button" class="btn-icon" id="btn-menu" aria-haspopup="true" aria-expanded="false" aria-label="更多">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+          <circle cx="5.5" cy="12" r="1.1" fill="currentColor" stroke="none"/>
+          <circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/>
+          <circle cx="18.5" cy="12" r="1.1" fill="currentColor" stroke="none"/>
+        </svg>
+      </button>
+      <div class="menu__pop" id="menu-pop" role="menu" hidden>
+        <button type="button" role="menuitem" data-act="new">新建地标</button>
+        <button type="button" role="menuitem" data-act="settings">站点设置</button>
+        <button type="button" role="menuitem" data-act="theme">明暗主题</button>
+        <span class="menu__sep"></span>
+        <button type="button" role="menuitem" data-act="export">导出作品集</button>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -77,71 +61,53 @@ try {
 
   <!-- ══════════ 开篇 ══════════ -->
   <section class="intro" id="intro">
-    <div class="sec-mark"><b>§ 01</b>开篇<span></span><b>PREFACE</b></div>
-    <div class="intro__rule" aria-hidden="true">
-      <span id="intro-year">—</span>
-      <span class="intro__ticks"></span>
-      <span id="intro-coords">—</span>
-    </div>
     <h1 class="intro__title" id="site-title">去过的地方</h1>
-    <p class="intro__lede" id="site-lede">
-      一个地标就是一本相册。先在地图上钉一个点，再把那里的照片放进去——
-      同一座城市的片子待在一起，翻起来才像一次回来。
-    </p>
+    <p class="intro__lede" id="site-lede"></p>
+    <p class="intro__meta"><span id="intro-count">0 个地标</span></p>
   </section>
 
-  <!-- ══════════ 墙 ══════════ -->
-  <section class="view is-on" id="view-wall" data-dir="y" aria-label="相册墙">
-    <div class="sec-mark"><b>§ 02</b>墙<span></span><b id="wall-count">0 本</b></div>
-    <div class="shelf__grid" id="shelf-grid"></div>
-    <div class="shelf__foot">
-      <button type="button" class="btn btn--line" id="btn-new-2">
+  <!-- ══════════ 相册墙 ══════════ -->
+  <section class="view is-on" id="wall" aria-label="相册">
+    <div class="wall" id="wall-grid"></div>
+    <div class="wall__foot">
+      <button type="button" class="btn btn--line" id="btn-new">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="square"/></svg>
         新建地标
       </button>
-      <p class="shelf__hint">地标和照片都存在这台机器上 · 不上传服务器</p>
+      <p class="wall__hint">地标与照片都存在这台机器上 · 不上传服务器</p>
     </div>
   </section>
 
   <!-- ══════════ 索引 ══════════ -->
-  <section class="view" id="view-index" data-dir="y" aria-label="索引" hidden>
-    <div class="sec-mark"><b>§ 03</b>索引<span></span><b>INDEX</b></div>
+  <section class="view" id="index" aria-label="索引" hidden>
     <div class="idx__head">
-      <span>册</span><span>地标</span><span>坐标</span><span>时间</span><span>张数</span>
+      <span>#</span><span>地标</span><span>坐标</span><span>时间</span><span>张数</span><span></span>
     </div>
     <div class="idx" id="idx-list"></div>
   </section>
 
-  <!-- ══════════ 图 ══════════ -->
-  <section class="view" id="view-atlas" data-dir="x" aria-label="地图" hidden>
-    <div class="sec-mark"><b>§ 04</b>图<span></span><b>ATLAS</b></div>
+  <!-- ══════════ 地图 ══════════ -->
+  <section class="view" id="atlas" aria-label="地图" hidden>
     <div class="map" id="map">
-      <svg class="map__graticule" id="map-grid" aria-hidden="true"></svg>
+      <svg class="map__grid" id="map-grid" aria-hidden="true"></svg>
       <div class="map__pins" id="map-pins"></div>
-      <p class="map__legend">按经纬度摆位 · 点越小越靠北 · 没有坐标的地标会排在角落</p>
     </div>
+    <p class="map__legend">按经纬度摆位 · 点的大小是那本相册的张数</p>
   </section>
 
 </main>
 
 <footer class="colophon" id="colophon">
   <div class="colophon__grid">
-    <div>
-      <p class="colophon__title">版权页</p>
-      <p class="colophon__body" id="site-colophon">
-        一本用照片打开的地图册。每个地标是一本相册，每张照片都经过四色分版与加网，
-        再加一点故意的错位——这样它们摆在一起时，才像同一个人的东西。
-      </p>
-    </div>
+    <p class="colophon__body" id="site-colophon">
+      每个地标是一本相册。照片保持原样，只做编排。
+    </p>
     <dl class="colophon__list">
-      <div><dt>字体</dt><dd>Archivo Variable（拉丁，SIL OFL）/ 系统黑体（中文）</dd></div>
-      <div><dt>制版</dt><dd>WebGL 片元着色器 · 四通道加网 · 减色叠印</dd></div>
-      <div><dt>纸张</dt><dd>#E9E7E0 冷灰胶版纸</dd></div>
+      <div><dt>字体</dt><dd>Archivo Variable · 系统黑体</dd></div>
       <div><dt>收存</dt><dd id="colophon-stat">0 个地标 · 0 张照片</dd></div>
     </dl>
     <div class="colophon__tail">
       <p class="colophon__sig" id="site-sig">ATLAS</p>
-      <p class="colophon__cn">图册</p>
       <a class="colophon__mail" href="mailto:hello@example.com">hello@example.com</a>
     </div>
   </div>
@@ -152,45 +118,39 @@ try {
   <div class="album__bar">
     <button type="button" class="album__back" id="album-close">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M14 5l-7 7 7 7" stroke-linecap="square"/></svg>
-      图册
+      相册
     </button>
     <p class="album__crumb" id="album-crumb">—</p>
     <button type="button" class="album__del" id="album-delete">删这一本</button>
-    <div class="album__tools">
-      <label class="tool" for="cell"><span>网点</span><output id="cell-val">5.6</output></label>
-      <input type="range" id="cell" min="34" max="150" value="56" step="1" aria-label="网点尺度" />
-      <label class="tool" for="offset"><span>套印</span><output id="offset-val">7.3</output></label>
-      <input type="range" id="offset" min="0" max="100" value="34" step="1" aria-label="套印偏移" />
-    </div>
   </div>
 
   <div class="album__scroll" id="album-scroll">
     <header class="album__head">
-      <div class="album__lead">
-        <p class="album__no" id="album-no">01</p>
+      <div>
         <h2 class="album__name" id="album-name">—</h2>
         <p class="album__meta" id="album-meta"></p>
       </div>
       <p class="album__note" id="album-note"></p>
     </header>
 
-    <div class="hero" id="hero">
-      <div class="hero__plate">
-        <canvas id="stage" aria-label="当前照片的四色印样"></canvas>
-        <div class="hero__veil" id="veil"><span id="veil-text">上版</span></div>
-      </div>
-      <p class="hero__cap"><span id="hero-no">01</span><span class="hero__dot"></span><span id="hero-name">—</span><span class="hero__dot"></span><span id="hero-dim">—</span></p>
+    <figure class="lead" id="lead">
+      <img id="lead-img" alt="" />
+      <figcaption class="lead__cap">
+        <span id="lead-no">—</span>
+        <span id="lead-name">—</span>
+        <span id="lead-dim">—</span>
+      </figcaption>
       <p class="exif" id="exif"></p>
-    </div>
+    </figure>
 
-    <div class="stream" id="stream"></div>
+    <div class="strip" id="strip"></div>
 
     <label class="add" id="add-photo" for="file">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1" aria-hidden="true">
         <path d="M12 8v8M8 12h8" stroke-linecap="square"/><rect x="2.5" y="2.5" width="19" height="19"/>
       </svg>
       <span class="add__label">添加照片</span>
-      <span class="add__hint">可以一次选多张 · 拖进来也行 · JPG / PNG · 单张 ≤ 24MB</span>
+      <span class="add__hint">可一次选多张 · 拖进来也行 · 原图保存，不做任何处理</span>
       <input type="file" id="file" accept="image/*" multiple />
     </label>
 
@@ -198,7 +158,7 @@ try {
   </div>
 </section>
 
-<!-- ══════════ 灯箱 ══════════ -->
+<!-- ══════════ 大图 ══════════ -->
 <div class="lb" id="lb" aria-hidden="true" role="dialog" aria-label="查看照片">
   <div class="lb__bar">
     <span class="lb__no" id="lb-no">—</span>
@@ -216,7 +176,7 @@ try {
     </div>
   </div>
   <div class="lb__stage" id="lb-stage">
-    <canvas id="lb-canvas" aria-label="加网后的照片"></canvas>
+    <img id="lb-img" alt="" />
   </div>
   <div class="lb__foot">
     <span class="lb__exif" id="lb-exif"></span>
@@ -228,7 +188,7 @@ try {
 <dialog class="dlg" id="dlg" aria-labelledby="dlg-title">
   <form method="dialog" class="dlg__form" id="dlg-form">
     <h2 class="dlg__title" id="dlg-title">新建地标</h2>
-    <p class="dlg__sub">它会成为一本相册。之后往里放的照片都归到这里。</p>
+    <p class="dlg__sub">它会成为一本相册。</p>
 
     <label class="field">
       <span class="field__name">地名</span>
@@ -252,13 +212,8 @@ try {
     </label>
 
     <div class="field">
-      <span class="field__name">这一本的油墨</span>
-      <div class="inks" id="inks">
-        <button type="button" class="inks__next" id="ink-shuffle" title="换一套">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.7-6" stroke-linecap="square"/><path d="M4 4v5h5" stroke-linecap="square"/></svg>
-        </button>
-        <div class="inks__dots" id="inks-dots"></div>
-      </div>
+      <span class="field__name">颜色</span>
+      <div class="swatches" id="swatches-new" role="group" aria-label="地标颜色"></div>
     </div>
 
     <div class="dlg__actions">
@@ -272,7 +227,7 @@ try {
 <dialog class="dlg" id="dlg-site" aria-labelledby="dlg-site-title">
   <form method="dialog" class="dlg__form" id="site-form">
     <h2 class="dlg__title" id="dlg-site-title">站点设置</h2>
-    <p class="dlg__sub">这些只改你这台机器上的样子，别人看不到。</p>
+    <p class="dlg__sub">只改你这台机器上的样子。</p>
 
     <div class="field-row">
       <label class="field">
@@ -292,13 +247,8 @@ try {
 
     <label class="field">
       <span class="field__name">开篇一句话<span class="field__opt">选填</span></span>
-      <textarea class="field__input field__input--area" id="s-lede" rows="3" maxlength="180" placeholder="一个地标就是一本相册。"></textarea>
+      <textarea class="field__input field__input--area" id="s-lede" rows="3" maxlength="180"></textarea>
     </label>
-
-    <div class="field">
-      <span class="field__name">强调色</span>
-      <div class="swatches" id="swatches" role="group" aria-label="强调色"></div>
-    </div>
 
     <div class="dlg__actions">
       <button type="button" class="btn btn--line" id="site-cancel">取消</button>
