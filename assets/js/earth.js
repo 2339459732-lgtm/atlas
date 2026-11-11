@@ -530,7 +530,8 @@ export function createEarth(canvas, opts = {}) {
   };
 
   /* ── 纹理 ── */
-  const texUrl = (name) => `assets/tex/${name}${mobile ? '-1k' : ''}`;
+  /* 文件名里已经带分辨率后缀，这里只拼目录，别再追加（否则会出现 x-1k-1k） */
+  const texUrl = (name) => `assets/tex/${name}`;
   const texNames = {
     day: mobile ? 'earth-day-1k.jpg' : 'earth-day.jpg',
     night: 'earth-night-1k.jpg',
