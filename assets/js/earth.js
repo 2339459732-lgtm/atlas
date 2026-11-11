@@ -133,7 +133,7 @@ void main() {
      0.018 的线性值会变成约 9% 的灰度，整块大陆就浮出来了。 */
   vec3 dark = nightC * 3.4 * uNightGain * smoothstep(0.10, -0.18, ndl)
            + dayC * 0.006
-           + vec3(0.0012, 0.0018, 0.0042);
+           + vec3(0.00025, 0.0004, 0.0009);
 
   vec3 col = mix(dark, lit, day);
 
