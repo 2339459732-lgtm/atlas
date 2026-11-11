@@ -1957,7 +1957,9 @@ function renderTags() {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 12)
     .forEach(([t, n]) => {
-      box.appendChild(el('span', 'tag', `${esc(tagLabel(t))}<i>${n}</i>`));
+      /* 英文用空格分隔计数，中文直接连写更紧凑 */
+      const gap = getLang() === 'en' ? ' ' : '';
+      box.appendChild(el('span', 'tag', `${esc(tagLabel(t))}${gap}<i>${n}</i>`));
     });
 }
 

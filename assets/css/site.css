@@ -1986,7 +1986,8 @@ html[data-gate="open"] .gate { display: none; }
 }
 
 .audio-hint {
-  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+  /* 抬高一点，避开左下角的操作提示条 */
+  position: fixed; left: 50%; bottom: 62px; transform: translateX(-50%);
   z-index: 260;
 }
 .audio-hint__btn {
