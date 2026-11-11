@@ -2069,8 +2069,9 @@ html[data-gate="open"] .gate { display: none; }
 @keyframes eq { 0%, 100% { transform: scaleY(.5); } 50% { transform: scaleY(1); } }
 @keyframes hintIn { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
-@media (max-width: 720px) {
-  .audio-hint { top: calc(var(--nav-h) + 8px); }
+@media (max-width: 760px) {
+  /* 窄屏上会压住地球的 HUD 按钮，直接不显示；导航里的喇叭图标仍在 */
+  .audio-hint { display: none; }
 }
 
 /* ── 窄屏：首屏三段栅格改为纵向堆叠，避免标题与正文重叠 ── */
