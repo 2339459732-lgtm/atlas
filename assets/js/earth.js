@@ -517,21 +517,23 @@ export function createEarth(canvas, opts = {}) {
       textures.day = blank(16, 24, 40, 255);
       progress?.(0.06);
 
-      /* 第一张（白昼图）一到就开画：球体先出来，交互立刻可用 */
+      /* 先用最小的一张把球体点亮（约 90 KB），交互立刻可用 */
+      const quick = mobile ? texNames.day : 'earth-day-1k.jpg';
       try {
-        const dayImg = await loadImage(texUrl(texNames.day));
+        const img = await loadImage(texUrl(quick));
         gl.deleteTexture(textures.day);
-        textures.day = upload(dayImg, true);
+        textures.day = upload(img, true);
       } catch (e) {
         console.warn('[earth] 白昼贴图失败，用纯色顶上', e);
       }
       state.ready = true;
       onReady({ ok: true, partial: true });
-      progress?.(0.4);
+      progress?.(0.35);
 
-      /* 其余四张并行，谁先到谁先替换，不阻塞交互 */
-      let done = 1;
-      await Promise.all(['night', 'clouds', 'spec', 'normal'].map(async k => {
+      /* 其余贴图并行补齐；非移动端再补一张高分辨率白昼图 */
+      const rest = mobile ? ['night', 'clouds', 'spec', 'normal'] : ['day', 'night', 'clouds', 'spec', 'normal'];
+      let done = 0;
+      await Promise.all(rest.map(async k => {
         try {
           const img = await loadImage(texUrl(texNames[k]));
           if (textures[k]) gl.deleteTexture(textures[k]);
@@ -540,7 +542,7 @@ export function createEarth(canvas, opts = {}) {
           console.warn('[earth] 跳过贴图 ' + k, e);
         }
         done++;
-        progress?.(done / 5);
+        progress?.(0.35 + 0.65 * (done / rest.length));
       }));
 
       onReady({ ok: true });
