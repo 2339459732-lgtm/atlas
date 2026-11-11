@@ -2294,6 +2294,8 @@ function initMusic() {
     if (!ok) {
       /* 被自动播放策略拦下：先给一个不打扰的提示，等任意一次手势再起 */
       setTimeout(() => { if (hint && !music.isPlaying()) hint.hidden = false; }, 900);
+      /* 提示是一次性引导：十几秒后自动收起，免得一直压着内容 */
+      setTimeout(() => { if (hint && !music.isPlaying()) hint.hidden = true; }, 18000);
       music.armUnlock(() => { if (hint) hint.hidden = true; });
     }
   };
