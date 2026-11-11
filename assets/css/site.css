@@ -579,6 +579,7 @@ kbd {
 
 .planet__loader {
   position: absolute; inset: 0; z-index: 3;
+  pointer-events: none;   /* 遮罩只做视觉，不能挡住地球上的一切交互 */
   display: grid; place-content: center; justify-items: center; gap: 14px;
   background: var(--bg);
   transition: opacity .8s var(--e-out), visibility .8s;

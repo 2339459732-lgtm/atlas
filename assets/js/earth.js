@@ -441,6 +441,18 @@ export function createEarth(canvas, opts = {}) {
   };
   const textures = {};
 
+  /* 1×1 占位纹理：让着色器始终有东西可采样，等真图到了再替换 */
+  function blank(r, g, b, a) {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([r, g, b, a]));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    return t;
+  }
+
   function loadImage(url) {
     return new Promise((res, rej) => {
       const img = new Image();
@@ -497,21 +509,40 @@ export function createEarth(canvas, opts = {}) {
         }
       }
 
-      const order = ['day', 'night', 'clouds', 'spec', 'normal'];
-      let done = 0;
-      const imgs = {};
-      await Promise.all(order.map(async k => {
-        imgs[k] = await loadImage(texUrl(texNames[k]));
-        done++;
-        progress?.(done / order.length);
-      }));
-      textures.day = upload(imgs.day, true);
-      textures.night = upload(imgs.night, true);
-      textures.clouds = upload(imgs.clouds, true);
-      textures.spec = upload(imgs.spec, true);
-      textures.normal = upload(imgs.normal, true);
+      /* 先铺占位：云层透明、法线平整、其余留黑，画面不会因为缺图而错乱 */
+      textures.night = blank(0, 0, 0, 255);
+      textures.clouds = blank(0, 0, 0, 0);
+      textures.spec = blank(0, 0, 0, 255);
+      textures.normal = blank(128, 128, 255, 255);
+      textures.day = blank(16, 24, 40, 255);
+      progress?.(0.06);
 
+      /* 第一张（白昼图）一到就开画：球体先出来，交互立刻可用 */
+      try {
+        const dayImg = await loadImage(texUrl(texNames.day));
+        gl.deleteTexture(textures.day);
+        textures.day = upload(dayImg, true);
+      } catch (e) {
+        console.warn('[earth] 白昼贴图失败，用纯色顶上', e);
+      }
       state.ready = true;
+      onReady({ ok: true, partial: true });
+      progress?.(0.4);
+
+      /* 其余四张并行，谁先到谁先替换，不阻塞交互 */
+      let done = 1;
+      await Promise.all(['night', 'clouds', 'spec', 'normal'].map(async k => {
+        try {
+          const img = await loadImage(texUrl(texNames[k]));
+          if (textures[k]) gl.deleteTexture(textures[k]);
+          textures[k] = upload(img, true);
+        } catch (e) {
+          console.warn('[earth] 跳过贴图 ' + k, e);
+        }
+        done++;
+        progress?.(done / 5);
+      }));
+
       onReady({ ok: true });
     } catch (e) {
       console.error('[earth] load failed:', e);
