@@ -324,8 +324,8 @@ void main() {
     }
   }
 
-  float dd = distance(uv, vec2(0.5)) / 0.78;
-  col *= pow(clamp(1.0 - dd * dd * 0.55, 0.0, 1.0), 0.9);
+  float dd = distance(uv, vec2(0.5)) / 0.86;
+  col *= pow(clamp(1.0 - dd * dd * 0.34, 0.0, 1.0), 0.9);
 
   col += (hash(uv * 1024.0) - 0.5) * uGrain;
   gl_FragColor = vec4(col, 1.0);
