@@ -119,6 +119,11 @@ const isMac = /Mac|iPhone|iPad/.test(navigator.platform || '');
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const fine = () => matchMedia('(pointer: fine)').matches;
 
+/* 兜底：任何没被接住的错误只记一条日志，不让整页白屏。
+   相册、地球、音乐都是独立模块，一个模块出错不该拖垮其余部分。 */
+addEventListener('error', e => console.warn('[atlas] error:', e.message || e.error));
+addEventListener('unhandledrejection', e => console.warn('[atlas] unhandled:', e.reason));
+
 /* ───────── 状态 ───────── */
 const state = {
   landmarks: [],
@@ -156,14 +161,29 @@ function setLock(on) {
 }
 
 /* ───────── objectURL ───────── */
+/* 上限 80 个：相册翻到几百张时，不回收的 blob URL 会一直占着内存 */
 const urlCache = new Map();
+const URL_CAP = 80;
 function urlFor(photo) {
   if (!photo.blob) return photo.thumb || '';
-  if (!urlCache.has(photo.id)) {
-    try { urlCache.set(photo.id, URL.createObjectURL(photo.blob)); }
-    catch { return photo.thumb || ''; }
+  const hit = urlCache.get(photo.id);
+  if (hit) {
+    /* 命中就挪到队尾，实现 LRU */
+    urlCache.delete(photo.id);
+    urlCache.set(photo.id, hit);
+    return hit;
   }
-  return urlCache.get(photo.id);
+  try {
+    const u = URL.createObjectURL(photo.blob);
+    urlCache.set(photo.id, u);
+    while (urlCache.size > URL_CAP) {
+      const oldest = urlCache.keys().next().value;
+      const ou = urlCache.get(oldest);
+      urlCache.delete(oldest);
+      try { URL.revokeObjectURL(ou); } catch {}
+    }
+    return u;
+  } catch { return photo.thumb || ''; }
 }
 function dropURL(id) {
   const u = urlCache.get(id);
@@ -293,6 +313,16 @@ function normalizeLM(l) {
     coord: l.coord || (geo ? fmtCoord(geo.lat, geo.lng) : ''),
     date: l.date || '',
     note: l.note || '',
+    /* 手记：{ t: 标题, b: 正文, m: 余味 0-3, at: 保存时间 } */
+    memoir: (l.memoir && (l.memoir.b || l.memoir.t))
+      ? {
+          t: String(l.memoir.t || '').slice(0, 60),
+          b: String(l.memoir.b || '').slice(0, 900),
+          /* null = 没选余味，和「平常」区分开 */
+          m: l.memoir.m == null ? null : clamp(+l.memoir.m || 0, 0, 3),
+          at: +l.memoir.at || 0
+        }
+      : null,
     accent: l.accent || ACCENTS[0],
     coverId: l.coverId || null,
     lat: geo ? geo.lat : null,
@@ -737,7 +767,7 @@ function openAlbum(id, ev) {
   const list = photosOf(id);
   albumList = list;
 
-  albumScroll.querySelector('.album__bar')?.classList.remove('is-stuck');
+  albumEl.querySelector('.album__bar')?.classList.remove('is-stuck');
 
   $('#album-name').textContent = placeName(lm);
   $('#album-note').textContent = lm.note || '';
@@ -753,9 +783,11 @@ function openAlbum(id, ev) {
   const lockEl = $('#album-locked');
   const gridEl = $('#album-grid');
   const dropEl = $('#dropzone');
+  const memoirEl = $('#album-memoir');
   lockEl.hidden = !locked;
   gridEl.hidden = locked;
   dropEl.hidden = locked;
+  if (memoirEl) memoirEl.hidden = locked;
   $('#album-empty').hidden = true;
 
   if (locked) {
@@ -767,6 +799,7 @@ function openAlbum(id, ev) {
     setTimeout(() => $('#album-key').focus(), 420);
   } else {
     renderAlbumGrid();
+    renderMemoir();
   }
 
   albumEl.classList.add('is-open');
@@ -777,6 +810,9 @@ function openAlbum(id, ev) {
 
 function closeAlbum() {
   const id = state.current;
+  /* 编辑到一半就退出：静默收起，内容不写库（和点「取消」一致） */
+  const form = $('#memoir-form');
+  if (form && !form.hidden) form.hidden = true;
   albumEl.classList.remove('is-open');
   albumEl.setAttribute('aria-hidden', 'true');
   setLock(lbState.open || palette.classList.contains('is-open'));
@@ -787,16 +823,25 @@ function closeAlbum() {
   }
 }
 
+/* 相册网格：先算出每行的高度（纯数组运算，很便宜），再按滚动分批插 DOM。
+   一本三百张的册子如果一次性铺 300 个节点 + 300 个 <img>，
+   打开时要卡住半秒以上；分批之后首屏只处理 6 行。 */
+let gridIO = null;
 function renderAlbumGrid() {
   const grid = $('#album-grid');
   if (!grid) return;
+  if (gridIO) { gridIO.disconnect(); gridIO = null; }
   grid.innerHTML = '';
 
   const empty = $('#album-empty');
   if (empty) empty.hidden = albumList.length > 0;
   if (!albumList.length) return;
 
-  const W = grid.clientWidth || 900;
+  /* clientWidth 把左右内边距也算进来了，直接拿来分行会让每行宽出 2×pad，
+     最后一列被裁掉。减掉 padding 才是真正可用的宽度。 */
+  const gcs = getComputedStyle(grid);
+  const W = Math.max(240,
+    grid.clientWidth - (parseFloat(gcs.paddingLeft) || 0) - (parseFloat(gcs.paddingRight) || 0)) || 900;
   const compact = W < 720;
   const gap = compact ? 8 : clamp(8, W * 0.008, 14);
   const target = compact ? 190 : (W > 1300 ? 330 : 260);
@@ -829,46 +874,199 @@ function renderAlbumGrid() {
     }
   }
 
-  const frag = document.createDocumentFragment();
+  const BATCH = 6;
+  let cursor = 0;
   let idx = 0;
-  rows.forEach(r => {
-    const rowEl = el('div', 'agrow');
-    rowEl.style.gap = gap + 'px';
-    r.items.forEach(it => {
-      const p = it.p;
-      const w = it.w || Math.round(it.r * r.h);
-      const shot = el('button', 'shot');
-      shot.type = 'button';
-      shot.style.width = w + 'px';
-      shot.style.height = r.h + 'px';
-      shot.style.flex = `0 0 ${w}px`;
-      shot.style.transitionDelay = Math.min(idx, 8) * 25 + 'ms';
-      shot.setAttribute('aria-label', t('lb.view', { name: p.name }));
+  let sentinel = null;
 
-      const img = el('img');
-      img.alt = p.name;
-      img.decoding = 'async';
-      img.loading = idx < 8 ? 'eager' : 'lazy';
-      img.src = urlFor(p);
-      shot.appendChild(img);
-      shot.appendChild(el('span', 'shot__no', pad2(idx + 1)));
+  function paintRows(count) {
+    const end = Math.min(cursor + count, rows.length);
+    const frag = document.createDocumentFragment();
+    for (; cursor < end; cursor++) {
+      const r = rows[cursor];
+      const rowEl = el('div', 'agrow');
+      rowEl.style.gap = gap + 'px';
+      rowEl.style.contentVisibility = 'auto';
+      rowEl.style.containIntrinsicSize = `auto ${r.h}px`;
+      r.items.forEach(it => {
+        const p = it.p;
+        const w = it.w || Math.round(it.r * r.h);
+        const shot = el('button', 'shot');
+        shot.type = 'button';
+        shot.style.width = w + 'px';
+        shot.style.height = r.h + 'px';
+        shot.style.flex = `0 0 ${w}px`;
+        shot.style.transitionDelay = Math.min(idx, 8) * 25 + 'ms';
+        shot.setAttribute('aria-label', t('lb.view', { name: p.name }));
 
-      const del = el('button', 'shot__del');
-      del.type = 'button';
-      del.setAttribute('aria-label', t('lb.del', { name: p.name }));
-      del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg>';
-      del.addEventListener('click', e => { e.stopPropagation(); removePhoto(p); });
-      shot.appendChild(del);
+        const img = el('img');
+        img.alt = p.name;
+        img.decoding = 'async';
+        img.loading = idx < 8 ? 'eager' : 'lazy';
+        img.src = urlFor(p);
+        shot.appendChild(img);
+        shot.appendChild(el('span', 'shot__no', pad2(idx + 1)));
 
-      const at = idx;
-      shot.addEventListener('click', () => openLightbox(albumList, at));
-      rowEl.appendChild(shot);
-      requestAnimationFrame(() => shot.classList.add('is-in'));
-      idx++;
-    });
-    frag.appendChild(rowEl);
+        const del = el('button', 'shot__del');
+        del.type = 'button';
+        del.setAttribute('aria-label', t('lb.del', { name: p.name }));
+        del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg>';
+        del.addEventListener('click', e => { e.stopPropagation(); removePhoto(p); });
+        shot.appendChild(del);
+
+        const at = idx;
+        shot.addEventListener('click', () => openLightbox(albumList, at));
+        rowEl.appendChild(shot);
+        requestAnimationFrame(() => shot.classList.add('is-in'));
+        idx++;
+      });
+      frag.appendChild(rowEl);
+    }
+    grid.insertBefore(frag, sentinel);
+  }
+
+  /* 哨兵：滚到底部前 600px 就补下一批，用户不会看到空白 */
+  sentinel = el('div', 'agrow-sentinel');
+  sentinel.setAttribute('aria-hidden', 'true');
+  grid.appendChild(sentinel);
+
+  paintRows(BATCH);
+  if (cursor < rows.length) {
+    if ('IntersectionObserver' in window) {
+      gridIO = new IntersectionObserver(entries => {
+        if (!entries[0].isIntersecting) return;
+        paintRows(BATCH);
+        if (cursor >= rows.length) { gridIO.disconnect(); gridIO = null; sentinel.remove(); }
+      }, { rootMargin: '600px 0px' });
+      gridIO.observe(sentinel);
+    } else {
+      paintRows(rows.length);
+      sentinel.remove();
+    }
+  } else {
+    sentinel.remove();
+  }
+}
+
+/* ───────── 手记 ─────────
+   每本相册一段自己写的感受：一句话标题 + 正文 + 四档余味。
+   存在地标记录里（lm.memoir），跟账号一起走，跟着备份一起导。 */
+let memoirMood = -1;   /* -1 = 未选 */
+
+function fmtMemoirTime(ts) {
+  const d = new Date(ts || Date.now());
+  return `${d.getFullYear()}.${pad2(d.getMonth() + 1)}.${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function paintTastes() {
+  $$('#memoir-tastes .taste').forEach(b => {
+    b.setAttribute('aria-pressed', String(+b.dataset.taste === memoirMood));
   });
-  grid.appendChild(frag);
+}
+
+function updateMemoirCount() {
+  const el = $('#memoir-count');
+  const n = $('#memoir-in-body')?.value.length || 0;
+  if (el) el.textContent = t('memoir.count', { n });
+}
+
+function renderMemoir() {
+  const lm = currentLandmark();
+  if (!lm) return;
+  const view = $('#memoir-view');
+  const blank = $('#memoir-blank');
+  const form = $('#memoir-form');
+  if (!view || !blank || !form) return;
+
+  const m = lm.memoir;
+  const has = !!(m && (m.b || m.t));
+
+  form.hidden = true;
+  view.hidden = !has;
+  blank.hidden = has;
+  $('#memoir-kicker')?.style.setProperty('--ac', lm.accent);
+
+  if (has) {
+    const ti = $('#memoir-title');
+    const bo = $('#memoir-body');
+    ti.textContent = m.t || '';
+    ti.hidden = !m.t;
+    bo.textContent = m.b || '';
+    bo.hidden = !m.b;
+    const mood = $('#memoir-mood');
+    if (mood) {
+      mood.hidden = m.m == null;
+      mood.textContent = m.m == null ? '' : t('memoir.m' + m.m);
+    }
+    const stamp = $('#memoir-stamp');
+    if (stamp) stamp.textContent = m.at ? t('memoir.at', { t: fmtMemoirTime(m.at) }) : '';
+  } else {
+    const stamp = $('#memoir-stamp');
+    if (stamp) stamp.textContent = '';
+  }
+}
+
+function openMemoirEdit() {
+  const lm = currentLandmark();
+  if (!lm) return;
+  const m = lm.memoir || {};
+  $('#memoir-view').hidden = true;
+  $('#memoir-blank').hidden = true;
+  const form = $('#memoir-form');
+  form.hidden = false;
+  $('#memoir-in-title').value = m.t || '';
+  $('#memoir-in-body').value = m.b || '';
+  memoirMood = (m.m == null) ? -1 : +m.m;
+  paintTastes();
+  updateMemoirCount();
+  const ta = $('#memoir-in-body');
+  requestAnimationFrame(() => {
+    /* 有正文就接着改正文，否则从标题开始 */
+    (ta.value ? ta : $('#memoir-in-title')).focus({ preventScroll: true });
+    if (ta.value) ta.setSelectionRange(ta.value.length, ta.value.length);
+  });
+}
+
+function closeMemoirEdit() {
+  const form = $('#memoir-form');
+  if (form) form.hidden = true;
+  renderMemoir();
+}
+
+function saveMemoir(e) {
+  e?.preventDefault();
+  const lm = currentLandmark();
+  if (!lm) return;
+  const ti = $('#memoir-in-title').value.trim();
+  const bo = $('#memoir-in-body').value.trim();
+  if (!ti && !bo) { toast(t('memoir.needText'), true); return; }
+  lm.memoir = { t: ti.slice(0, 40), b: bo.slice(0, 800), m: memoirMood < 0 ? null : memoirMood, at: Date.now() };
+  saveLandmarks();
+  closeMemoirEdit();
+  toast(t('memoir.toastSaved'));
+}
+
+function initMemoir() {
+  $('#memoir-blank')?.addEventListener('click', openMemoirEdit);
+  $('#memoir-edit')?.addEventListener('click', openMemoirEdit);
+  $('#memoir-cancel')?.addEventListener('click', closeMemoirEdit);
+  $('#memoir-form')?.addEventListener('submit', saveMemoir);
+  $('#memoir-in-body')?.addEventListener('input', updateMemoirCount);
+
+  $$('#memoir-tastes .taste').forEach(b => {
+    /* 再点一次已选的可以取消，余味是可选项 */
+    b.addEventListener('click', () => {
+      const v = +b.dataset.taste;
+      memoirMood = memoirMood === v ? -1 : v;
+      paintTastes();
+    });
+  });
+
+  /* Ctrl / ⌘ + Enter 保存，Esc 取消 */
+  $('#memoir-form')?.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.stopPropagation(); closeMemoirEdit(); }
+    else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveMemoir(); }
+  });
 }
 
 /* ───────── 上传 ───────── */
@@ -908,6 +1106,18 @@ function makeThumb(canvas) {
   return c.toDataURL('image/jpeg', 0.82);
 }
 
+/* 配额写满时给出可执行的提示，而不是默默少几张 */
+let quotaWarned = false;
+function checkQuota(err) {
+  if (quotaWarned) return;
+  const name = err?.name || '';
+  if (name === 'QuotaExceededError' || err?.code === 22) {
+    quotaWarned = true;
+    toast(t('toast.noSpace'), true);
+    setTimeout(() => { quotaWarned = false; }, 6000);
+  }
+}
+
 async function uploadTo(landmarkId, files) {
   if (busy || !files?.length) return;
   const lm = landmarkById(landmarkId);
@@ -940,7 +1150,7 @@ async function uploadTo(landmarkId, files) {
       w: full.width, h: full.height,
       t: Date.now() + i
     };
-    try { await dbPut(rec); } catch { skip++; continue; }
+    try { await dbPut(rec); } catch (err) { checkQuota(err); skip++; continue; }
     state.photos.unshift(rec);
     ok++;
   }
@@ -1647,7 +1857,7 @@ lbEl.addEventListener('click', e => {
   if (e.target === lbEl || e.target === lbStage) closeLightbox();
 });
 albumScroll.addEventListener('scroll', () => {
-  albumScroll.querySelector('.album__bar')?.classList.toggle('is-stuck', albumScroll.scrollTop > 36);
+  albumEl.querySelector('.album__bar')?.classList.toggle('is-stuck', albumScroll.scrollTop > 36);
 }, { passive: true });
 addEventListener('scroll', onScroll, { passive: true });
 
@@ -1718,6 +1928,8 @@ function currentRes() {
     const v = localStorage.getItem(LS_RES);
     if (v && ['1k', '2k', '4k'].includes(v)) return v;
   } catch {}
+  /* 低端设备（核数/内存不足或省流量）不上 4K：首屏那 1 MB 只会拖慢出图 */
+  if (earth?.caps?.().lowEnd) return '2k';
   /* 桌面默认 4K，移动端 2K：兼顾观感与流量 */
   return matchMedia('(max-width: 860px)').matches ? '2k' : '4k';
 }
@@ -2268,7 +2480,7 @@ async function mergeBackup(payload) {
       blob, thumb: p.thumb, exif: p.exif || null,
       w: p.w, h: p.h, t: p.t || Date.now()
     };
-    try { await dbPut(rec); added.push(rec); } catch {}
+    try { await dbPut(rec); added.push(rec); } catch (err) { checkQuota(err); }
   }
   state.photos.push(...added);
 
@@ -2306,6 +2518,9 @@ function applyLang() {
     if (lm && !isLocked(lm)) {
       $('#album-meta').innerHTML = [lm.coord, lm.date, t('ov.count', { n: photosOf(lm.id).length })]
         .filter(Boolean).map(v => `<span>${esc(v)}</span>`).join('');
+      renderMemoir();
+      paintTastes();
+      updateMemoirCount();
     }
   }
   syncStats();
@@ -2645,6 +2860,7 @@ async function boot() {
 
   initAccounts();
   initMusic();
+  initMemoir();
 }
 
 boot();

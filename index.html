@@ -428,6 +428,49 @@ try {
       <p class="album__empty-h" data-i18n="album.emptySub">把照片拖进来，或者从下面选。</p>
     </div>
 
+    <!-- 手记：看完这一册，写下当时的感受 -->
+    <section class="memoir" id="album-memoir" aria-labelledby="memoir-kicker">
+      <div class="memoir__inner">
+        <div class="memoir__rail">
+          <p class="memoir__kicker" id="memoir-kicker"><span class="memoir__dot" aria-hidden="true"></span><span data-i18n="memoir.kicker">后记 · 手记</span></p>
+          <p class="memoir__stamp" id="memoir-stamp"></p>
+        </div>
+
+        <div class="memoir__main">
+          <div class="memoir__view" id="memoir-view">
+            <h3 class="memoir__title" id="memoir-title"></h3>
+            <p class="memoir__body" id="memoir-body"></p>
+            <div class="memoir__foot">
+              <span class="memoir__mood" id="memoir-mood"></span>
+              <button type="button" class="memoir__edit" id="memoir-edit" data-i18n="album.edit">编辑</button>
+            </div>
+          </div>
+
+          <button type="button" class="memoir__blank" id="memoir-blank">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M12 7.5v9M7.5 12h9" stroke-linecap="round"/></svg>
+            <span data-i18n="memoir.blank">写下这次的感觉</span>
+          </button>
+
+          <form class="memoir__form" id="memoir-form" hidden>
+            <input class="memoir__input" id="memoir-in-title" type="text" maxlength="40" autocomplete="off" data-i18n-ph="memoir.phTitle" data-i18n-aria="memoir.phTitle" />
+            <textarea class="memoir__textarea" id="memoir-in-body" rows="4" maxlength="800" data-i18n-ph="memoir.phBody" data-i18n-aria="memoir.phBody"></textarea>
+            <div class="memoir__tastes" role="group" data-i18n-aria="memoir.moodLabel" id="memoir-tastes">
+              <span class="memoir__tastes-l" data-i18n="memoir.moodLabel">余味</span>
+              <button type="button" class="taste" data-taste="0" data-i18n="memoir.m0">平常</button>
+              <button type="button" class="taste" data-taste="1" data-i18n="memoir.m1">喜欢</button>
+              <button type="button" class="taste" data-taste="2" data-i18n="memoir.m2">难忘</button>
+              <button type="button" class="taste" data-taste="3" data-i18n="memoir.m3">想再去</button>
+            </div>
+            <div class="memoir__acts">
+              <span class="memoir__count" id="memoir-count"></span>
+              <button type="button" class="memoir__btn" id="memoir-cancel" data-i18n="memoir.cancel">取消</button>
+              <button type="submit" class="memoir__btn memoir__btn--solid" data-i18n="memoir.save">保存</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
     <label class="dropzone" id="dropzone">
       <input type="file" id="file" accept="image/*" multiple />
       <span class="dropzone__plus" aria-hidden="true">

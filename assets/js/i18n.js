@@ -178,6 +178,25 @@ export const DICT = {
   'album.addHint': ['可多选 · 也可从桌面直接拖入 · 原图入库，不做滤镜', 'Select several · or drag from your desktop · originals kept, no filters'],
   'album.locate': ['在地球上查看', 'Show on globe'],
 
+  /* 手记 */
+  'memoir.kicker': ['手记', 'RECOLLECTION'],
+  'memoir.blank': ['写下这次的感觉', 'Write how it felt'],
+  'memoir.phTitle': ['一句话', 'One line'],
+  'memoir.phBody': ['从哪一刻开始觉得来对了？', 'Which moment made it worth the trip?'],
+  'memoir.moodLabel': ['余味', 'Aftertaste'],
+  'memoir.m0': ['平常', 'Fair'],
+  'memoir.m1': ['喜欢', 'Fond'],
+  'memoir.m2': ['难忘', 'Unforgettable'],
+  'memoir.m3': ['想再去', 'Go again'],
+  'memoir.save': ['保存', 'Save'],
+  'memoir.cancel': ['取消', 'Cancel'],
+  'memoir.count': ['{n}/800', '{n}/800'],
+  'memoir.tip': ['Ctrl / ⌘ + Enter 保存 · Esc 取消', 'Ctrl / ⌘ + Enter to save · Esc to cancel'],
+  'memoir.needText': ['先写点什么，再保存。', 'Write something before saving.'],
+  'memoir.saved': ['已保存 · {t}', 'Saved · {t}'],
+  'memoir.at': ['写于 {t}', 'Written {t}'],
+  'memoir.toastSaved': ['手记已保存', 'Note saved'],
+
   /* 大图 */
   'lb.cover': ['设为封面', 'Set as cover'],
   'lb.isCover': ['已是封面', 'Cover'],
@@ -308,6 +327,7 @@ export const DICT = {
   'toast.added': ['{name} · 已加入 {n} 张', '{name} · {n} photos added'],
   'toast.addedSkip': ['{name} · 已加入 {n} 张 · {s} 张跳过', '{name} · {n} added · {s} skipped'],
   'toast.noImage': ['没有可用的图片', 'No usable images'],
+  'toast.noSpace': ['本机存储满了，先导出备份再删几张', 'Local storage is full — export a backup, then remove a few photos'],
   'toast.exportFirst': ['先放几张照片，再导出', 'Add a few photos before exporting'],
   'toast.exported': ['已导出 · 单个 HTML，双击可看', 'Exported · a single HTML file, just open it'],
   'toast.coverSet': ['已设为这本的封面', 'Set as this album\'s cover'],

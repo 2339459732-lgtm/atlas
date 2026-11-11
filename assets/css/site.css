@@ -1109,6 +1109,7 @@ kbd {
   gap: clamp(8px, 1vw, 14px);
 }
 .agrow { display: flex; gap: clamp(8px, 1vw, 14px); }
+.agrow-sentinel { height: 1px; }
 .shot {
   position: relative; display: block; padding: 0; border: 0;
   background: var(--surface); cursor: zoom-in; overflow: hidden; border-radius: var(--r);
@@ -1148,6 +1149,144 @@ kbd {
 }
 .album__empty-t { font-family: var(--f-disp); font-size: clamp(1.4rem, 2.4vw, 1.9rem); }
 .album__empty-h { margin-top: 6px; color: var(--ink-3); font-size: 13.5px; }
+
+/* ───────── 手记（相册后记） ─────────
+   左侧一条编号栏放标签与时间，右侧是正文；编辑时就地展开，
+   输入框只用下划线，避免在整页的细线语言里突然出现一堆方框。 */
+.memoir {
+  max-width: var(--max);
+  margin: clamp(48px, 7vw, 104px) auto 0;
+  padding: 0 var(--pad);
+}
+.memoir__inner {
+  border-top: 1px solid var(--line);
+  padding-top: clamp(18px, 2.4vw, 30px);
+}
+/* 标签行沿用相册头部的排法：左侧细线标签、右侧等宽时间戳 */
+.memoir__rail {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  margin-bottom: clamp(12px, 1.6vw, 20px);
+}
+.memoir__kicker {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--f-mono); font-size: 8.5px;
+  letter-spacing: .26em; text-transform: uppercase; color: var(--ink-3);
+}
+.memoir__dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--ac, var(--accent)); flex: none;
+}
+.memoir__stamp {
+  font-family: var(--f-mono); font-size: 9px;
+  letter-spacing: .12em; color: var(--ink-3); opacity: .8;
+}
+.memoir__main { min-width: 0; }
+
+/* 阅读态 */
+.memoir__title {
+  margin: 0;
+  font-family: var(--f-disp); font-weight: 400;
+  font-size: clamp(1.15rem, 1.9vw, 1.6rem);
+  line-height: 1.45; letter-spacing: .01em;
+  text-wrap: balance;
+}
+.memoir__body {
+  margin: 12px 0 0;
+  max-width: 42em;
+  font-size: 14.5px; line-height: 2.05; color: var(--ink-2);
+  white-space: pre-wrap; text-wrap: pretty;
+}
+.memoir__foot {
+  display: flex; align-items: center; gap: 14px;
+  margin-top: 18px;
+}
+.memoir__mood {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--f-mono); font-size: 9px;
+  letter-spacing: .18em; text-transform: uppercase; color: var(--accent);
+}
+.memoir__mood::before {
+  content: ''; width: 14px; height: 1px; background: currentColor; opacity: .6;
+}
+.memoir__mood[hidden] { display: none; }
+/* 这些节点自带 display，UA 的 [hidden] 盖不住，统一兜一层 */
+.memoir [hidden] { display: none !important; }
+.memoir__edit {
+  margin-left: auto;
+  padding: 5px 10px;
+  background: none; border: 1px solid transparent; border-radius: var(--r);
+  font-family: var(--f-mono); font-size: 9px;
+  letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3); cursor: pointer;
+  transition: color .3s, border-color .3s, background-color .3s;
+}
+.memoir__edit:hover { color: var(--ink); border-color: var(--line-2); background: var(--wash); }
+
+/* 空态 */
+.memoir__blank {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 18px 0;
+  background: none; border: 0; border-bottom: 1px dashed var(--line-2);
+  font-size: 13.5px; letter-spacing: .04em; color: var(--ink-3);
+  cursor: text; text-align: left;
+  transition: color .3s, border-color .3s;
+}
+.memoir__blank svg { width: 15px; height: 15px; flex: none; }
+.memoir__blank:hover { color: var(--ink-2); border-color: var(--accent); }
+
+/* 编辑态 */
+.memoir__form { display: grid; gap: 14px; }
+.memoir__input {
+  width: 100%; padding: 2px 0 8px;
+  background: none; border: 0; border-bottom: 1px solid var(--line-2); border-radius: 0;
+  font-family: var(--f-disp); font-size: clamp(1.1rem, 1.7vw, 1.45rem);
+  color: var(--ink); letter-spacing: .01em;
+}
+.memoir__textarea {
+  width: 100%; min-height: 96px; padding: 10px 0;
+  background: none; border: 0; border-bottom: 1px solid var(--line-2); border-radius: 0;
+  font-family: var(--f-ui); font-size: 14.5px; line-height: 2; color: var(--ink-2);
+  resize: vertical;
+}
+.memoir__input:focus, .memoir__textarea:focus {
+  outline: none; border-bottom-color: var(--accent);
+}
+.memoir__input::placeholder, .memoir__textarea::placeholder { color: var(--ink-3); opacity: .75; }
+
+.memoir__tastes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.memoir__tastes-l {
+  margin-right: 6px;
+  font-family: var(--f-mono); font-size: 8.5px;
+  letter-spacing: .22em; text-transform: uppercase; color: var(--ink-3);
+}
+.taste {
+  padding: 5px 11px;
+  background: none; border: 1px solid var(--line); border-radius: 999px;
+  font-size: 11.5px; letter-spacing: .08em; color: var(--ink-3); cursor: pointer;
+  transition: color .3s, border-color .3s, background-color .3s;
+}
+.taste:hover { color: var(--ink-2); border-color: var(--line-2); }
+.taste[aria-pressed="true"] {
+  color: var(--accent); border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+}
+
+.memoir__acts { display: flex; align-items: center; gap: 8px; }
+.memoir__count {
+  margin-right: auto;
+  font-family: var(--f-mono); font-size: 9px; letter-spacing: .1em; color: var(--ink-3);
+}
+.memoir__btn {
+  padding: 7px 14px;
+  background: none; border: 1px solid var(--line-2); border-radius: var(--r);
+  font-family: var(--f-mono); font-size: 9px;
+  letter-spacing: .16em; text-transform: uppercase; color: var(--ink-2); cursor: pointer;
+  transition: color .3s, border-color .3s, background-color .3s;
+}
+.memoir__btn:hover { color: var(--ink); border-color: var(--line-3); background: var(--wash); }
+.memoir__btn--solid {
+  background: var(--ink); border-color: var(--ink); color: var(--bg);
+}
+.memoir__btn--solid:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 
 .dropzone {
   display: grid; justify-items: center; align-content: center; gap: 5px;

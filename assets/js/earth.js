@@ -98,12 +98,22 @@ uniform vec3 uAtmo;
 uniform float uAmbient;
 uniform float uExposure;
 uniform float uNightGain;
+uniform float uSharp;
+uniform vec2 uDayTexel;
 varying vec2 vUV;
 varying vec3 vN;
 varying vec3 vW;
 
 vec3 aces(vec3 x) {
   return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+
+/* 云图是"白云黑底"的灰度图，取亮度当密度。
+   底噪（海洋/陆地在 JPEG 里残留的暗调）统一压在 0.085 以下，
+   再用一条陡一点的曲线把云edge收紧——比直接当 alpha 用要干净得多。 */
+float cloudAt(vec2 uv) {
+  float l = texture2D(uCloudTex, uv).r;
+  return smoothstep(0.042, 0.62, l);
 }
 
 void main() {
@@ -115,12 +125,34 @@ void main() {
   vec3 nm = texture2D(uNormal, vUV).rgb * 2.0 - 1.0;
   N = normalize(N + vec3(nm.x, nm.y, nm.z * 0.55) * 0.34);
 
-  float cloud = texture2D(uCloudTex, vUV).a;
+  /* 云影：按太阳方向把云层采样点挪一点，影子才会落在云团的背光侧。
+     偏移量约等于 1.3° 的经度差，对应 5~6 km 的云底高度。 */
+  vec3 east = cross(vec3(0.0, 1.0, 0.0), N);
+  float el = length(east);
+  east = el > 1e-4 ? east / el : vec3(1.0, 0.0, 0.0);
+  vec3 north = cross(N, east);
+  vec2 sunStep = vec2(dot(L, east), -dot(L, north)) * 0.0036;
+
+  float cloud = cloudAt(vUV);
+  float cloudShadow = cloudAt(vUV + sunStep);
 
   float ndl = dot(N, L);
   float day = smoothstep(-0.075, 0.17, ndl);
 
-  vec3 dayC = pow(texture2D(uDay, vUV).rgb, vec3(2.2));
+  /* 昼面轻度反锐化：4 次邻域采样，偏移半个纹素。
+     4K 图上这能把海岸线和山脊拉回来，代价可以按设备关掉（uSharp=0）。 */
+  vec2 texel = uDayTexel;
+  vec3 c0 = texture2D(uDay, vUV).rgb;
+  vec3 dayC;
+  if (uSharp > 0.001) {
+    vec3 blur4 = texture2D(uDay, vUV + vec2(texel.x, 0.0)).rgb
+               + texture2D(uDay, vUV - vec2(texel.x, 0.0)).rgb
+               + texture2D(uDay, vUV + vec2(0.0, texel.y)).rgb
+               + texture2D(uDay, vUV - vec2(0.0, texel.y)).rgb;
+    dayC = pow(clamp(c0 + (c0 * 4.0 - blur4) * uSharp, 0.0, 1.0), vec3(2.2));
+  } else {
+    dayC = pow(c0, vec3(2.2));
+  }
   /* 4K 源图偏艳，统一压掉约 10% 饱和，让 1K/2K/4K 三档观感一致 */
   float dLum = dot(dayC, vec3(0.299, 0.587, 0.114));
   dayC = mix(vec3(dLum), dayC, 0.9);
@@ -152,8 +184,9 @@ void main() {
   vec3 blurN = texture2D(uNight, vUV, 3.6).rgb;
   float bloom = max(max(max(blurN.r, blurN.g), blurN.b) - 0.128, 0.0);
 
-  /* 云影：云层下方略压暗 */
-  dayC *= mix(1.0, 0.82, cloud);
+  /* 云影：用偏移采样，影子落在云团的背光侧；厚云压得更深（0.78），
+     薄云几乎不压——旧版一律压 18%，看起来像整颗球蒙了层灰。 */
+  dayC *= mix(1.0, 0.78, cloudShadow * 0.92);
 
   vec3 H = normalize(L + V);
   float spec = pow(max(dot(N, H), 0.0), 900.0) * ocean * 0.22;
@@ -180,6 +213,8 @@ void main() {
 
   /* 灯只在太阳真正落下之后才亮：用比 day 更窄的窗口，白昼半球不会残留灰纱 */
   float night = 1.0 - smoothstep(-0.10, 0.045, ndl);
+  /* 厚云会挡掉下面的城市灯：夜面同样要吃到云，否则云和灯像两张贴纸 */
+  nightCol *= mix(1.0, 0.42, cloud);
   vec3 dark = nightCol * night * uNightGain;
 
   vec3 col = mix(dark, lit, day);
@@ -205,7 +240,8 @@ varying vec3 vN;
 varying vec3 vW;
 
 void main() {
-  float a = texture2D(uClouds, vUV).a;
+  /* 与球面着色器同一条曲线：灰度图取亮度当密度，先压掉暗场底噪 */
+  float a = smoothstep(0.042, 0.62, texture2D(uClouds, vUV).r);
   if (a < 0.004) discard;
 
   vec3 N = normalize(vN);
@@ -322,6 +358,17 @@ export function createEarth(canvas, opts = {}) {
   });
 
   const mobile = matchMedia('(max-width: 860px)').matches;
+  /* 低端判定：核数少、内存小、或开了省流量——这类设备上 4K 贴图只会拖慢首屏，
+     直接停在 2K，并跳过最占体积的 4K 云层。 */
+  const conn = navigator.connection || {};
+  const lowEnd = (navigator.hardwareConcurrency || 8) <= 4
+    || (navigator.deviceMemory || 8) <= 4
+    || !!conn.saveData
+    || /(^|-)2g$/.test(conn.effectiveType || '');
+  const skipClouds = lowEnd;
+  const maxDpr = mobile ? 2 : (lowEnd ? 1.5 : 2);
+  /* 反锐化强度：桌面给 0.22，移动端和低端设备关掉，省两次采样 */
+  const sharpen = (mobile || lowEnd) ? 0 : 0.22;
   const SEG = mobile ? 96 : 176;
   const RINGS = mobile ? 64 : 128;
 
@@ -392,7 +439,7 @@ export function createEarth(canvas, opts = {}) {
      星表由 skyfield.js 按密度场逐点生成：位置、尺寸、亮度、色温、种子
      全部记录在缓冲区里，可枚举、可复现（种子固定），不是随机撒点。 */
 
-  const starCount = mobile ? 68000 : 230000;
+  const starCount = mobile ? 68000 : (lowEnd ? 140000 : 230000);
 
   /* 银道坐标系：由机位反推，使亮脊落在 LAYOUT.bandY、银心落在 LAYOUT.coreX。
      第一次 resize 拿到真实宽高比后计算，保证横幅画面里也是水平的。 */
@@ -457,19 +504,22 @@ export function createEarth(canvas, opts = {}) {
   const texLow = {
     day: 'earth-day-1k.jpg',
     night: 'earth-night-1k.jpg',
-    clouds: 'earth-clouds-1k.png',
+    clouds: 'earth-clouds-1k.jpg',
     spec: 'earth-specular-1k.jpg',
     normal: 'earth-normal.jpg'
   };
   /* 画质档位：1K 极速 / 2K 标准 / 4K 精细（4K 换了 3840×1920 的白昼图）
-     夜面统一来自 NASA Black Marble 8192×4096 母版，按档位降到 1024 / 2048 / 4096 */
+     夜面统一来自 NASA Black Marble 8192×4096 母版，按档位降到 1024 / 2048 / 4096；
+     云层来自 8192×4096 的白天云图，同样三档。 */
   const TIERS = {
-    '1k': { day: 'earth-day-1k.jpg', night: 'earth-night-1k.jpg', spec: 'earth-specular-1k.jpg' },
-    '2k': { day: 'earth-day.jpg', night: 'earth-night-2k.jpg', spec: 'earth-specular.jpg' },
-    '4k': { day: 'earth-day-4k.jpg', night: 'earth-night-4k.jpg', spec: 'earth-specular.jpg' }
+    '1k': { day: 'earth-day-1k.jpg', night: 'earth-night-1k.jpg', spec: 'earth-specular-1k.jpg', clouds: 'earth-clouds-1k.jpg' },
+    '2k': { day: 'earth-day.jpg', night: 'earth-night-2k.jpg', spec: 'earth-specular.jpg', clouds: 'earth-clouds-2k.jpg' },
+    '4k': { day: 'earth-day-4k.jpg', night: 'earth-night-4k.jpg', spec: 'earth-specular.jpg', clouds: 'earth-clouds-4k.jpg' }
   };
   let tier = '2k';
   const textures = {};
+  /* 昼贴图的纹素尺寸，反锐化用；随每次换图更新 */
+  let dayTexel = [1 / 2048, 1 / 1024];
 
   /* 1×1 占位纹理：让着色器始终有东西可采样，等真图到了再替换 */
   function blank(r, g, b, a) {
@@ -525,10 +575,14 @@ export function createEarth(canvas, opts = {}) {
     progMote = program(VS_MOTE, FS_MOTE, { aPos: 'aPos', aSize: 'aSize', aPhase: 'aPhase' }, 'mote');
   }
 
-  /* 切档：先换白昼图（最显眼），其余并行替换；旧纹理等新的就绪才释放 */
+  /* 切档：先换白昼图（最显眼），夜面/高光并行，云层最后补。
+     用一个 token 防连点：旧请求回来时若已不是当前档，直接丢弃——
+     否则它会把新档刚装上的纹理删掉，画面直接变黑。 */
+  let tierToken = 0;
   async function applyTier(name, onProgress) {
     const t = TIERS[name];
     if (!t) return false;
+    const token = ++tierToken;
     const keys = Object.keys(t);
     let done = 0;
     const step = () => { done++; onProgress?.(done / keys.length); };
@@ -536,18 +590,23 @@ export function createEarth(canvas, opts = {}) {
     if (t.day) {
       try {
         const img = await loadImage(texUrl(t.day));
+        if (token !== tierToken) return false;
         const next = upload(img, true);
         if (textures.day) gl.deleteTexture(textures.day);
         textures.day = next;
+        dayTexel = [1 / Math.max(1, img.width), 1 / Math.max(1, img.height)];
       } catch (e) {
         console.warn('[earth] 白昼贴图切换失败', e);
       }
       step();
     }
 
-    await Promise.all(keys.filter(k => k !== 'day').map(async k => {
+    /* 云层单独排在最后：它体积最大，等球面已经清晰了再补 */
+    const rest = keys.filter(k => k !== 'day' && k !== 'clouds');
+    await Promise.all(rest.map(async k => {
       try {
         const img = await loadImage(texUrl(t[k]));
+        if (token !== tierToken) return;
         const next = upload(img, true);
         if (textures[k]) gl.deleteTexture(textures[k]);
         textures[k] = next;
@@ -557,8 +616,32 @@ export function createEarth(canvas, opts = {}) {
       step();
     }));
 
-    tier = name;
+    /* 云层最大（4K 档 1.4 MB），一律放到浏览器空闲时再补：
+       球面在 day/night/spec 到齐时就已经清晰，云层晚半秒没人看得出来，
+       但首屏少下 1.4 MB。 */
+    if (t.clouds && !skipClouds) upgradeClouds(t.clouds, token);
+    step();
+
+    if (token === tierToken) tier = name;
     return true;
+  }
+
+  /* 空闲时替换云层；token 变了就作废，避免把新档的云删掉 */
+  function upgradeClouds(file, token) {
+    const run = async () => {
+      if (token !== tierToken) return;
+      try {
+        const img = await loadImage(texUrl(file));
+        if (token !== tierToken) return;
+        const next = upload(img, true);
+        if (textures.clouds) gl.deleteTexture(textures.clouds);
+        textures.clouds = next;
+      } catch (e) {
+        console.warn('[earth] 云层切换失败', e);
+      }
+    };
+    if ('requestIdleCallback' in window) requestIdleCallback(run, { timeout: 2500 });
+    else setTimeout(run, 900);
   }
 
   async function load(progress) {
@@ -589,6 +672,7 @@ export function createEarth(canvas, opts = {}) {
         const img = await loadImage(texUrl(texLow.day));
         gl.deleteTexture(textures.day);
         textures.day = upload(img, true);
+        dayTexel = [1 / Math.max(1, img.width), 1 / Math.max(1, img.height)];
       } catch (e) {
         console.warn('[earth] 白昼贴图失败，用纯色顶上', e);
       }
@@ -628,7 +712,7 @@ export function createEarth(canvas, opts = {}) {
     const r = canvas.getBoundingClientRect();
     if (!r.width || !r.height) return;
     /* 画质系数由帧率自适应决定：卡了降分辨率，稳了再升回去 */
-    const dpr = Math.min(mobile ? 2 : 1.75, window.devicePixelRatio || 1) * state.quality;
+    const dpr = Math.min(maxDpr, window.devicePixelRatio || 1) * state.quality;
     state.dpr = dpr;
     state.w = r.width; state.h = r.height;
     canvas.width = Math.round(r.width * dpr);
@@ -930,6 +1014,9 @@ export function createEarth(canvas, opts = {}) {
     g.uniform1f(progEarth.u.uAmbient, themeState.ambient);
     g.uniform1f(progEarth.u.uExposure, themeState.exposure);
     g.uniform1f(progEarth.u.uNightGain, themeState.nightGain);
+    /* 1K 档一个纹素就是 0.35°，反锐化会变成一圈光晕，直接关掉 */
+    g.uniform1f(progEarth.u.uSharp, tier === '1k' ? 0 : sharpen);
+    g.uniform2f(progEarth.u.uDayTexel, dayTexel[0], dayTexel[1]);
     bindTex(progEarth.u.uDay, textures.day, 0);
     bindTex(progEarth.u.uNight, textures.night, 1);
     bindTex(progEarth.u.uSpec, textures.spec, 2);
@@ -1218,6 +1305,8 @@ export function createEarth(canvas, opts = {}) {
     async setResolution(name) { return applyTier(name); },
     getResolution: () => tier,
     initTier(name) { if (TIERS[name]) tier = name; },
+    /* 设备能力：页面据此决定默认档位、是否把 4K 按钮置灰 */
+    caps: () => ({ mobile, lowEnd, maxDpr, clouds: !skipClouds }),
     setSunGeo(lat, lng) { state.sunGeo = (lat == null || lng == null) ? null : { lat, lng }; },
     clearSunGeo() { state.sunGeo = null; },
     zoomBy(f) {
