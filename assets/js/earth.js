@@ -903,7 +903,11 @@ export function createEarth(canvas, opts = {}) {
   /* 滚轮：只有落在地球圆面上才缩放，球体之外的留白照常滚动页面；
      缩放到达上下限后同样把滚动交还页面 */
   canvas.addEventListener('wheel', e => {
-    if (!unproject(e.offsetX, e.offsetY)) return;
+    /* 球体在屏幕上的半径随缩放变化：只有指针落在球面上才缩放，留白处让给页面滚动 */
+    const r = 0.37 * Math.min(state.w, state.h) / clamp(state.distTo, 0.5, 1.9);
+    const dx = e.offsetX - state.w / 2;
+    const dy = e.offsetY - state.h / 2;
+    if (Math.hypot(dx, dy) > r) return;
     const step = e.deltaMode === 1 ? 0.06 : 0.09;
     const next = clamp(state.distTo * (e.deltaY > 0 ? 1 + step : 1 - step), MIN_DIST, MAX_DIST);
     if (Math.abs(next - state.distTo) < 0.0005) return;
