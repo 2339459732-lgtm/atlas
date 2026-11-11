@@ -221,6 +221,13 @@ export const DICT = {
   'foot.kTheme': ['切换主题', 'Switch theme'],
   'foot.kExport': ['导出作品集', 'Export portfolio'],
 
+  /* 入口门禁 */
+  'gate.title': ['私钥', 'Private key'],
+  'gate.sub': ['输入私钥，进入图册。', 'Enter the key to open the atlas.'],
+  'gate.enter': ['进入', 'Enter'],
+  'gate.err': ['私钥不正确', 'Incorrect key'],
+  'gate.note': ['私钥仅在本机校验，不会上传。', 'The key is checked locally and never uploaded.'],
+
   /* 通用 */
   'common.close': ['关闭', 'Close'],
   'common.prev': ['上一张', 'Previous'],

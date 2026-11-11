@@ -14,6 +14,9 @@
 <link rel="preload" href="assets/tex/earth-day-1k.jpg" as="image" />
 <script>
 try {
+  if (sessionStorage.getItem('atlas.gate') === '1') document.documentElement.setAttribute('data-gate', 'open');
+} catch (e) {}
+try {
   var t = localStorage.getItem('atlas.theme.v2');
   if (t === 'ivory' || t === 'slate' || t === 'noir') document.documentElement.setAttribute('data-theme', t);
 } catch (e) {}
@@ -21,6 +24,27 @@ try {
 <link rel="stylesheet" href="assets/css/site.css" />
 </head>
 <body>
+
+<div class="gate" id="gate">
+  <div class="gate__box">
+    <svg class="gate__mark" viewBox="0 0 64 64" aria-hidden="true">
+      <ellipse cx="32" cy="33.5" rx="27" ry="9.2" transform="rotate(-22 32 33.5)" fill="none" stroke="currentColor" stroke-width=".85" opacity=".45"/>
+      <circle cx="32" cy="32" r="21.4" fill="none" stroke="currentColor" stroke-width="1.4"/>
+      <path d="M32.4 13.2L22.6 45.2h5.1l4.7-17.6z" fill="currentColor"/>
+      <path d="M31.6 13.2l9.8 32h-5.1l-4.7-17.6z" fill="currentColor" opacity=".52"/>
+      <circle cx="32" cy="11.2" r="2.2" fill="currentColor"/>
+    </svg>
+    <p class="gate__kicker">PRIVATE ACCESS</p>
+    <h1 class="gate__title" data-i18n="gate.title">私钥</h1>
+    <p class="gate__sub" data-i18n="gate.sub">输入私钥，进入图册。</p>
+    <form class="gate__form" id="gate-form">
+      <input id="gate-pass" type="password" autocomplete="off" spellcheck="false" aria-label="私钥" placeholder="••••••••••" />
+      <button type="submit" data-i18n="gate.enter">进入</button>
+    </form>
+    <p class="gate__err" id="gate-err" role="alert" hidden data-i18n="gate.err">私钥不正确</p>
+    <p class="gate__note" data-i18n="gate.note">私钥仅在本机校验，不会上传。</p>
+  </div>
+</div>
 
 <a class="skip" href="#wall">跳到相册</a>
 <div class="grain" aria-hidden="true"></div>
