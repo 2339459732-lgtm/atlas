@@ -2630,7 +2630,8 @@ async function boot() {
     earth?.start();
   }
 
-  if (!stored && !localStorage.getItem(acctKey(LS_SEED))) {
+  /* 示例数据只给未登录的访客；新账号从空白开始，避免把别人的作品当成自己的 */
+  if (!stored && !currentUser() && !localStorage.getItem(acctKey(LS_SEED))) {
     state.landmarks = [
       normalizeLM({ id: 'lm-kyoto', name: '京都', coord: '35.01°N 135.77°E', accent: ACCENTS[0] }),
       normalizeLM({ id: 'lm-reyk', name: '雷克雅未克', coord: '64.15°N 21.94°W', accent: ACCENTS[1] }),

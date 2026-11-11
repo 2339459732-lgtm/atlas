@@ -191,7 +191,14 @@ export function migrateGuestData(userId) {
   return moved;
 }
 
-/** 该账号名下是否已有数据（用于注册后决定是否提示迁移） */
+/* 首次访问自动生成的示例地标：它们不算「用户作品」，不该被导入新账号 */
+const DEMO_IDS = new Set(['lm-kyoto', 'lm-reyk', 'lm-hk']);
+
+/** 本机是否有「真正属于用户」的未登录作品 */
 export function hasGuestData() {
-  return USER_KEYS.some(k => { try { return localStorage.getItem(k) != null; } catch { return false; } });
+  let lm = null;
+  try { lm = JSON.parse(localStorage.getItem('atlas.landmarks.v4') || 'null'); } catch { return false; }
+  if (!Array.isArray(lm) || !lm.length) return false;
+  const pristine = lm.length === DEMO_IDS.size && lm.every(l => DEMO_IDS.has(l.id));
+  return !pristine;
 }
