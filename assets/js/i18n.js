@@ -65,6 +65,16 @@ export const DICT = {
   'ov.count': ['{n} 张', '{n} photos'],
   'ov.locked': ['已上锁', 'Locked'],
   'ov.lockedSub': ['已上锁 · 需单独私钥', 'Locked · album key required'],
+  'reco.fill': ['补全', 'Fill in'],
+  'reco.fillText': ['给《{name}》再补几张，凑成一组。', 'Add a few more to “{name}” to make a set.'],
+  'reco.revisit': ['回访', 'Revisit'],
+  'reco.revisitText': ['《{name}》已经 {n} 天没有新照片。', '“{name}” has had no new photos for {n} days.'],
+  'reco.peer': ['关联', 'Pair'],
+  'reco.peerText': ['《{a}》与《{b}》纬度相近，适合并在一起看。', '“{a}” and “{b}” sit at similar latitudes — worth viewing together.'],
+  'reco.backup': ['备份', 'Backup'],
+  'reco.backupText': ['还没有导出备份。备份入口在页脚的「私钥」里。', 'No backup yet — the entry sits under “Key” in the footer.'],
+  'reco.start': ['开始', 'Start'],
+  'reco.startText': ['一切就绪。新建一处地标，第一本相册就开始了。', 'All set. Create a place and the first album begins.'],
   'ov.noTag': ['还没有地标，标签会在建第一本之后出现。', 'No places yet. Tags appear after your first album.'],
 
   /* 地球板块 */

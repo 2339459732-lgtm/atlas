@@ -43,7 +43,7 @@ const THEMES = {
     globe: {
       spaceTop: [0.055, 0.055, 0.068], spaceBottom: [0.012, 0.012, 0.018],
       glow: [0.55, 0.42, 0.22], glowAmt: 0.24, grain: 0.012,
-      ambient: 0.05, atmo: [0.24, 0.46, 0.82], stars: 1,
+      ambient: 0.05, atmo: [0.24, 0.46, 0.82], stars: 1, nebula: 1.0,
       exposure: 1.14, nightGain: 1, cloud: 0.9, atmoIntensity: 0.72
     }
   },
@@ -52,7 +52,7 @@ const THEMES = {
     globe: {
       spaceTop: [0.955, 0.945, 0.92], spaceBottom: [0.985, 0.978, 0.955],
       glow: [1.0, 0.93, 0.78], glowAmt: 0.55, grain: 0.006,
-      ambient: 0.17, atmo: [0.52, 0.7, 0.88], stars: 0,
+      ambient: 0.17, atmo: [0.52, 0.7, 0.88], stars: 0, nebula: 0.0,
       exposure: 1.02, nightGain: 0.9, cloud: 0.74, atmoIntensity: 0.46
     }
   },
@@ -61,7 +61,7 @@ const THEMES = {
     globe: {
       spaceTop: [0.04, 0.058, 0.085], spaceBottom: [0.012, 0.02, 0.033],
       glow: [0.22, 0.48, 0.78], glowAmt: 0.26, grain: 0.012,
-      ambient: 0.06, atmo: [0.3, 0.6, 0.98], stars: 1,
+      ambient: 0.06, atmo: [0.3, 0.6, 0.98], stars: 1, nebula: 0.85,
       exposure: 1.16, nightGain: 1.05, cloud: 0.88, atmoIntensity: 0.78
     }
   }
@@ -84,6 +84,16 @@ const EN_CITY = {
   '开普敦': 'Cape Town', '圣托里尼': 'Santorini', '伊斯坦布尔': 'Istanbul'
 };
 const placeName = lm => (getLang() === 'en' ? (lm.nameEn || EN_CITY[lm.name] || lm.name) : lm.name);
+
+/* 自动标签是脚本现场生成的，内部仍用中文做键，显示时按语言换名 */
+const TAG_EN = {
+  '热带': 'Tropical', '温带': 'Temperate', '高纬': 'High latitude', '寒带': 'Polar',
+  '北半球': 'Northern', '南半球': 'Southern', '赤道': 'Equatorial', '极圈': 'Arctic circle',
+  '季风圈': 'Monsoon belt', '春': 'Spring', '夏': 'Summer', '秋': 'Autumn', '冬': 'Winter',
+  '空册': 'Empty', '横构图': 'Landscape', '竖构图': 'Portrait',
+  '有拍摄参数': 'EXIF', '待补': 'Needs more'
+};
+const tagLabel = tag => (getLang() === 'en' ? (TAG_EN[tag] || tag) : tag);
 
 /* ───────── 小工具 ───────── */
 const $ = (s, r = document) => r.querySelector(s);
@@ -1947,7 +1957,7 @@ function renderTags() {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 12)
     .forEach(([t, n]) => {
-      box.appendChild(el('span', 'tag', `${esc(t)}<i>${n}</i>`));
+      box.appendChild(el('span', 'tag', `${esc(tagLabel(t))}<i>${n}</i>`));
     });
 }
 
@@ -1958,29 +1968,31 @@ function renderReco() {
   const out = [];
 
   const empty = state.landmarks.filter(l => photosOf(l.id).length < 2);
-  if (empty.length) out.push(['补全', `给《${empty[0].name}》再补几张，凑成一组。`]);
+  if (empty.length) {
+    out.push(['reco.fill', t('reco.fillText', { name: placeName(empty[0]) })]);
+  }
 
   const withPhotos = state.landmarks.filter(l => photosOf(l.id).length);
   if (withPhotos.length) {
     const oldest = withPhotos.slice().sort((a, b) => (photosOf(a.id)[0]?.t || 0) - (photosOf(b.id)[0]?.t || 0))[0];
     const days = Math.round((Date.now() - (photosOf(oldest.id)[0]?.t || Date.now())) / 86400000);
-    if (days > 7) out.push(['回访', `《${oldest.name}》已经 ${days} 天没有新照片。`]);
+    if (days > 7) out.push(['reco.revisit', t('reco.revisitText', { name: placeName(oldest), n: days })]);
   }
 
   if (state.landmarks.length >= 2) {
     const a = state.landmarks.find(l => l.lat != null);
     const peer = a && state.landmarks.find(l => l.id !== a.id && l.lat != null && Math.abs(l.lat - a.lat) < 8);
-    if (peer) out.push(['关联', `《${a.name}》与《${peer.name}》纬度相近，适合并在一起看。`]);
+    if (peer) out.push(['reco.peer', t('reco.peerText', { a: placeName(a), b: placeName(peer) })]);
   }
 
   if (state.photos.length && !localStorage.getItem('atlas.backed.v1')) {
-    out.push(['备份', '还没有导出备份。备份入口在页脚的「私钥」里。']);
+    out.push(['reco.backup', t('reco.backupText')]);
   }
 
-  if (!out.length) out.push(['开始', '一切就绪。新建一处地标，第一本相册就开始了。']);
+  if (!out.length) out.push(['reco.start', t('reco.startText')]);
 
   out.slice(0, 4).forEach(([k, text], i) => {
-    list.appendChild(el('li', '', `<i>${pad2(i + 1)}</i><span><b>${esc(k)}</b> · ${esc(text)}</span>`));
+    list.appendChild(el('li', '', `<i>${pad2(i + 1)}</i><span><b>${esc(t(k))}</b> · ${esc(text)}</span>`));
   });
 }
 
