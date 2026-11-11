@@ -34,15 +34,15 @@ export const DICT = {
 
   /* 开篇 */
   'hero.kicker': ['私人地理志', 'PRIVATE ATLAS'],
-  'hero.title1': ['去过的', 'Places'],
-  'hero.title2': ['地方', "I've Been"],
+  'hero.title1': ['经纬所及', 'Meridians'],
+  'hero.title2': ['皆成图册', 'of Memory'],
   'hero.new': ['新建地标', 'New landmark'],
   'hero.globe': ['转动地球', 'Turn the globe'],
   'hero.statLandmarks': ['地标', 'Places'],
   'hero.statPhotos': ['照片', 'Photos'],
   'hero.statLatest': ['最近入库', 'Latest'],
   'hero.rail': ['向下', 'SCROLL'],
-  'site.title': ['去过的地方', "I've Been"],
+  'site.title': ['经纬所及', 'Meridians of Memory'],
   'site.lede': ['一处地标，一本相册。先在地球上落一个点，再把那里的照片放进去——同一座城的片子待在一起，翻起来才像一次回来。',
     'One place, one album. Drop a pin on the globe first, then put that place\'s photos inside — keeping a city\'s frames together is what makes looking back feel like returning.'],
 
