@@ -129,10 +129,11 @@ void main() {
   lit += vec3(1.0, 0.96, 0.88) * spec * smoothstep(0.05, 0.35, ndl);
   lit += dayC * pow(1.0 - max(dot(N, V), 0.0), 3.0) * 0.10;
 
-  /* 夜面＝城市灯光 + 极弱的地球反照（之前 0.05 太强，整块大陆泛紫） */
-  vec3 dark = nightC * 2.6 * uNightGain * smoothstep(0.12, -0.22, ndl)
-           + dayC * 0.018
-           + vec3(0.003, 0.005, 0.011);
+  /* 夜面＝城市灯光 + 极弱地球反照。反照不能高：经过 sRGB 编码后，
+     0.018 的线性值会变成约 9% 的灰度，整块大陆就浮出来了。 */
+  vec3 dark = nightC * 3.4 * uNightGain * smoothstep(0.10, -0.18, ndl)
+           + dayC * 0.006
+           + vec3(0.0012, 0.0018, 0.0042);
 
   vec3 col = mix(dark, lit, day);
 
