@@ -431,9 +431,9 @@ export function createEarth(canvas, opts = {}) {
   const texUrl = (name) => `assets/tex/${name}${mobile ? '-1k' : ''}`;
   const texNames = {
     day: mobile ? 'earth-day-1k.jpg' : 'earth-day.jpg',
-    night: mobile ? 'earth-night-1k.jpg' : 'earth-night.png',
-    clouds: mobile ? 'earth-clouds-1k.png' : 'earth-clouds.png',
-    spec: mobile ? 'earth-specular-1k.jpg' : 'earth-specular.jpg',
+    night: 'earth-night-1k.jpg',
+    clouds: 'earth-clouds-1k.png',
+    spec: 'earth-specular-1k.jpg',
     normal: 'earth-normal.jpg'
   };
   const textures = {};
