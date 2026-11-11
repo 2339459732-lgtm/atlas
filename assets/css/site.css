@@ -686,3 +686,86 @@ input[type="range"]:active::-webkit-slider-thumb { background: var(--accent); sc
   [data-in], [data-in="off"] { translate: 0 0; }
   .hero__veil span { animation: none; }
 }
+
+/* ───────────────── 灯箱 ───────────────── */
+.lb {
+  position: fixed; inset: 0; z-index: 220;
+  display: grid; grid-template-rows: auto 1fr auto;
+  background: #0B0B0A;
+  color: #E8E6DE;
+  opacity: 0; visibility: hidden;
+  transition: opacity .38s var(--ease), visibility .38s;
+}
+.lb.is-open { opacity: 1; visibility: visible; }
+
+.lb__bar {
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 clamp(14px, 2.4vw, 32px);
+  height: 54px;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+}
+.lb__no {
+  font-family: var(--f-mono); font-size: 10px;
+  letter-spacing: .18em; color: rgba(232,230,222,.5);
+}
+.lb__name {
+  font-size: 12.5px; letter-spacing: .04em; color: rgba(232,230,222,.9);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.lb__nav { margin-left: auto; display: flex; gap: 6px; }
+.lb__btn {
+  display: inline-grid; place-items: center;
+  width: 32px; height: 32px; padding: 0;
+  background: transparent; border: 1px solid rgba(255,255,255,.16);
+  color: rgba(232,230,222,.8); cursor: pointer;
+  transition: color .25s var(--ease), border-color .25s var(--ease), background-color .25s var(--ease);
+}
+.lb__btn:hover { color: #0B0B0A; background: #E8E6DE; border-color: #E8E6DE; }
+.lb__btn svg { width: 14px; height: 14px; }
+.lb__btn:disabled { opacity: .28; cursor: default; }
+.lb__btn:disabled:hover { background: transparent; color: rgba(232,230,222,.8); border-color: rgba(255,255,255,.16); }
+
+.lb__stage {
+  display: grid; place-items: center;
+  padding: clamp(12px, 2vw, 28px);
+  min-height: 0;
+}
+.lb__stage canvas {
+  display: block;
+  max-width: 100%; max-height: 100%;
+  width: auto; height: auto;
+  box-shadow: 0 30px 80px -40px rgba(0,0,0,.9);
+  animation: lbIn .5s var(--ease) both;
+}
+@keyframes lbIn { from { opacity: 0; scale: .985 } to { opacity: 1; scale: 1 } }
+
+.lb__foot {
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 clamp(14px, 2.4vw, 32px) 0;
+  height: 46px;
+  border-top: 1px solid rgba(255,255,255,.1);
+  font-family: var(--f-mono); font-size: 9.5px;
+  letter-spacing: .14em; text-transform: uppercase;
+  color: rgba(232,230,222,.45);
+}
+.lb__exif span { padding-right: 12px; margin-right: 12px; border-right: 1px solid rgba(255,255,255,.14); }
+.lb__exif span:last-child { border-right: 0; margin-right: 0; }
+.lb__hint { margin-left: auto; }
+
+@media (max-width: 700px) {
+  .lb__hint { display: none; }
+  .lb__name { font-size: 11.5px; }
+}
+
+/* 相册顶栏的删除 */
+.album__del {
+  margin-left: 6px;
+  padding: 6px 10px;
+  background: transparent; border: 1px solid transparent;
+  font-family: var(--f-mono); font-size: 9.5px;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-3); cursor: pointer;
+  transition: color .25s var(--ease), border-color .25s var(--ease), background-color .25s var(--ease);
+}
+.album__del:hover { color: var(--ink-m); border-color: var(--ink-m); }
+.album__del.is-armed { color: var(--paper-lit); background: var(--ink-m); border-color: var(--ink-m); }

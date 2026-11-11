@@ -272,8 +272,117 @@ function closeAlbum() {
 }
 
 $('#album-close').addEventListener('click', closeAlbum);
+
+/* 删一本：第一次点变成“确定删除？”，两秒后复原 */
+{
+  const del = $('#album-delete');
+  let armed = 0;
+  if (del) del.addEventListener('click', async () => {
+    const lm = currentLandmark();
+    if (!lm) return;
+    if (!armed) {
+      armed = setTimeout(() => { armed = 0; del.textContent = '删这一本'; }, 2600);
+      del.textContent = '确定删除？';
+      del.classList.add('is-armed');
+      return;
+    }
+    clearTimeout(armed); armed = 0;
+    const list = photosOf(lm.id);
+    for (const p of list) await dbDel(p.id);
+    state.photos = state.photos.filter(p => p.landmarkId !== lm.id);
+    state.landmarks = state.landmarks.filter(x => x.id !== lm.id);
+    saveLandmarks();
+    closeAlbum();
+    renderShelf();
+    note('「' + lm.name + '」已删除 · ' + list.length + ' 张照片一并移出');
+  });
+}
 document.addEventListener('keydown', e => {
+  if (lb.open) {
+    if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); lbShow(Math.max(0, lb.index - 1)); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); lbShow(Math.min(lb.list.length - 1, lb.index + 1)); }
+    return;
+  }
   if (e.key === 'Escape' && albumEl.classList.contains('is-open') && !$('#dlg').open) closeAlbum();
+});
+
+window.addEventListener('resize', () => {
+  if (lb.open) { fitLbCanvas(); lbPress.setParams({}); }
+});
+
+/* ───────── 灯箱 ───────── */
+const lbEl = $('#lb');
+const lbCanvas = $('#lb-canvas');
+let lbPress = createPress(lbCanvas);
+if (!lbPress.ok) lbPress = createFallbackPress(lbCanvas);
+
+const lb = { list: [], index: 0, open: false };
+let lbToken = 0;
+
+async function openLightbox(list, index) {
+  lb.list = list;
+  lb.index = index;
+  lb.open = true;
+  lbEl.classList.add('is-open');
+  lbEl.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('is-locked');
+  paintPaper();
+  await lbShow(index);
+  const close = $('#lb-close');
+  if (close) close.focus({ preventScroll: true });
+}
+
+function closeLightbox() {
+  lb.open = false;
+  lbEl.classList.remove('is-open');
+  lbEl.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('is-locked');
+}
+
+async function lbShow(index) {
+  const photo = lb.list[index];
+  if (!photo) return;
+  lb.index = index;
+  const token = ++lbToken;
+
+  $('#lb-no').textContent = String(index + 1).padStart(2, '0') + ' / ' + String(lb.list.length).padStart(2, '0');
+  $('#lb-name').textContent = photo.name;
+
+  const x = photo.exif;
+  const bits = x ? [x.camera, x.fl, x.f, x.ss, x.iso, x.date].filter(Boolean) : [];
+  $('#lb-exif').innerHTML = bits.map(v => '<span>' + esc(v) + '</span>').join('');
+  $('#lb-prev').disabled = index === 0;
+  $('#lb-next').disabled = index === lb.list.length - 1;
+
+  const lm = state.landmarks.find(l => l.id === photo.landmarkId) || state.landmarks[0];
+  lbPress.setAtelier({ ...lm, inkC: lm.inks.c, inkM: lm.inks.m, inkY: lm.inks.y, inkK: lm.inks.k });
+  lbPress.setParams({ ...state.params, reveal: 4 });
+
+  const img = await blobToCanvas(photo.blob);
+  if (token !== lbToken) return;
+  lbPress.setImage(img.canvas, img.w, img.h);
+  fitLbCanvas();
+  lbPress.setParams({ reveal: 4 });
+}
+
+function fitLbCanvas() {
+  const stage = $('#lb-stage');
+  const maxW = Math.max(120, stage.clientWidth - 2);
+  const maxH = Math.max(120, stage.clientHeight - 2);
+  const ar = lbPress.aspect || 1.6;
+  let w = maxW;
+  let h = w / ar;
+  if (h > maxH) { h = maxH; w = h * ar; }
+  lbCanvas.style.width = Math.round(w) + 'px';
+  lbCanvas.style.height = Math.round(h) + 'px';
+}
+
+$('#lb-close').addEventListener('click', closeLightbox);
+$('#lb-prev').addEventListener('click', () => lbShow(Math.max(0, lb.index - 1)));
+$('#lb-next').addEventListener('click', () => lbShow(Math.min(lb.list.length - 1, lb.index + 1)));
+lbEl.addEventListener('click', e => {
+  if (e.target === lbEl || e.target.id === 'lb-stage') closeLightbox();
 });
 
 /* ───────── 相册主图 ───────── */
@@ -302,6 +411,10 @@ async function renderHero(photo, index) {
   $('#hero-name').textContent = photo.name;
   $('#hero-dim').textContent = `${photo.w}×${photo.h}`;
   renderExif(photo);
+  const heroList = photosOf(photo.landmarkId);
+  const heroIdx = Math.max(0, heroList.findIndex(x => x.id === photo.id));
+  $('#hero').style.cursor = 'zoom-in';
+  $('#hero').onclick = () => openLightbox(heroList, heroIdx);
 
   veil.classList.remove('is-done');
   $('#veil-text').textContent = '上版';
@@ -362,10 +475,7 @@ function renderStream(list) {
     if (img.complete) img.classList.add('is-in');
     frame.appendChild(img);
 
-    frame.addEventListener('click', () => {
-      renderHero(p, i);
-      $('#hero').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    frame.addEventListener('click', () => openLightbox(list, i));
     card.appendChild(frame);
 
     const bar = el('div', 'shot__bar');
@@ -621,6 +731,136 @@ $('#dlg-form').addEventListener('submit', e => {
   });
 });
 
+/* ───────── 导出一个自包含的 HTML ───────── */
+function buildExportHTML() {
+  const groups = state.landmarks
+    .map(lm => ({ lm, list: photosOf(lm.id) }))
+    .filter(g => g.list.length);
+
+  const total = groups.reduce((a, g) => a + g.list.length, 0);
+  const date = new Date().toISOString().slice(0, 10);
+
+  const nav = groups.map(g =>
+    '<a href="#' + g.lm.id + '">' + esc(g.lm.name) + '</a>').join('');
+
+  const sections = groups.map(g => {
+    const shots = g.list.map((p, i) => {
+      const cls = i % 7 === 0 ? ' wide' : (i % 7 === 1 || i % 7 === 2) ? ' small' : '';
+      const x = p.exif;
+      const meta = x ? [x.camera, x.fl, x.f, x.ss, x.iso].filter(Boolean).join(' · ') : '';
+      return '<figure class="shot' + cls + '">' +
+        '<img src="' + p.thumb + '" alt="' + esc(p.name) + '" loading="' + (i > 2 ? 'lazy' : 'eager') + '">' +
+        '<figcaption><span>' + esc(p.name) + '</span><em>' + esc(meta) + '</em></figcaption>' +
+        '</figure>';
+    }).join('');
+
+    const metaBits = [g.lm.coord, g.lm.date].filter(Boolean).join('  ·  ');
+    return '<section class="ch" id="' + g.lm.id + '" style="--ac:' + g.lm.inks.c + '">' +
+      '<header><h2>' + esc(g.lm.name) + '</h2>' +
+      '<p class="meta">' + esc(metaBits) + (metaBits ? '  ·  ' : '') + g.list.length + ' 张</p>' +
+      (g.lm.note ? '<p class="note">' + esc(g.lm.note) + '</p>' : '') +
+      '</header><div class="grid">' + shots + '</div></section>';
+  }).join('');
+
+  return '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>ATLAS · 图册</title>' +
+    '<style>' + EXPORT_CSS + '</style></head><body>' +
+    '<header class="top"><span class="mark">ATLAS<em>图册</em></span>' +
+    '<nav>' + nav + '</nav>' +
+    '<span class="stat">' + groups.length + ' 个地标 · ' + total + ' 张照片</span></header>' +
+    '<div class="hero"><h1>去过的地方</h1>' +
+    '<p>一个地标就是一本相册。同一座城市的片子待在一起，翻起来才像一次回来。</p></div>' +
+    '<main>' + sections + '</main>' +
+    '<footer><p>ATLAS · 图册 · ' + date + '</p>' +
+    '<p>每张照片都经过四色分版与加网，再加一点故意的错位。</p></footer>' +
+    '</body></html>';
+}
+
+const EXPORT_CSS = `
+*{box-sizing:border-box}
+body{margin:0;background:#E9E7E0;color:#12120E;
+  font-family:"Archivo","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  font-size:15px;line-height:1.7;font-variant-numeric:tabular-nums;
+  -webkit-font-smoothing:antialiased}
+a{color:inherit}
+.top{position:sticky;top:0;z-index:9;display:flex;align-items:center;gap:24px;
+  height:54px;padding:0 clamp(16px,4vw,64px);
+  background:rgba(233,231,224,.9);backdrop-filter:blur(14px);
+  border-bottom:1px solid #C6C2B6}
+.mark{font-weight:800;font-size:13px;letter-spacing:.16em}
+.mark em{font-style:normal;font-size:10px;letter-spacing:.2em;color:#6E6C62;margin-left:8px}
+.top nav{display:flex;gap:18px;font-size:12px;letter-spacing:.1em;color:#3C3B34}
+.top nav a{text-decoration:none;padding-bottom:2px;border-bottom:1px solid transparent}
+.top nav a:hover{border-bottom-color:#12120E}
+.stat{margin-left:auto;font-family:Consolas,ui-monospace,monospace;font-size:10px;
+  letter-spacing:.12em;text-transform:uppercase;color:#6E6C62;white-space:nowrap}
+.hero{padding:clamp(40px,7vw,110px) clamp(16px,4vw,64px) clamp(24px,3vw,44px)}
+.hero h1{margin:0 0 0 -.05em;font-size:clamp(2.4rem,6.4vw,5rem);line-height:.95;letter-spacing:-.01em}
+.hero p{margin:16px 0 0;max-width:34em;color:#3C3B34;font-size:14px;line-height:1.85}
+.ch{padding:clamp(30px,4.4vw,64px) clamp(16px,4vw,64px);border-top:1px solid #C6C2B6}
+.ch header{display:grid;grid-template-columns:1fr auto;gap:8px 24px;align-items:end;margin-bottom:clamp(18px,2.4vw,32px)}
+.ch h2{margin:0 0 0 -.05em;font-size:clamp(1.8rem,4.4vw,3.2rem);line-height:.98;letter-spacing:-.01em}
+.ch .meta{margin:0;grid-column:2;grid-row:1;font-family:Consolas,ui-monospace,monospace;
+  font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#6E6C62;white-space:nowrap}
+.ch .note{margin:0;grid-column:1/-1;max-width:40em;color:#3C3B34;font-size:13.5px;line-height:1.8}
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:clamp(12px,1.6vw,26px)}
+.shot{margin:0;grid-column:span 4}
+.shot.wide{grid-column:span 6}
+.shot.small{grid-column:span 3}
+.shot img{display:block;width:100%;height:auto;background:#DCD9CF;
+  box-shadow:0 1px 2px rgba(24,20,12,.06),0 10px 28px -16px rgba(24,20,12,.3);
+  transition:transform .8s cubic-bezier(.16,1,.3,1),box-shadow .5s}
+.shot img:hover{transform:scale(1.015);box-shadow:0 2px 4px rgba(24,20,12,.07),0 26px 56px -26px rgba(24,20,12,.4)}
+.shot figcaption{display:flex;justify-content:space-between;gap:12px;padding-top:8px;
+  font-family:Consolas,ui-monospace,monospace;font-size:9px;letter-spacing:.12em;
+  text-transform:uppercase;color:#6E6C62}
+.shot figcaption em{font-style:normal;opacity:.7;text-align:right}
+footer{padding:clamp(36px,5vw,72px) clamp(16px,4vw,64px) 56px;border-top:1px solid #12120E;margin-top:clamp(30px,4vw,64px)}
+footer p{margin:0 0 6px;font-family:Consolas,ui-monospace,monospace;font-size:10px;
+  letter-spacing:.14em;text-transform:uppercase;color:#6E6C62}
+@media(max-width:980px){
+  .grid{grid-template-columns:repeat(6,1fr)}
+  .shot,.shot.wide,.shot.small{grid-column:span 3}
+  .shot.wide{grid-column:span 6}
+  .ch header{grid-template-columns:1fr}
+  .ch .meta{grid-column:1;grid-row:auto}
+}
+@media(max-width:640px){
+  .top nav{display:none}
+  .grid{grid-template-columns:1fr}
+  .shot,.shot.wide,.shot.small{grid-column:span 1}
+  .shot figcaption{font-size:9.5px}
+}
+@media(prefers-color-scheme:dark){
+  body{background:#121210;color:#EFEDE5}
+  .top{background:rgba(18,18,16,.92);border-color:#2A2A26}
+  .top nav,.hero p,.ch .note{color:#B6B3A8}
+  .mark em,.stat,.ch .meta,.shot figcaption,footer p{color:#7E7B72}
+  .ch{border-color:#2A2A26}
+  .shot img{background:#0A0A09;box-shadow:none;border:1px solid #2A2A26}
+  footer{border-color:#EFEDE5}
+}
+`;
+
+function exportStandalone() {
+  const groups = state.landmarks.map(lm => ({ lm, list: photosOf(lm.id) })).filter(g => g.list.length);
+  if (!groups.length) { note('先放几张照片，再导出', true); return; }
+  const total = groups.reduce((a, g) => a + g.list.length, 0);
+  const html = buildExportHTML();
+  try { window.__exportSize = html.length; } catch (e) {}
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'atlas-' + new Date().toISOString().slice(0, 10) + '.html';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  note('已导出 ' + total + ' 张 · 单个 HTML，双击可看，也能直接拖到任何托管平台');
+}
+
 /* ───────── 提示 ───────── */
 let noteTimer = 0;
 function note(msg, isError = false) {
@@ -647,6 +887,8 @@ function note(msg, isError = false) {
 {
   const btn = document.getElementById('btn-theme');
   if (btn) btn.addEventListener('click', toggleTheme);
+  const btnEx = document.getElementById('btn-export');
+  if (btnEx) btnEx.addEventListener('click', () => { exportStandalone(); });
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
     let saved = null;
     try { saved = localStorage.getItem(THEME_KEY); } catch (err) {}

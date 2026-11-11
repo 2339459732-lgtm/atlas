@@ -503,7 +503,8 @@ export function createPress(canvas) {
     gl,
     setImage, clearImage, setAtelier, setParams, pointer, parallax, setPaper,
     setVisible, snapshot, destroy,
-    get hasImage() { return hasTex; }
+    get hasImage() { return hasTex; },
+    get aspect() { return texW && texH ? texW / texH : 1.6; }
   };
 }
 

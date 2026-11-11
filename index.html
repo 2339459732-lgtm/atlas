@@ -38,6 +38,12 @@ try {
         <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.1 5.1l1.4 1.4M17.5 17.5l1.4 1.4M18.9 5.1l-1.4 1.4M6.5 17.5l-1.4 1.4" stroke-linecap="square"/>
       </svg>
     </button>
+    <button type="button" class="btn-icon" id="btn-export" aria-label="导出为一个 HTML 文件" title="导出为一个 HTML 文件，可直接发给别人">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+        <path d="M12 3.5v11m0 0 3.6-3.6M12 14.5 8.4 10.9" stroke-linecap="square"/>
+        <path d="M3.5 15.5V20h17v-4.5" stroke-linecap="square"/>
+      </svg>
+    </button>
     <button type="button" class="btn btn--line" id="btn-new">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="square"/></svg>
       新建地标
@@ -103,6 +109,7 @@ try {
       图册
     </button>
     <p class="album__crumb" id="album-crumb">—</p>
+    <button type="button" class="album__del" id="album-delete">删这一本</button>
     <div class="album__tools">
       <label class="tool" for="cell"><span>网点</span><output id="cell-val">5.6</output></label>
       <input type="range" id="cell" min="34" max="150" value="56" step="1" aria-label="网点尺度" />
@@ -187,6 +194,32 @@ try {
     </div>
   </form>
 </dialog>
+
+<!-- ══════════ 灯箱 ══════════ -->
+<div class="lb" id="lb" aria-hidden="true" role="dialog" aria-label="查看照片">
+  <div class="lb__bar">
+    <span class="lb__no" id="lb-no">—</span>
+    <span class="lb__name" id="lb-name">—</span>
+    <div class="lb__nav">
+      <button type="button" class="lb__btn" id="lb-prev" aria-label="上一张">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M14 5l-7 7 7 7" stroke-linecap="square"/></svg>
+      </button>
+      <button type="button" class="lb__btn" id="lb-next" aria-label="下一张">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M10 5l7 7-7 7" stroke-linecap="square"/></svg>
+      </button>
+      <button type="button" class="lb__btn" id="lb-close" aria-label="关闭">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="square"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="lb__stage" id="lb-stage">
+    <canvas id="lb-canvas" aria-label="加网后的照片"></canvas>
+  </div>
+  <div class="lb__foot">
+    <span class="lb__exif" id="lb-exif"></span>
+    <span class="lb__hint">← → 翻页 · Esc 关闭</span>
+  </div>
+</div>
 
 <script type="module" src="assets/js/main.js"></script>
 </body>
