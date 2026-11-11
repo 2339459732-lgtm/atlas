@@ -210,13 +210,17 @@ function loadSite() {
 }
 function applySite(site) {
   state.site = site;
+  let custom = false;
+  try { custom = !!localStorage.getItem(LS_SITE); } catch {}
+  const title = custom ? site.title : t('site.title');
+  const lede = custom ? (site.lede || '') : t('site.lede');
   const set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
   set('site-name', site.name);
-  set('site-lede', site.lede || '');
+  set('site-lede', lede);
   set('hero-site', site.name);
-  document.title = `${site.name} ${site.cn} · ${site.title}`;
+  document.title = `${site.name} ${site.cn} · ${title}`;
   const md = document.querySelector('meta[name="description"]');
-  if (md) md.setAttribute('content', site.lede || site.title);
+  if (md) md.setAttribute('content', lede || title);
 }
 
 /* ───────── 主题 ───────── */
@@ -2059,6 +2063,8 @@ function applyLang() {
   const label = $('#lang-label');
   if (label) label.textContent = getLang() === 'zh' ? 'EN' : '中';
   document.documentElement.setAttribute('lang', getLang() === 'zh' ? 'zh-CN' : 'en');
+  /* 站点标题与导语跟随语言（未自定义时） */
+  applySite(state.site || loadSite());
   /* 动态区域重绘，保证切换后不残留旧语言 */
   renderWall();
   renderOverview();

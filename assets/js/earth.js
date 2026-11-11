@@ -237,6 +237,11 @@ float hash(vec2 p) {
 
 void main() {
   vec3 col = mix(uBottom, uTop, smoothstep(0.0, 1.0, vP.y));
+
+  /* 星云带（低饱和，避免抢球体） */
+  float band = sin(vP.x * 3.1 + vP.y * 1.7) * 0.5 + 0.5;
+  col += vec3(0.07, 0.09, 0.17) * smoothstep(0.35, 1.0, band) * uGlowAmt;
+
   float d = distance(vP * vec2(1.0, 1.35), vec2(0.34, 0.62));
   col += uGlow * uGlowAmt * exp(-d * d * 3.4);
   float vig = smoothstep(1.32, 0.32, distance(vP, vec2(0.5)));
@@ -384,7 +389,7 @@ export function createEarth(canvas, opts = {}) {
   };
 
   /* 星空 */
-  const starCount = mobile ? 420 : 900;
+  const starCount = mobile ? 620 : 1400;
   const starDir = new Float32Array(starCount * 3);
   const starSize = new Float32Array(starCount);
   const starSeed = new Float32Array(starCount);
