@@ -207,6 +207,7 @@ export const DICT = {
   'vault.open': ['私钥', 'Key'],
 
   /* 页脚 */
+  'foot.rights': ['© 2026 ATLAS · 保留所有权利，未经许可不得演绎', '© 2026 ATLAS · All rights reserved. No derivatives without permission.'],
   'foot.tag': ['私人地理志 · 一处地标，一本相册', 'A private atlas · one place, one album'],
   'foot.font': ['字体', 'Typefaces'],
   'foot.fontValue': ['Archivo Variable · 宋体', 'Archivo Variable · Songti'],

@@ -12,6 +12,8 @@ import { t, applyI18n, initLang, getLang, setLang, LANGS } from './i18n.js';
 
 /* 入口私钥（SHA-256）。改口令：把新口令的 sha256 填到这里 */
 const GATE_HASH = 'c7efaa94c1114dfc8e1d4007d5369b11ab55fa19dea1a31ccf5aabcb3cc39a55';
+/* 入口门禁开关：改为 true 即启用（口令与 GATE_HASH 对应） */
+const GATE_ENABLED = false;
 
 /* ───────── 常量 ───────── */
 const ACCENTS = ['#C9A96A', '#7FA8C9', '#C98A7F', '#9BC9A0', '#B9A0D8', '#D8C08A', '#8FA6B8', '#C97F9E'];
@@ -2130,6 +2132,8 @@ function locateOnGlobe(id) {
 function initGate() {
   const gate = document.getElementById('gate');
   if (!gate) return;
+  if (!GATE_ENABLED) { gate.hidden = true; return; }
+  gate.hidden = false;
   if (sessionStorage.getItem('atlas.gate') === '1') {
     document.documentElement.setAttribute('data-gate', 'open');
     return;
