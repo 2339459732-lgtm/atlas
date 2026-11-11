@@ -116,7 +116,10 @@ void main() {
 
   vec3 dayC = pow(texture2D(uDay, vUV).rgb, vec3(2.2));
   /* 夜图带一点紫底色，取高次幂压掉，只留城市的灯 */
-  vec3 nightC = pow(texture2D(uNight, vUV).rgb, vec3(2.7)) * vec3(1.0, 0.9, 0.72);
+  vec3 nightC = pow(texture2D(uNight, vUV).rgb, vec3(2.7));
+  /* 夜图本身偏蓝紫，去一部分饱和并往暖白拉，才像真实的城市灯光 */
+  float nLum = dot(nightC, vec3(0.299, 0.587, 0.114));
+  nightC = mix(vec3(nLum) * vec3(1.04, 0.98, 0.88), nightC, 0.5) * vec3(1.0, 0.94, 0.82);
   /* 只让成片的水面有镜面高光，湖泊/噪点不会变成蓝点 */
   float ocean = smoothstep(0.28, 0.72, texture2D(uSpec, vUV).r);
 
