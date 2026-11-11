@@ -272,7 +272,7 @@ void main() {
   vec2 p = (uv - 0.5) * vec2(1.62, 1.0);
   float ang = -0.58;
   vec2 q = vec2(p.x * cos(ang) - p.y * sin(ang), p.x * sin(ang) + p.y * cos(ang));
-  float band = exp(-pow(abs(q.y - 0.02) * 9.5, 2.0));
+  float band = exp(-pow(abs(q.y - 0.26) * 8.6, 2.0));
   band *= smoothstep(1.05, 0.15, abs(q.x));
 
   /* 两级噪声：低频定轮廓，高频出丝；脊状变换让云气有纤维感 */
@@ -317,7 +317,7 @@ void main() {
   /* 呼吸式的闪烁，幅度很小，避免整片星海一起眨 */
   float tw = 0.84 + 0.16 * sin(uTime * 0.55 + aSeed * 6.283);
   gl_PointSize = aSize * uDpr * tw;
-  vA = uStars * tw * (0.30 + 0.70 * aSeed);
+  vA = uStars * tw * (0.42 + 0.58 * aSeed);
   /* 色温：偏蓝的年轻星 ↔ 偏暖的老星 */
   vC = mix(vec3(0.72, 0.82, 1.0), vec3(1.0, 0.93, 0.82), fract(aSeed * 7.31));
 }`;
@@ -458,7 +458,7 @@ export function createEarth(canvas, opts = {}) {
     starDir[i * 3 + 2] = r * Math.sin(th);
     /* 星等分布：绝大多数是暗星，少数亮星撑起层次 */
     const m = Math.pow(Math.random(), 3.2);
-    starSize[i] = 0.7 + m * 3.4;
+    starSize[i] = 0.85 + m * 3.1;
     starSeed[i] = Math.random();
   }
   const starBuf = {
