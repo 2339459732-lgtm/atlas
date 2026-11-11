@@ -4,6 +4,12 @@
    无第三方依赖。纹理：NASA Visible Earth（公有领域），经 three.js 示例分发。
    ══════════════════════════════════════════════════════════════════ */
 
+import {
+  VS_QUAD, FS_SKY, VS_STAR, FS_STAR, VS_METEOR, FS_METEOR,
+  LAYOUT, LANES, METEOR_SPEC,
+  frame as skyFrame, catalog as skyCatalog
+} from './skyfield.js';
+
 const DEG = Math.PI / 180;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 /* 缩放范围：0.5 贴近地表，1.9 退到远轨，给足推拉空间 */
@@ -240,255 +246,6 @@ void main() {
   gl_FragColor = vec4(uColor * a, a);
 }`;
 
-const VS_BG = `
-attribute vec2 aP;
-varying vec2 vP;
-void main() {
-  vP = aP * 0.5 + 0.5;
-  gl_Position = vec4(aP, 0.9999, 1.0);
-}`;
-
-const FS_NEB = `
-precision highp float;
-uniform vec3 uRight;
-uniform vec3 uUp;
-uniform vec3 uFwd;
-uniform float uTanHalf;
-uniform float uAspect;
-uniform vec3 uPole;      /* 银极方向（世界坐标，单位向量） */
-uniform vec3 uCore;      /* 银心方向 */
-uniform float uOct;      /* 噪声阶数，随画质自适应 */
-varying vec2 vP;
-
-float hash13(vec3 p) {
-  p = fract(p * 0.1031);
-  p += dot(p, p.yzx + 33.33);
-  return fract((p.x + p.y) * p.z);
-}
-
-/* 三维值噪声：定义在方向域上，因此没有经纬接缝，也不会随视角拉伸 */
-float vnoise(vec3 x) {
-  vec3 i = floor(x);
-  vec3 f = fract(x);
-  f = f * f * (3.0 - 2.0 * f);
-  float n000 = hash13(i);
-  float n100 = hash13(i + vec3(1.0, 0.0, 0.0));
-  float n010 = hash13(i + vec3(0.0, 1.0, 0.0));
-  float n110 = hash13(i + vec3(1.0, 1.0, 0.0));
-  float n001 = hash13(i + vec3(0.0, 0.0, 1.0));
-  float n101 = hash13(i + vec3(1.0, 0.0, 1.0));
-  float n011 = hash13(i + vec3(0.0, 1.0, 1.0));
-  float n111 = hash13(i + vec3(1.0, 1.0, 1.0));
-  float nx00 = mix(n000, n100, f.x);
-  float nx10 = mix(n010, n110, f.x);
-  float nx01 = mix(n001, n101, f.x);
-  float nx11 = mix(n011, n111, f.x);
-  return mix(mix(nx00, nx10, f.y), mix(nx01, nx11, f.y), f.z);
-}
-
-float fbm(vec3 p, float oct) {
-  float v = 0.0;
-  float a = 0.5;
-  float s = 0.0;
-  for (int i = 0; i < 5; i++) {
-    if (float(i) >= oct) break;
-    v += a * vnoise(p);
-    s += a;
-    p = p * 2.04 + 13.7;
-    a *= 0.5;
-  }
-  return v / max(s, 0.0001);
-}
-
-void main() {
-  vec2 ndc = vP * 2.0 - 1.0;
-  vec3 dir = normalize(uRight * (ndc.x * uTanHalf * uAspect) + uUp * (ndc.y * uTanHalf) + uFwd);
-
-  float b = dot(dir, uPole);
-  vec3 perp = dir - uPole * b;
-
-  /* 银盘剖面：亮脊套在宽晕里，带外迅速回到深空底色 */
-  float halo = exp(-pow(abs(b) * 7.60, 2.0));
-  float spine = exp(-pow(abs(b) * 19.0, 2.0));
-  float band = halo * 0.42 + spine * 0.72;
-
-  float coreAng = max(0.0, dot(dir, uCore));
-  float core = pow(coreAng, 22.0);
-
-  /* 域扭曲：幅度必须远小于噪声单元，否则拉出梵高式旋涡 */
-  vec3 p = dir * 7.0;
-  /* 扭曲场只要低频：1 阶就够，省下的算力留给主体云气 */
-  vec3 w = vec3(fbm(p + 3.1, 1.0), fbm(p + 7.7, 1.0), fbm(p + 13.3, 1.0)) - 0.49;
-  vec3 q = p + w * 1.15;
-
-  /* 亮部：低频、平缓。分辨率无关，放大不会糊，也不会有噪点 */
-  float n1 = fbm(q * 1.45, uOct);
-  float n2 = fbm(q * 3.4, 2.0);
-  /* 平方一次：把亮暗差拉开，带子才不是一块平涂 */
-  float dens = 0.18 + 1.05 * n1 + 0.42 * n2;
-  float glow = band * pow(dens, 1.45);
-  glow *= 0.78 + 0.34 * core;
-
-  /* 暗尘：在「银极 ×24 / 银盘方向 ×5」的拉伸坐标系里取样，
-     沿银盘方向变化慢、垂直方向快 → 平行于银河的细丝，而不是圆斑 */
-  vec3 dq = uPole * b * 21.0 + perp * 9.0;
-  float d1 = fbm(dq + 31.0, 3.0);
-  float d2 = fbm(dq * 3.4 + 57.0, 2.0);
-  float dust = smoothstep(0.535, 0.705, d1 * 0.62 + d2 * 0.40);
-  dust *= smoothstep(0.78, 0.18, abs(b));
-  glow *= 1.0 - 0.62 * dust;
-
-  /* 银心：一团更亮更暖的核球辉光 */
-  glow += core * 0.16;
-
-  /* 软肩：直接把叠了三层的亮度送出去会爆成白块，
-     用指数肩压到 0.52 以内，亮部仍保留层次 */
-  glow = 0.50 * (1.0 - exp(-glow * 1.85));
-
-  /* 色调：银心暖琥珀 → 外围冷蓝 */
-  vec3 cool = vec3(0.34, 0.44, 0.68);
-  vec3 warm = vec3(1.00, 0.90, 0.76);
-  vec3 col = mix(cool, warm, clamp(core * 0.62 + n1 * 0.12, 0.0, 0.60));
-  col *= glow;
-
-  gl_FragColor = vec4(col, 1.0);
-}`;
-
-const FS_BG = `
-precision highp float;
-uniform sampler2D uNeb;
-uniform float uHasNeb;
-uniform vec3 uTop;
-uniform vec3 uBottom;
-uniform float uGrain;
-uniform float uNebula;
-uniform float uTime;
-varying vec2 vP;
-
-float hash(vec2 p) {
-  p = fract(p * vec2(123.34, 456.21));
-  p += dot(p, p + 34.56);
-  return fract(p.x * p.y);
-}
-
-float meteor(vec2 uv, vec2 head, vec2 dir, float len, float width) {
-  vec2 tail = head - dir * len;
-  vec2 d = uv - tail;
-  float t = clamp(dot(d, dir) / len, 0.0, 1.0);
-  vec2 closest = tail + dir * t * len;
-  float dist = length(uv - closest);
-  float w = width * (1.0 - 0.85 * t);
-  return smoothstep(w, 0.0, dist) * t * t;
-}
-
-void main() {
-  vec2 uv = vP;
-  vec3 col = mix(uBottom, uTop, smoothstep(0.0, 1.0, uv.y));
-
-  /* 深空底色：极淡的冷调，避免死黑 */
-  col += vec3(0.0045, 0.0062, 0.0115) * (0.55 + 0.45 * (1.0 - uv.y));
-
-  /* 星云：半分辨率解析生成后双线性上采样，只贡献低频结构 */
-  if (uHasNeb > 0.5) {
-    col += texture2D(uNeb, uv).rgb * uNebula * 0.62;
-  }
-
-  /* 流星 */
-  for (int i = 0; i < 2; i++) {
-    float fi = float(i);
-    float period = 9.5 + fi * 6.3;
-    float tt = uTime + fi * 4.7;
-    float cyc = floor(tt / period);
-    float ph = fract(tt / period);
-    float dur = 0.16;
-    float k = ph / dur;
-    if (k < 1.0) {
-      float r1 = hash(vec2(cyc, fi + 1.3));
-      float r2 = hash(vec2(cyc + 9.1, fi + 5.7));
-      vec2 start = vec2(-0.20 + r1 * 0.95, 0.62 + r2 * 0.22);
-      vec2 dirv = normalize(vec2(0.90, -0.46));
-      vec2 head = start + dirv * k * 0.78;
-      float s = meteor(uv, head, dirv, 0.26, 0.0042);
-      float fade = smoothstep(0.0, 0.12, k) * (1.0 - smoothstep(0.75, 1.0, k));
-      col += vec3(0.90, 0.95, 1.0) * s * fade * 1.8;
-      col += vec3(0.62, 0.74, 1.0) * pow(s, 0.55) * fade * 0.30;
-      float headGlow = smoothstep(0.014, 0.0, length(uv - head));
-      col += vec3(1.0, 0.99, 0.96) * headGlow * fade * 1.1;
-    }
-  }
-
-  /* 四角压暗 */
-  float dd = distance(uv, vec2(0.5)) / 0.86;
-  col *= pow(clamp(1.0 - dd * dd * 0.30, 0.0, 1.0), 0.9);
-
-  /* 有序抖动：16bit 级噪声，抹掉 8bit 输出在暗部的色带 */
-  float dth = hash(uv * 2048.0) + hash(uv * 977.0 + 5.0) - 1.0;
-  col += dth * max(uGrain, 0.0016);
-
-  gl_FragColor = vec4(max(col, 0.0), 1.0);
-}`;
-
-const VS_STAR = `
-attribute vec3 aDir;
-attribute vec3 aCol;
-attribute float aSize;
-attribute float aBright;
-attribute float aSeed;
-attribute float aSpike;
-uniform mat4 uProj;
-uniform mat4 uView;
-uniform float uDpr;
-uniform float uTime;
-uniform float uStars;
-varying float vA;
-varying vec3 vC;
-varying float vSpike;
-void main() {
-  vec3 p = (uView * vec4(aDir, 0.0)).xyz;
-  vec4 clip = uProj * vec4(p, 1.0);
-  gl_Position = vec4(clip.xy, 0.9999 * clip.w, clip.w);
-
-  float px = aSize * uDpr;
-  /* 亚像素星：撑到 2px 并按面积折回亮度，能量守恒，转动时不会忽明忽暗 */
-  float boost = 1.0;
-  if (px < 2.0) {
-    boost = max(px * px, 0.04) * 0.25;
-    px = 2.0;
-  }
-  gl_PointSize = px;
-
-  /* 闪烁只在亮星上可见，幅度极小 */
-  float tw = 0.94 + 0.06 * sin(uTime * 0.9 + aSeed * 6.283);
-  vA = uStars * aBright * boost * tw * (0.72 + 0.46 * aSpike);
-  vC = aCol;
-  vSpike = aSpike;
-}`;
-
-const FS_STAR = `
-precision mediump float;
-varying float vA;
-varying vec3 vC;
-varying float vSpike;
-void main() {
-  vec2 d = gl_PointCoord - 0.5;
-  float r = length(d) * 2.0;
-  if (r > 1.0) discard;
-
-  /* 点扩散函数：高斯核 + 宽晕，模拟成像系统的光学响应 */
-  float core = exp(-r * r * 17.0);
-  float halo = exp(-r * r * 3.6) * 0.18;
-  float a = (core + halo) * vA;
-
-  /* 亮星的十字衍射星芒 */
-  if (vSpike > 0.5) {
-    float sx = max(0.0, 1.0 - abs(d.x) * 34.0);
-    float sy = max(0.0, 1.0 - abs(d.y) * 34.0);
-    a += (sx + sy) * (1.0 - r) * 0.32 * vA;
-  }
-
-  gl_FragColor = vec4(vC * a, a);
-}`;
-
 /* ── 几何 ── */
 function buildSphere(seg, rings, radius) {
   const pos = [], uv = [], idx = [];
@@ -531,7 +288,6 @@ export function createEarth(canvas, opts = {}) {
     e.preventDefault();
     state.running = false;
     state.ready = false;
-    skyFbo = null; skyTex = null; skyW = 0; skyH = 0; skyOk = false;
     console.warn('[earth] context lost');
   });
   canvas.addEventListener('webglcontextrestored', () => {
@@ -552,7 +308,8 @@ export function createEarth(canvas, opts = {}) {
     auto: true, hovered: null, ready: false,
     dpr: 1, w: 0, h: 0, baseDist: 3.6, quality: 1,
     dragging: false, moved: 0, last: null,
-    sunYaw: 0, t: 0, sunGeo: null
+    sunYaw: 0, t: 0, sunGeo: null,
+    meteors: [], nextMeteor: 4.5, meteorIdx: 0
   };
 
   /* ── 程序 ── */
@@ -584,7 +341,7 @@ export function createEarth(canvas, opts = {}) {
     return out;
   }
 
-  let progEarth, progCloud, progAtmo, progBg, progNeb, progStar, progMote;
+  let progEarth, progCloud, progAtmo, progBg, progStar, progMeteor, progMote;
 
   const sphere = buildSphere(SEG, RINGS, 1);
   const cloudGeo = buildSphere(SEG, RINGS, 1.012);
@@ -603,129 +360,49 @@ export function createEarth(canvas, opts = {}) {
     cidx: buffer(cloudGeo.idx, gl.ELEMENT_ARRAY_BUFFER),
     apos: buffer(atmoGeo.pos),
     aidx: buffer(atmoGeo.idx, gl.ELEMENT_ARRAY_BUFFER),
-    quad: buffer(new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]))
+    quad: buffer(new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1])),
+    meteor: buffer(meteorParts)
   };
 
   /* ── 星空 ──
-     不是随机撒点：按真实天球的分布规律生成——
-     银盘内星密度远高于银极，银心方向再叠一团；
-     星等按幂律分布（暗星占绝大多数）；色温取自黑体的稀疏采样。 */
+     星表由 skyfield.js 按密度场逐点生成：位置、尺寸、亮度、色温、种子
+     全部记录在缓冲区里，可枚举、可复现（种子固定），不是随机撒点。 */
 
-  const nrm = v => { const n = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / n, v[1] / n, v[2] / n]; };
-  const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-  const crs = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const starCount = mobile ? 46000 : 190000;
 
-  /* 由初始机位反推银极与银心：银道与视轴成 17°，斜穿画面；银心贴近球体边缘 */
-  const GAL = (() => {
-    const cp = Math.cos(0.40), sp = Math.sin(0.40);
-    const e = [cp * Math.sin(0.30), sp, cp * Math.cos(0.30)];
-    const fwd = nrm([-e[0], -e[1], -e[2]]);
-    const rgt = nrm([fwd[1], -fwd[0], 0]);
-    const upv = crs(rgt, fwd);
-    const off = 0.215;                       /* 银道到视轴的角距（弧度） */
-    const lean = 0.55;
-    const pole = nrm([
-      fwd[0] * Math.sin(off) + 0.94 * (rgt[0] * Math.cos(lean) + upv[0] * Math.sin(lean)),
-      fwd[1] * Math.sin(off) + 0.94 * (rgt[1] * Math.cos(lean) + upv[1] * Math.sin(lean)),
-      fwd[2] * Math.sin(off) + 0.94 * (rgt[2] * Math.cos(lean) + upv[2] * Math.sin(lean))
-    ]);
-    /* 银道面内离视轴最近的方向，再沿银道偏 24°，避免正对球心 */
-    const near = nrm([fwd[0] - pole[0] * dot3(fwd, pole), fwd[1] - pole[1] * dot3(fwd, pole), fwd[2] - pole[2] * dot3(fwd, pole)]);
-    const tang = nrm(crs(pole, near));
-    const dl = 0.14;
-    const core = nrm([
-      near[0] * Math.cos(dl) + tang[0] * Math.sin(dl),
-      near[1] * Math.cos(dl) + tang[1] * Math.sin(dl),
-      near[2] * Math.cos(dl) + tang[2] * Math.sin(dl)
-    ]);
-    const e1 = nrm(crs(pole, [0, 1, 0]));
-    const e2 = nrm(crs(pole, e1));
-    const cu = nrm(crs(core, [0, 1, 0]));
-    const cv = nrm(crs(core, cu));
-    return { pole, core, e1, e2, cu, cv };
-  })();
+  /* 银道坐标系：由机位反推，使亮脊落在 LAYOUT.bandY、银心落在 LAYOUT.coreX。
+     第一次 resize 拿到真实宽高比后计算，保证横幅画面里也是水平的。 */
+  let GAL = null;
+  let starBuf = null;
+  let starN = 0;
+  let skyReady = false;
 
-  const starCount = mobile ? 20000 : 60000;
-  const starDir = new Float32Array(starCount * 3);
-  const starCol = new Float32Array(starCount * 3);
-  const starSize = new Float32Array(starCount);
-  const starBright = new Float32Array(starCount);
-  const starSeed = new Float32Array(starCount);
-  const starSpike = new Float32Array(starCount);
-
-  /* 色温采样：蓝白 A/B → 正白 F/G → 浅黄 → 橙 K/M，权重照肉眼可见星的比例 */
-  const TEMPS = [
-    [0.63, 0.76, 1.00, 0.14],
-    [0.80, 0.87, 1.00, 0.22],
-    [1.00, 0.98, 0.95, 0.28],
-    [1.00, 0.93, 0.80, 0.20],
-    [1.00, 0.80, 0.58, 0.12],
-    [1.00, 0.68, 0.46, 0.04]
-  ];
-  const pickColor = () => {
-    let r = Math.random();
-    for (const t of TEMPS) { if (r < t[3]) return [t[0], t[1], t[2]]; r -= t[3]; }
-    return [1, 0.98, 0.95];
-  };
-
-  for (let i = 0; i < starCount; i++) {
-    const roll = Math.random();
-    let d;
-
-    if (roll < 0.38) {
-      /* 各向同性背景 */
-      const z = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2;
-      const r = Math.sqrt(1 - z * z);
-      d = [r * Math.cos(th), z, r * Math.sin(th)];
-    } else if (roll < 0.86) {
-      /* 银盘：|b| 指数衰减，星密集在 ±8° 内 */
-      const b = (Math.random() < 0.5 ? 1 : -1) * Math.pow(Math.random(), 2.0) * 0.30;
-      const l = Math.random() * Math.PI * 2;
-      const cb = Math.cos(b), sb = Math.sin(b);
-      const cl = Math.cos(l), sl = Math.sin(l);
-      d = nrm([
-        GAL.pole[0] * sb + (GAL.e1[0] * cl + GAL.e2[0] * sl) * cb,
-        GAL.pole[1] * sb + (GAL.e1[1] * cl + GAL.e2[1] * sl) * cb,
-        GAL.pole[2] * sb + (GAL.e1[2] * cl + GAL.e2[2] * sl) * cb
-      ]);
-    } else {
-      /* 银心星云：24° 锥内的高斯团 */
-      const ct = 1 - Math.random() * (1 - Math.cos(0.42));
-      const th = Math.acos(Math.min(1, Math.max(-1, ct)));
-      const ph = Math.random() * Math.PI * 2;
-      const sp = Math.sin(th), cp2 = Math.cos(th);
-      d = nrm([
-        GAL.core[0] * cp2 + (GAL.cu[0] * Math.cos(ph) + GAL.cv[0] * Math.sin(ph)) * sp,
-        GAL.core[1] * cp2 + (GAL.cu[1] * Math.cos(ph) + GAL.cv[1] * Math.sin(ph)) * sp,
-        GAL.core[2] * cp2 + (GAL.cu[2] * Math.cos(ph) + GAL.cv[2] * Math.sin(ph)) * sp
-      ]);
-    }
-
-    starDir[i * 3] = d[0];
-    starDir[i * 3 + 1] = d[1];
-    starDir[i * 3 + 2] = d[2];
-
-    const c = pickColor();
-    starCol[i * 3] = c[0]; starCol[i * 3 + 1] = c[1]; starCol[i * 3 + 2] = c[2];
-
-    /* 星等：四级分布，亮星极少但很亮 */
-    const q = Math.random();
-    let size, bright;
-    if (q < 0.0022) { size = 5.5 + Math.random() * 6.5; bright = 1.00; }
-    else if (q < 0.040) { size = 2.2 + Math.random() * 2.2; bright = 0.88; }
-    else if (q < 0.260) { size = 1.25 + Math.random() * 0.95; bright = 0.68; }
-    else { size = 0.70 + Math.pow(Math.random(), 1.8) * 0.95; bright = 0.34 + Math.random() * 0.30; }
-
-    starSize[i] = size;
-    starBright[i] = bright;
-    starSpike[i] = size > 4.6 ? 1 : 0;
-    starSeed[i] = Math.random();
+  function buildSky() {
+    GAL = skyFrame({
+      yaw: 0.30, pitch: 0.40,
+      bandY: LAYOUT.bandY, coreX: LAYOUT.coreX,
+      aspect: (state.w / state.h) || 1.2,
+      tanHalf: Math.tan(15 * DEG)
+    });
+    const cat = skyCatalog({
+      count: starCount, pole: GAL.pole, core: GAL.core, e1: GAL.e1, e2: GAL.e2
+    });
+    starBuf = { dir: buffer(cat.dir), pack: buffer(cat.pack) };
+    starN = cat.count;
+    skyReady = true;
   }
 
-  const starBuf = {
-    dir: buffer(starDir), col: buffer(starCol), size: buffer(starSize),
-    bright: buffer(starBright), seed: buffer(starSeed), spike: buffer(starSpike)
-  };
+  /* ── 流星：一条二次贝塞尔轨迹 + 一组带 trail 参数的粒子 ── */
+  const meteorParts = (() => {
+    const n = METEOR_SPEC.particles;
+    const a = new Float32Array(n * 3);
+    for (let k = 0; k < n; k++) {
+      a[k * 3] = k / (n - 1);                    /* trail 参数 0=头 1=尾 */
+      a[k * 3 + 1] = (Math.random() * 2 - 1);    /* 横向散开 */
+      a[k * 3 + 2] = Math.random();              /* 种子 */
+    }
+    return a;
+  })();
 
   /* 缓慢移动的光点 */
   const moteCount = mobile ? 60 : 110;
@@ -812,9 +489,9 @@ export function createEarth(canvas, opts = {}) {
   }
 
   function buildPrograms() {
-    progBg = program(VS_BG, FS_BG, { aP: 'aP' }, 'bg');
-    progNeb = program(VS_BG, FS_NEB, { aP: 'aP' }, 'neb');
-    progStar = program(VS_STAR, FS_STAR, { aDir: 'aDir', aCol: 'aCol', aSize: 'aSize', aBright: 'aBright', aSeed: 'aSeed', aSpike: 'aSpike' }, 'star');
+    progBg = program(VS_QUAD, FS_SKY, { aP: 'aP' }, 'sky');
+    progStar = program(VS_STAR, FS_STAR, { aDir: 'aDir', aPack: 'aPack' }, 'star');
+    progMeteor = program(VS_METEOR, FS_METEOR, { aM: 'aM' }, 'meteor');
     progEarth = program(VS_SPHERE, FS_EARTH, { aPos: 'aPos', aUV: 'aUV' }, 'earth');
     progCloud = program(VS_SPHERE, FS_CLOUD, { aPos: 'aPos', aUV: 'aUV' }, 'cloud');
     progAtmo = program(VS_SPHERE, FS_ATMO, { aPos: 'aPos', aUV: 'aUV' }, 'atmo');
@@ -976,6 +653,17 @@ export function createEarth(canvas, opts = {}) {
       }
     }
 
+    /* ── 流星调度 ──
+       按区间随机生成，最多同时两颗；每颗走完后从列表里摘掉。 */
+    state.meteors = state.meteors.filter(m => t - m.born < METEOR_SPEC.life);
+    if (state.ready && t > state.nextMeteor && state.meteors.length < 2) {
+      const spec = METEOR_SPEC.paths[state.meteorIdx % METEOR_SPEC.paths.length];
+      state.meteorIdx++;
+      state.meteors.push({ born: t, p0: spec.p0, c: spec.c, p1: spec.p1 });
+      const span = METEOR_SPEC.interval;
+      state.nextMeteor = t + span[0] + Math.random() * (span[1] - span[0]);
+    }
+
     if (state.ready) {
       /* 自转 */
       if (state.auto && !state.dragging) state.spin += dt * 0.018;   /* 约 1°/s，缓慢自西向东 */
@@ -1037,38 +725,6 @@ export function createEarth(canvas, opts = {}) {
   };
   let themeState = theme;
 
-  /* ── 星云的离屏目标 ──
-     星云只有低频结构，半分辨率足够；上采样是 2 倍的双线性插值，
-     对平滑场不可见，却把最贵的那部分计算量压到 1/4。 */
-  let skyFbo = null, skyTex = null, skyW = 0, skyH = 0, skyOk = false;
-
-  function ensureSkyTarget() {
-    const w = Math.max(4, Math.round(canvas.width * 0.5));
-    const h = Math.max(4, Math.round(canvas.height * 0.5));
-    if (skyFbo && skyW === w && skyH === h) return skyOk;
-
-    if (skyTex) { gl.deleteTexture(skyTex); skyTex = null; }
-    if (skyFbo) { gl.deleteFramebuffer(skyFbo); skyFbo = null; }
-
-    const tex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-    const fbo = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-    skyOk = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.bindTexture(gl.TEXTURE_2D, null);
-
-    skyTex = tex; skyFbo = fbo; skyW = w; skyH = h;
-    return skyOk;
-  }
-
   function draw(t) {
     const g = gl;
     g.viewport(0, 0, canvas.width, canvas.height);
@@ -1096,7 +752,9 @@ export function createEarth(canvas, opts = {}) {
     const sl = Math.hypot(sun[0], sun[1], sun[2]) || 1;
     sun[0] /= sl; sun[1] /= sl; sun[2] /= sl;
 
-    /* ── 天空：第一遍在半分辨率下解析生成星云 ── */
+    /* ── 天空：一次绘制，无噪声、无离屏缓冲 ── */
+    if (!skyReady && state.w > 0) buildSky();
+
     const fwd = [-eye[0], -eye[1], -eye[2]];
     const fl = Math.hypot(fwd[0], fwd[1], fwd[2]) || 1;
     fwd[0] /= fl; fwd[1] /= fl; fwd[2] /= fl;
@@ -1111,76 +769,102 @@ export function createEarth(canvas, opts = {}) {
 
     g.disable(g.DEPTH_TEST);
     g.depthMask(false);
-
-    let hasNeb = 0;
-    if (themeState.nebula > 0.001 && ensureSkyTarget()) {
-      g.bindFramebuffer(g.FRAMEBUFFER, skyFbo);
-      g.viewport(0, 0, skyW, skyH);
-      g.disable(g.BLEND);
-      g.useProgram(progNeb.p);
-      g.bindBuffer(g.ARRAY_BUFFER, buf.quad);
-      g.enableVertexAttribArray(progNeb.a.aP);
-      g.vertexAttribPointer(progNeb.a.aP, 2, g.FLOAT, false, 0, 0);
-      g.uniform3fv(progNeb.u.uRight, rgt);
-      g.uniform3fv(progNeb.u.uUp, upv);
-      g.uniform3fv(progNeb.u.uFwd, fwd);
-      g.uniform1f(progNeb.u.uTanHalf, Math.tan(15 * DEG));
-      g.uniform1f(progNeb.u.uAspect, aspect);
-      g.uniform3fv(progNeb.u.uPole, GAL.pole);
-      g.uniform3fv(progNeb.u.uCore, GAL.core);
-      /* 噪声阶数跟着画质走：4 阶最细腻，掉帧时降到 2 阶 */
-      g.uniform1f(progNeb.u.uOct, state.quality >= 0.92 ? 4 : (state.quality >= 0.82 ? 3 : 2));
-      g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
-      g.bindFramebuffer(g.FRAMEBUFFER, null);
-      g.viewport(0, 0, canvas.width, canvas.height);
-      hasNeb = 1;
-    }
-
-    /* ── 第二遍：全分辨率合成（底色 + 星云 + 流星 + 暗角 + 抖动） ── */
     g.disable(g.BLEND);
+
     g.useProgram(progBg.p);
     g.bindBuffer(g.ARRAY_BUFFER, buf.quad);
     g.enableVertexAttribArray(progBg.a.aP);
     g.vertexAttribPointer(progBg.a.aP, 2, g.FLOAT, false, 0, 0);
-    bindTex(progBg.u.uNeb, skyTex || textures.night, 5);
-    g.uniform1f(progBg.u.uHasNeb, hasNeb);
+    g.uniform3fv(progBg.u.uRight, rgt);
+    g.uniform3fv(progBg.u.uUp, upv);
+    g.uniform3fv(progBg.u.uFwd, fwd);
+    g.uniform1f(progBg.u.uTanHalf, Math.tan(15 * DEG));
+    g.uniform1f(progBg.u.uAspect, aspect);
+    if (GAL) {
+      g.uniform3fv(progBg.u.uPole, GAL.pole);
+      g.uniform3fv(progBg.u.uCore, GAL.core);
+      g.uniform3fv(progBg.u.uE1, GAL.e1);
+      g.uniform3fv(progBg.u.uE2, GAL.e2);
+    }
+    g.uniform3fv(progBg.u.uCool, themeState.spaceCool || [0.42, 0.52, 0.72]);
+    g.uniform3fv(progBg.u.uWarm, themeState.spaceWarm || [1.0, 0.86, 0.66]);
     g.uniform3fv(progBg.u.uTop, themeState.spaceTop);
     g.uniform3fv(progBg.u.uBottom, themeState.spaceBottom);
+    g.uniform1f(progBg.u.uGlow, themeState.nebula == null ? 1 : themeState.nebula);
     g.uniform1f(progBg.u.uGrain, themeState.grain);
-    g.uniform1f(progBg.u.uTime, t);
-    g.uniform1f(progBg.u.uNebula, themeState.nebula == null ? 1 : themeState.nebula);
+    /* 暗带参数逐条上传：站内与星表共用同一份定义 */
+    const laneV = new Float32Array(24);
+    const laneW = new Float32Array(12);
+    LANES.forEach((L, i) => {
+      laneV[i * 4] = L.b0; laneV[i * 4 + 1] = L.amp; laneV[i * 4 + 2] = L.k; laneV[i * 4 + 3] = L.ph;
+      laneW[i * 2] = L.w; laneW[i * 2 + 1] = L.d;
+    });
+    g.uniform4fv(progBg.u['uLane[0]'], laneV);
+    g.uniform2fv(progBg.u['uLaneW[0]'], laneW);
+    g.uniform1f(progBg.u.uLaneN, LANES.length);
     g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
 
-    /* 星空 */
-    if (themeState.stars > 0.001) {
+    /* ── 星点：整张星表一次画完 ── */
+    if (starBuf && themeState.stars > 0.001) {
       g.enable(g.BLEND);
-      /* 纯加色混合：光点在物理上是叠加的光，用 SRC_ALPHA 会二次衰减 */
+      /* 纯加色：光点在物理上就是叠加的光 */
       g.blendFunc(g.ONE, g.ONE);
       g.useProgram(progStar.p);
       g.bindBuffer(g.ARRAY_BUFFER, starBuf.dir);
       g.enableVertexAttribArray(progStar.a.aDir);
       g.vertexAttribPointer(progStar.a.aDir, 3, g.FLOAT, false, 0, 0);
-      g.bindBuffer(g.ARRAY_BUFFER, starBuf.col);
-      g.enableVertexAttribArray(progStar.a.aCol);
-      g.vertexAttribPointer(progStar.a.aCol, 3, g.FLOAT, false, 0, 0);
-      g.bindBuffer(g.ARRAY_BUFFER, starBuf.size);
-      g.enableVertexAttribArray(progStar.a.aSize);
-      g.vertexAttribPointer(progStar.a.aSize, 1, g.FLOAT, false, 0, 0);
-      g.bindBuffer(g.ARRAY_BUFFER, starBuf.bright);
-      g.enableVertexAttribArray(progStar.a.aBright);
-      g.vertexAttribPointer(progStar.a.aBright, 1, g.FLOAT, false, 0, 0);
-      g.bindBuffer(g.ARRAY_BUFFER, starBuf.spike);
-      g.enableVertexAttribArray(progStar.a.aSpike);
-      g.vertexAttribPointer(progStar.a.aSpike, 1, g.FLOAT, false, 0, 0);
-      g.bindBuffer(g.ARRAY_BUFFER, starBuf.seed);
-      g.enableVertexAttribArray(progStar.a.aSeed);
-      g.vertexAttribPointer(progStar.a.aSeed, 1, g.FLOAT, false, 0, 0);
+      g.bindBuffer(g.ARRAY_BUFFER, starBuf.pack);
+      g.enableVertexAttribArray(progStar.a.aPack);
+      g.vertexAttribPointer(progStar.a.aPack, 4, g.FLOAT, false, 0, 0);
       g.uniformMatrix4fv(progStar.u.uProj, false, proj);
       g.uniformMatrix4fv(progStar.u.uView, false, view);
       g.uniform1f(progStar.u.uDpr, state.dpr);
       g.uniform1f(progStar.u.uTime, t);
       g.uniform1f(progStar.u.uStars, themeState.stars);
-      g.drawArrays(g.POINTS, 0, starCount);
+      g.drawArrays(g.POINTS, 0, starN);
+    }
+
+    /* ── 流星 ── */
+    if (starBuf && themeState.stars > 0.5 && state.meteors.length) {
+      g.enable(g.BLEND);
+      g.blendFunc(g.ONE, g.ONE);
+      g.useProgram(progMeteor.p);
+      g.bindBuffer(g.ARRAY_BUFFER, buf.meteor);
+      g.enableVertexAttribArray(progMeteor.a.aM);
+      g.vertexAttribPointer(progMeteor.a.aM, 3, g.FLOAT, false, 0, 0);
+      g.uniform1f(progMeteor.u.uDpr, state.dpr);
+      g.uniform1f(progMeteor.u.uAspect, aspect);
+      g.uniform1f(progMeteor.u.uTrail, METEOR_SPEC.trail);
+
+      for (const m of state.meteors) {
+        const life = METEOR_SPEC.life;
+        const k = (t - m.born) / life;
+        if (k < 0 || k > 1) continue;
+
+        /* 头部沿曲线推进：前段快、末段收，像真实流星被大气减速 */
+        const headT = 1 - Math.pow(1 - Math.min(1, k * 1.06), 2.4);
+        const grow = Math.min(1, k / 0.20);
+        const alpha = Math.min(1, k / 0.05) * (1 - Math.max(0, (k - 0.52) / 0.48));
+
+        g.uniform2f(progMeteor.u.uP0, m.p0[0], m.p0[1]);
+        g.uniform2f(progMeteor.u.uC, m.c[0], m.c[1]);
+        g.uniform2f(progMeteor.u.uP1, m.p1[0], m.p1[1]);
+        g.uniform1f(progMeteor.u.uHeadT, headT);
+        g.uniform1f(progMeteor.u.uTrail, Math.max(0.02, METEOR_SPEC.trail * grow));
+        g.uniform1f(progMeteor.u.uAlpha, alpha);
+
+        /* 拖尾粒子 */
+        g.uniform1f(progMeteor.u.uSizeMul, 1);
+        g.uniform1f(progMeteor.u.uAlphaMul, 1);
+        g.drawArrays(g.POINTS, 0, METEOR_SPEC.particles);
+
+        /* 头部光晕：同一套粒子，取前几颗放大、压暗 */
+        g.uniform1f(progMeteor.u.uSizeMul, 5.2);
+        g.uniform1f(progMeteor.u.uAlphaMul, 0.10);
+        g.drawArrays(g.POINTS, 0, 4);
+        g.uniform1f(progMeteor.u.uSizeMul, 1);
+        g.uniform1f(progMeteor.u.uAlphaMul, 1);
+      }
     }
 
     /* 光点 */

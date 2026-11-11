@@ -42,6 +42,7 @@ const THEMES = {
     label: '墨夜', meta: '#07070A',
     globe: {
       spaceTop: [0.055, 0.055, 0.068], spaceBottom: [0.012, 0.012, 0.018],
+      spaceCool: [0.44, 0.54, 0.76], spaceWarm: [1.0, 0.86, 0.66],
       glow: [0.55, 0.42, 0.22], glowAmt: 0.085, grain: 0.012,
       ambient: 0.05, atmo: [0.24, 0.46, 0.82], stars: 1, nebula: 1.18,
       exposure: 1.06, nightGain: 1.05, cloud: 0.9, atmoIntensity: 0.56
@@ -51,6 +52,7 @@ const THEMES = {
     label: '宣纸', meta: '#F3F0E8',
     globe: {
       spaceTop: [0.955, 0.945, 0.92], spaceBottom: [0.985, 0.978, 0.955],
+      spaceCool: [0.60, 0.64, 0.74], spaceWarm: [0.98, 0.90, 0.80],
       glow: [1.0, 0.93, 0.78], glowAmt: 0.55, grain: 0.006,
       ambient: 0.17, atmo: [0.52, 0.7, 0.88], stars: 0, nebula: 0.0,
       exposure: 1.02, nightGain: 0.9, cloud: 0.74, atmoIntensity: 0.46
@@ -60,6 +62,7 @@ const THEMES = {
     label: '远山', meta: '#070B10',
     globe: {
       spaceTop: [0.04, 0.058, 0.085], spaceBottom: [0.012, 0.02, 0.033],
+      spaceCool: [0.40, 0.60, 0.88], spaceWarm: [1.0, 0.88, 0.72],
       glow: [0.22, 0.48, 0.78], glowAmt: 0.10, grain: 0.012,
       ambient: 0.06, atmo: [0.3, 0.6, 0.98], stars: 1, nebula: 1.0,
       exposure: 1.16, nightGain: 1.05, cloud: 0.88, atmoIntensity: 0.60
