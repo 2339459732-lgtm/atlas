@@ -330,19 +330,19 @@ void main() {
 
   /* 暗尘：在「银极 ×24 / 银盘方向 ×5」的拉伸坐标系里取样，
      沿银盘方向变化慢、垂直方向快 → 平行于银河的细丝，而不是圆斑 */
-  vec3 dq = uPole * b * 34.0 + perp * 7.4;
+  vec3 dq = uPole * b * 21.0 + perp * 9.0;
   float d1 = fbm(dq + 31.0, 3.0);
   float d2 = fbm(dq * 3.4 + 57.0, 2.0);
-  float dust = smoothstep(0.575, 0.645, d1 * 0.62 + d2 * 0.40);
+  float dust = smoothstep(0.535, 0.705, d1 * 0.62 + d2 * 0.40);
   dust *= smoothstep(0.78, 0.18, abs(b));
-  glow *= 1.0 - 0.86 * dust;
+  glow *= 1.0 - 0.62 * dust;
 
   /* 银心：一团更亮更暖的核球辉光 */
   glow += core * 0.16;
 
   /* 软肩：直接把叠了三层的亮度送出去会爆成白块，
      用指数肩压到 0.52 以内，亮部仍保留层次 */
-  glow = 0.44 * (1.0 - exp(-glow * 1.90));
+  glow = 0.50 * (1.0 - exp(-glow * 1.85));
 
   /* 色调：银心暖琥珀 → 外围冷蓝 */
   vec3 cool = vec3(0.34, 0.44, 0.68);
