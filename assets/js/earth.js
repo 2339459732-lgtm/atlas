@@ -107,12 +107,12 @@ void main() {
 
   /* 法线贴图近似浮雕：把切线空间法线叠加到球面法线上 */
   vec3 nm = texture2D(uNormal, vUV).rgb * 2.0 - 1.0;
-  N = normalize(N + vec3(nm.x, nm.y, nm.z * 0.5) * 0.18);
+  N = normalize(N + vec3(nm.x, nm.y, nm.z * 0.55) * 0.34);
 
   float cloud = texture2D(uCloudTex, vUV).a;
 
   float ndl = dot(N, L);
-  float day = smoothstep(-0.16, 0.26, ndl);
+  float day = smoothstep(-0.075, 0.17, ndl);
 
   vec3 dayC = pow(texture2D(uDay, vUV).rgb, vec3(2.2));
   vec3 nightC = pow(texture2D(uNight, vUV).rgb, vec3(2.2));
@@ -122,13 +122,13 @@ void main() {
   dayC *= mix(1.0, 0.82, cloud);
 
   vec3 H = normalize(L + V);
-  float spec = pow(max(dot(N, H), 0.0), 220.0) * ocean * 0.26;
+  float spec = pow(max(dot(N, H), 0.0), 300.0) * ocean * 0.34;
 
   vec3 lit = dayC * (uAmbient + max(ndl, 0.0) * 1.28);
   lit += vec3(1.0, 0.96, 0.88) * spec * smoothstep(0.05, 0.35, ndl);
   lit += dayC * pow(1.0 - max(dot(N, V), 0.0), 3.0) * 0.10;
 
-  vec3 dark = nightC * 2.1 * uNightGain + dayC * 0.05;
+  vec3 dark = nightC * 2.4 * uNightGain * smoothstep(0.12, -0.22, ndl) + dayC * 0.055;
 
   vec3 col = mix(dark, lit, day);
 
@@ -284,8 +284,8 @@ void main() {
   float dust = smoothstep(0.42, 0.92, ridge * 0.52 + cloudB * 0.42 + gran * 0.26);
   dust *= 0.55 + 0.45 * cloudB;
 
-  vec3 cool = vec3(0.13, 0.18, 0.34);
-  vec3 warm = vec3(0.42, 0.29, 0.22);
+  vec3 cool = vec3(0.13, 0.16, 0.24);
+  vec3 warm = vec3(0.46, 0.33, 0.20);
   vec3 neb = mix(cool, warm, smoothstep(0.42, 0.88, cloudB));
   col += neb * band * dust * uNebula * 1.22;
 
@@ -314,10 +314,10 @@ void main() {
       vec2 start = vec2(-0.20 + r1 * 0.95, 0.62 + r2 * 0.22);
       vec2 dirv = normalize(vec2(0.90, -0.46));
       vec2 head = start + dirv * k * 0.78;
-      float s = meteor(uv, head, dirv, 0.19, 0.0022);
+      float s = meteor(uv, head, dirv, 0.26, 0.0042);
       float fade = smoothstep(0.0, 0.12, k) * (1.0 - smoothstep(0.75, 1.0, k));
-      col += vec3(0.88, 0.94, 1.0) * s * fade * 1.35;
-      col += vec3(0.58, 0.70, 1.0) * pow(s, 0.55) * fade * 0.22;
+      col += vec3(0.90, 0.95, 1.0) * s * fade * 1.8;
+      col += vec3(0.62, 0.74, 1.0) * pow(s, 0.55) * fade * 0.30;
       /* 头部亮点 */
       float headGlow = smoothstep(0.014, 0.0, length(uv - head));
       col += vec3(1.0, 0.99, 0.96) * headGlow * fade * 1.1;
@@ -350,7 +350,7 @@ void main() {
   gl_Position = vec4(clip.xy, 0.9999 * clip.w, clip.w);
   float tw = 0.86 + 0.14 * sin(uTime * 0.7 + aSeed * 6.283);
   gl_PointSize = aSize * uDpr * tw;
-  vA = uStars * tw * (0.46 + 0.54 * pow(aSeed, 0.7));
+  vA = uStars * tw * (0.58 + 0.42 * pow(aSeed, 0.7));
   vC = mix(vec3(0.74, 0.84, 1.0), vec3(1.0, 0.95, 0.86), fract(aSeed * 7.31));
   vSpike = aSpike;
 }`;
@@ -426,9 +426,9 @@ export function createEarth(canvas, opts = {}) {
     targetYaw: null, targetPitch: null,
     velYaw: 0, velPitch: 0,
     auto: true, hovered: null, ready: false,
-    dpr: 1, w: 0, h: 0, baseDist: 3.6,
+    dpr: 1, w: 0, h: 0, baseDist: 3.6, quality: 1,
     dragging: false, moved: 0, last: null,
-    sunYaw: 0, t: 0
+    sunYaw: 0, t: 0, sunGeo: null
   };
 
   /* ── 程序 ── */
@@ -496,11 +496,11 @@ export function createEarth(canvas, opts = {}) {
     starDir[i * 3 + 1] = u;
     starDir[i * 3 + 2] = r * Math.sin(th);
     /* 绝大多数是细密暗星，约 1% 是带衍射星芒的亮星 */
-    if (Math.random() > 0.988) {
-      starSize[i] = 9 + Math.random() * 6;
+    if (Math.random() > 0.984) {
+      starSize[i] = 13 + Math.random() * 9;
       starSpike[i] = 1;
     } else {
-      starSize[i] = 0.55 + Math.pow(Math.random(), 2.4) * 2.1;
+      starSize[i] = 1.05 + Math.pow(Math.random(), 2.2) * 2.7;
       starSpike[i] = 0;
     }
     starSeed[i] = Math.random();
@@ -656,7 +656,8 @@ export function createEarth(canvas, opts = {}) {
   function resize() {
     const r = canvas.getBoundingClientRect();
     if (!r.width || !r.height) return;
-    const dpr = Math.min(mobile ? 2 : 1.75, window.devicePixelRatio || 1);
+    /* 画质系数由帧率自适应决定：卡了降分辨率，稳了再升回去 */
+    const dpr = Math.min(mobile ? 2 : 1.75, window.devicePixelRatio || 1) * state.quality;
     state.dpr = dpr;
     state.w = r.width; state.h = r.height;
     canvas.width = Math.round(r.width * dpr);
@@ -688,8 +689,24 @@ export function createEarth(canvas, opts = {}) {
   function frame(now) {
     if (!state.running) return;
     const t = now * 0.001;
-    const dt = Math.min(0.05, t - (state.t || t));
+    const rawDt = t - (state.t || t);
+    const dt = Math.min(0.05, rawDt);
     state.t = t;
+
+    /* 每 90 帧评估一次帧率，动态调整渲染分辨率 */
+    state._acc = (state._acc || 0) + rawDt;
+    state._cnt = (state._cnt || 0) + 1;
+    if (state._cnt >= 90) {
+      const avg = state._acc / state._cnt;
+      state._acc = 0; state._cnt = 0;
+      if (avg > 0.026 && state.quality > 0.6) {
+        state.quality = Math.max(0.6, state.quality - 0.15);
+        resize();
+      } else if (avg < 0.0135 && state.quality < 1) {
+        state.quality = Math.min(1, state.quality + 0.08);
+        resize();
+      }
+    }
 
     if (state.ready) {
       /* 自转 */
@@ -755,13 +772,18 @@ export function createEarth(canvas, opts = {}) {
     mul(mvp, mvp, model);
 
     /* 太阳：相对相机固定，保证受光面始终朝向观众 */
-    const sunYaw = state.yaw - 0.78;
-    const sun = [
-      Math.sin(sunYaw) * 0.86,
-      0.36,
-      Math.cos(sunYaw) * 0.86
-    ];
-    const sl = Math.hypot(sun[0], sun[1], sun[2]);
+    let sun;
+    if (state.sunGeo) {
+      /* 实时模式：太阳固定在世界坐标，直射点由真实时间算出来 */
+      const p = latLngToVec(state.sunGeo.lat, state.sunGeo.lng);
+      const c = Math.cos(state.spin), sn = Math.sin(state.spin);
+      sun = [c * p[0] + sn * p[2], p[1], -sn * p[0] + c * p[2]];
+    } else {
+      /* 默认：光源跟随相机，保证转过来的那一面总是受光 */
+      const sunYaw = state.yaw - 0.78;
+      sun = [Math.sin(sunYaw) * 0.86, 0.36, Math.cos(sunYaw) * 0.86];
+    }
+    const sl = Math.hypot(sun[0], sun[1], sun[2]) || 1;
     sun[0] /= sl; sun[1] /= sl; sun[2] /= sl;
 
     /* 背景 */
@@ -1122,6 +1144,9 @@ export function createEarth(canvas, opts = {}) {
       dirty = true;
     },
     setAuto(v) { state.auto = v; },
+    /* 实时太阳：传直射点的经纬度（世界坐标），传 null 回到跟随相机的默认光 */
+    setSunGeo(lat, lng) { state.sunGeo = (lat == null || lng == null) ? null : { lat, lng }; },
+    clearSunGeo() { state.sunGeo = null; },
     zoomBy(f) {
       state.distTo = clamp(state.distTo * f, MIN_DIST, MAX_DIST);
       state.dist = state.distTo;

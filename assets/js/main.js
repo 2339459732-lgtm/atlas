@@ -1643,6 +1643,55 @@ $('#earth-auto')?.addEventListener('click', e => {
 $('#earth-reset')?.addEventListener('click', () => earth?.reset());
 
 /* 缩放按钮：滚轮之外的第二条路，触屏也能推拉 */
+/* ── 实时：按真实时间计算直射点，同步光照与地球转向 ── */
+let liveTimer = 0;
+
+function subsolarPoint(d = new Date()) {
+  const start = Date.UTC(d.getUTCFullYear(), 0, 0);
+  const day = (Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - start) / 86400000;
+  /* 太阳赤纬：年内正弦变化，冬至约 -23.44° */
+  const decl = -23.44 * Math.cos((2 * Math.PI * (day + 10)) / 365.24);
+  const hours = d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
+  let lng = 180 - hours * 15;
+  lng = ((lng + 540) % 360) - 180;
+  return { decl, lng };
+}
+
+function paintClock() {
+  const el2 = $('#earth-clock-t');
+  if (!el2) return;
+  const d = new Date();
+  el2.textContent = String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0');
+}
+
+function setLive(on) {
+  const btn = $('#earth-live');
+  const clock = $('#earth-clock');
+  btn?.setAttribute('aria-pressed', String(on));
+  if (clock) clock.hidden = !on;
+  clearInterval(liveTimer);
+  liveTimer = 0;
+  if (!on) { earth?.clearSunGeo(); return; }
+
+  const apply = () => {
+    const s = subsolarPoint();
+    earth?.setSunGeo(s.decl, s.lng);
+    paintClock();
+  };
+  apply();
+  const s0 = subsolarPoint();
+  earth?.focus(s0.decl, s0.lng);   /* 把正午的那条经线转到正面 */
+  earth?.setAuto(false);
+  const auto = $('#earth-auto');
+  auto?.setAttribute('aria-pressed', 'false');
+  liveTimer = setInterval(apply, 30000);   /* 半分钟校准一次，足够准也几乎不耗性能 */
+}
+
+$('#earth-live')?.addEventListener('click', e => {
+  const btn = e.currentTarget;
+  setLive(btn.getAttribute('aria-pressed') !== 'true');
+});
+
 $('#earth-zoom-in')?.addEventListener('click', () => earth?.zoomBy(0.86));
 $('#earth-zoom-out')?.addEventListener('click', () => earth?.zoomBy(1.16));
 
@@ -2192,6 +2241,9 @@ function applyLang() {
   /* 动态区域重绘，保证切换后不残留旧语言 */
   renderWall();
   renderOverview();
+  renderIndex();
+  renderPlanetList();
+  buildMarkers();
   if (state.current) {
     const lm = currentLandmark();
     if (lm && !isLocked(lm)) {
@@ -2263,6 +2315,21 @@ function initGate() {
       input.select();
     }
   });
+}
+
+/* ───────── 首屏时钟 ───────── */
+function initHeroClock() {
+  const tEl = $('#hero-clock');
+  const dEl = $('#hero-date');
+  if (!tEl) return;
+  const pad = n => String(n).padStart(2, '0');
+  const tick = () => {
+    const d = new Date();
+    tEl.textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    if (dEl) dEl.textContent = `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())}`;
+  };
+  tick();
+  setInterval(tick, 1000);
 }
 
 /* ───────── 背景音乐 ───────── */
@@ -2390,6 +2457,7 @@ async function boot() {
     syncEarth();
   }
 
+  initHeroClock();
   initMusic();
 }
 

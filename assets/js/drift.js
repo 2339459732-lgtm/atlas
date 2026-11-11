@@ -1,6 +1,10 @@
 /* ══════════════════════════════════════════════════════════════════
-   drift.js — 开篇的微尘。慢，稀，跟着指针有一点点视差。
-   只是背景质感，不抢标题。prefers-reduced-motion 下画一帧就停。
+   drift.js — 开篇的微尘。
+
+   分远 / 中 / 近三层：层越近，颗粒越大、越亮、飘得越快、视差越明显。
+   这样镜头有纵深，而不是一层均匀的噪点。
+   性能：粒子数按面积推导并有上限；dpr 封顶 1.75；离开视口即停；
+   prefers-reduced-motion 下只画一帧。
    ══════════════════════════════════════════════════════════════════ */
 
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -13,6 +17,15 @@ function inkRGB() {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+/* 三层的参数：div 决定密度，r/a/v 是尺寸、透明度、速度区间 */
+const LAYERS = [
+  { div: 8200,  cap: 240, r: [0.28, 0.85], a: [0.05, 0.17], v: [0.015, 0.055], par: 0.35, halo: 0 },
+  { div: 15000, cap: 130, r: [0.55, 1.45], a: [0.09, 0.32], v: [0.035, 0.115], par: 1.00, halo: 0 },
+  { div: 38000, cap: 38,  r: [1.00, 2.30], a: [0.16, 0.48], v: [0.070, 0.200], par: 2.30, halo: 1 }
+];
+
+const rand = (a, b) => a + Math.random() * (b - a);
+
 export function createDust(canvas) {
   const ctx = canvas.getContext('2d');
   let W = 0, H = 0, dpr = 1, raf = 0, run = false;
@@ -21,27 +34,33 @@ export function createDust(canvas) {
   let px = 0, py = 0, tx = 0, ty = 0;
 
   function build() {
-    const n = Math.round(Math.min(140, (W * H) / 12000));
+    const narrow = W < 760;
+    const scale = narrow ? 0.55 : 1;
     parts = [];
-    for (let i = 0; i < n; i++) {
-      const z = Math.random();           /* 深度：越大越亮越快 */
-      parts.push({
-        x: Math.random() * W,
-        y: Math.random() * H,
-        z,
-        r: 0.35 + z * 1.25,
-        vx: (Math.random() - 0.5) * 0.09,
-        vy: -0.05 - z * 0.16,
-        a: 0.06 + z * 0.34,
-        t: Math.random() * 6.28
-      });
-    }
+    LAYERS.forEach((L, li) => {
+      const n = Math.round(Math.min(L.cap, (W * H) / L.div) * scale);
+      for (let i = 0; i < n; i++) {
+        const r = rand(L.r[0], L.r[1]);
+        parts.push({
+          l: li,
+          x: Math.random() * W,
+          y: Math.random() * H,
+          r,
+          a: rand(L.a[0], L.a[1]),
+          v: rand(L.v[0], L.v[1]),
+          par: L.par,
+          halo: L.halo,
+          ph: Math.random() * 6.283,
+          sway: rand(0.4, 1.6)
+        });
+      }
+    });
   }
 
   function resize() {
     const r = canvas.getBoundingClientRect();
     if (!r.width || !r.height) return;
-    dpr = Math.min(2, window.devicePixelRatio || 1);
+    dpr = Math.min(1.75, window.devicePixelRatio || 1);
     W = r.width; H = r.height;
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
@@ -52,22 +71,44 @@ export function createDust(canvas) {
 
   function draw(t) {
     ctx.clearRect(0, 0, W, H);
-    const ox = (tx - px) * 0.02;
-    const oy = (ty - py) * 0.02;
-    for (const p of parts) {
-      if (!reduced()) {
-        p.x += p.vx;
-        p.y += p.vy;
-        if (p.y < -6) { p.y = H + 6; p.x = Math.random() * W; }
-        if (p.x < -6) p.x = W + 6;
-        if (p.x > W + 6) p.x = -6;
+    const ox = (tx - px) * 26;
+    const oy = (ty - py) * 18;
+    const lum = `${rgb[0]},${rgb[1]},${rgb[2]}`;
+    const animate = !reduced();
+
+    for (let li = 0; li < LAYERS.length; li++) {
+      const L = LAYERS[li];
+      /* 同一层只设一次颜色，减少状态切换 */
+      ctx.fillStyle = `rgb(${lum})`;
+
+      for (const p of parts) {
+        if (p.l !== li) continue;
+
+        if (animate) {
+          p.y -= p.v;
+          p.x += Math.sin(t * 0.00018 * p.sway + p.ph) * 0.14;
+          if (p.y < -8) { p.y = H + 8; p.x = Math.random() * W; }
+          if (p.x < -8) p.x = W + 8;
+          else if (p.x > W + 8) p.x = -8;
+        }
+
+        const tw = 0.72 + 0.28 * Math.sin(t * 0.00055 + p.ph);
+        const x = p.x + ox * p.par * 0.5;
+        const y = p.y + oy * p.par * 0.5;
+
+        /* 近景的几颗带一圈很淡的光晕，像真的浮在镜头前 */
+        if (p.halo) {
+          ctx.globalAlpha = p.a * tw * 0.16;
+          ctx.beginPath();
+          ctx.arc(x, y, p.r * 3.4, 0, 6.2832);
+          ctx.fill();
+        }
+
+        ctx.globalAlpha = p.a * tw;
+        ctx.beginPath();
+        ctx.arc(x, y, p.r, 0, 6.2832);
+        ctx.fill();
       }
-      const tw = 0.72 + 0.28 * Math.sin(t * 0.0006 + p.t);
-      ctx.globalAlpha = p.a * tw;
-      ctx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
-      ctx.beginPath();
-      ctx.arc(p.x + ox * p.z * 10, p.y + oy * p.z * 10, p.r, 0, 6.2832);
-      ctx.fill();
     }
     ctx.globalAlpha = 1;
   }
