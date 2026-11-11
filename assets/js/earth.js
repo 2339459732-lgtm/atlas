@@ -116,8 +116,11 @@ void main() {
 
   vec3 dayC = pow(texture2D(uDay, vUV).rgb, vec3(2.2));
   /* 夜图带一点紫底色，取高次幂压掉，只留城市的灯 */
-  vec3 nightC = pow(texture2D(uNight, vUV).rgb, vec3(2.7));
-  /* 夜图本身偏蓝紫，去一部分饱和并往暖白拉，才像真实的城市灯光 */
+  vec3 nightC = pow(texture2D(uNight, vUV).rgb, vec3(2.9));
+  /* 夜图里零星亮点太多，阈值一遍只留成片城区，画面才干净 */
+  float nMax = max(max(nightC.r, nightC.g), nightC.b);
+  nightC *= smoothstep(0.16, 0.62, nMax) * 0.92 + 0.08;
+  /* 去一部分饱和并往暖白拉，才像真实的城市灯光 */
   float nLum = dot(nightC, vec3(0.299, 0.587, 0.114));
   nightC = mix(vec3(nLum) * vec3(1.04, 0.98, 0.88), nightC, 0.5) * vec3(1.0, 0.94, 0.82);
   /* 只让成片的水面有镜面高光，湖泊/噪点不会变成蓝点 */
@@ -135,7 +138,7 @@ void main() {
 
   /* 夜面只保留城市灯光。任何一点反照，经 sRGB 编码后都会把整块大陆
      提亮成一片蓝紫，反而不真实。 */
-  vec3 dark = nightC * 2.7 * uNightGain * smoothstep(0.10, -0.18, ndl);
+  vec3 dark = nightC * 2.3 * uNightGain * smoothstep(0.08, -0.20, ndl);
 
   vec3 col = mix(dark, lit, day);
 
@@ -282,8 +285,10 @@ void main() {
   vec2 skyUV = vec2(lon / 6.2831853 + 0.5, lat / 3.1415926 + 0.5);
 
   vec3 sky = texture2D(uSky, skyUV).rgb;
-  /* 轻微提对比即可；原来的 1.55 增益把星点全推成了噪点 */
-  sky = pow(max(sky - 0.010, 0.0), vec3(1.18)) * 1.05;
+  /* 轻抬暗部、保留直方图，避免幂函数把暗尘压成色块 */
+  sky = sky * 1.28 + 0.004;
+  /* 抖动：8bit 贴图在暗部容易出色带，加一点点噪声抹平 */
+  sky += (hash(uv * 2048.0) - 0.5) * 0.0022;
 
   vec3 base = mix(uBottom, uTop, smoothstep(0.0, 1.0, uv.y));
   vec3 col = mix(base, sky, clamp(uSkyGain, 0.0, 1.0));
@@ -598,6 +603,15 @@ export function createEarth(canvas, opts = {}) {
     progMote = program(VS_MOTE, FS_MOTE, { aPos: 'aPos', aSize: 'aSize', aPhase: 'aPhase' }, 'mote');
   }
 
+  /* 星空：带 mipmap + 各向异性，缩小时不会闪烁、放大时不会糊成一团 */
+  function loadSky(file) {
+    return loadImage(file).then(img => {
+      const next = upload(img, true);
+      if (textures.sky) gl.deleteTexture(textures.sky);
+      textures.sky = next;
+    }).catch(() => {});
+  }
+
   /* 切档：先换白昼图（最显眼），其余并行替换；旧纹理等新的就绪才释放 */
   async function applyTier(name, onProgress) {
     const t = TIERS[name];
@@ -630,6 +644,9 @@ export function createEarth(canvas, opts = {}) {
       step();
     }));
 
+    /* 4K 档换用 4096 宽的星空图，其余档位用 2048 */
+    await loadSky(name === '4k' ? 'assets/tex/sky-milkyway-4k.jpg' : 'assets/tex/sky-milkyway.jpg');
+
     tier = name;
     return true;
   }
@@ -659,11 +676,7 @@ export function createEarth(canvas, opts = {}) {
       progress?.(0.06);
 
       /* 先用最小的一张把球体点亮（约 90 KB），交互立刻可用 */
-      loadImage('assets/tex/sky-milkyway.jpg').then(img => {
-        if (!img) return;
-        if (textures.sky) gl.deleteTexture(textures.sky);
-        textures.sky = upload(img, false);
-      }).catch(() => {});
+      loadSky(tier === '4k' ? 'assets/tex/sky-milkyway-4k.jpg' : 'assets/tex/sky-milkyway.jpg');
       try {
         const img = await loadImage(texUrl(texLow.day));
         gl.deleteTexture(textures.day);

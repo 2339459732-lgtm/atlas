@@ -1,22 +1,20 @@
 /* ══════════════════════════════════════════════════════════════════
    audio.js — 背景音乐
 
-   一段原创的钢琴循环，写法参照《Cornfield Chase》的织体：
-   十六分音符的重复音型、缓慢上行的和声、靠力度与密度堆出高潮再退回来。
-   旋律与配器都是自己写的（受版权保护的是那段录音和乐谱，不是这种写法）。
+   全钢琴编制：左手低音、右手织体、一条独立的主旋律，都是钢琴音色。
+   没有弦垫、没有锯齿波，只在每个音上叠一次极轻的击弦瞬态做点缀。
 
-   结构：32 小节一个循环，分四段
-     0–7   引子   稀疏、弱、只有高音区的零星音
-     8–15  推进   音型加密，低音进入
-    16–23  高潮   全密度、双八度、力度最强
-    24–31  退潮   抽掉内声部，回到单音
+   音色用 PeriodicWave 定义泛音列（而不是三角波），三个亮度档随力度切换，
+   接近真实钢琴"弹得重→泛音多→更亮"的行为。
+
+   结构：32 小节，四段（引子 8 / 推进 8 / 高潮 8 / 退潮 8），
+   和声 Am–F–C–G 每和弦两小节，主旋律在第 8 小节进入。
    ══════════════════════════════════════════════════════════════════ */
 
-const BPM = 100;
+const BPM = 96;
 const BEAT = 60 / BPM;
 const BAR = BEAT * 4;
 
-/* Am – F – C – G，每个和弦两小节 */
 const CHORDS = [
   { root: 45, tones: [57, 60, 64, 69] },  /* Am */
   { root: 41, tones: [57, 60, 65, 69] },  /* F  */
@@ -24,21 +22,43 @@ const CHORDS = [
   { root: 43, tones: [55, 59, 62, 67] }   /* G  */
 ];
 
-/* 四段情绪曲线 */
+/* 四段情绪：音符间隔 step、力度 vel、低音八度 oct、旋律开关 mel */
 const FORM = [
-  { bars: 8,  step: 4, vel: 0.30, oct: 0, pad: 0.30 },  /* 引子 */
-  { bars: 8,  step: 2, vel: 0.52, oct: 1, pad: 0.55 },  /* 推进 */
-  { bars: 8,  step: 1, vel: 0.88, oct: 2, pad: 1.00 },  /* 高潮 */
-  { bars: 8,  step: 3, vel: 0.34, oct: 1, pad: 0.45 }   /* 退潮 */
+  { bars: 8,  step: 4, vel: 0.34, oct: 0, mel: 0 },
+  { bars: 8,  step: 2, vel: 0.56, oct: 1, mel: 1 },
+  { bars: 8,  step: 1, vel: 0.86, oct: 1, mel: 1 },
+  { bars: 8,  step: 3, vel: 0.38, oct: 1, mel: 0 }
 ];
 const TOTAL_BARS = FORM.reduce((n, f) => n + f.bars, 0);
+
+/* 主旋律：A 小调，八小节一句，[音高, 拍数] */
+const MOTIF = [
+  [69, 2], [72, 1], [71, 1],
+  [72, 2], [69, 2],
+  [65, 2], [69, 1], [72, 1],
+  [71, 3], [67, 1],
+  [69, 2], [72, 1], [74, 1],
+  [76, 2], [74, 2],
+  [72, 2], [69, 1], [67, 1],
+  [69, 4]
+];
+
+/* 把旋律展开成「第几拍开始、持续几拍、什么音」 */
+const MOTIF_EVENTS = (() => {
+  let b = 0;
+  return MOTIF.map(([m, d]) => {
+    const e = { b, m, d };
+    b += d;
+    return e;
+  });
+})();
+const MOTIF_BEATS = MOTIF.reduce((n, [, d]) => n + d, 0);
+const MEL_START = FORM[0].bars;
 
 const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 const rand = (a, b) => a + Math.random() * (b - a);
 
 export function createMusic({ volume = 0.55 } = {}) {
-  /* 只有显式声明了音轨才去取外部文件，避免默认探测产生 404
-     <html data-track="assets/audio/theme.mp3"> 即可接管播放 */
   const src = document.documentElement.dataset.track || '';
   const light = matchMedia('(max-width: 860px)').matches;
 
@@ -46,13 +66,13 @@ export function createMusic({ volume = 0.55 } = {}) {
   let bar = 0, nextTime = 0;
   let started = false, muted = false;
   let audioEl = null;
+  let waves = null;
   const listeners = new Set();
 
   let running = () => false;
   const emit = () => listeners.forEach(fn => fn({ playing: started && !muted && running(), started, muted }));
 
-  /* ── 混响：噪声衰减造空间，不引入任何音频文件 ── */
-  function impulse(c, seconds = 2.8, decay = 2.6) {
+  function impulse(c, seconds = 2.6, decay = 2.7) {
     const len = Math.floor(c.sampleRate * seconds);
     const buf = c.createBuffer(2, len, c.sampleRate);
     for (let ch = 0; ch < 2; ch++) {
@@ -64,109 +84,138 @@ export function createMusic({ volume = 0.55 } = {}) {
     return buf;
   }
 
+  /* 泛音列：tilt 越小越亮。钢琴的泛音大致按 n^-1.2 ~ n^-1.6 衰减 */
+  function pianoWave(tilt) {
+    const n = 26;
+    const real = new Float32Array(n);
+    const imag = new Float32Array(n);
+    for (let i = 1; i < n; i++) {
+      const fall = Math.pow(i, -tilt);
+      /* 第 7、9 次泛音略突出，是钢琴"金属感"的来源 */
+      const accent = (i === 7 || i === 9) ? 1.45 : 1;
+      imag[i] = fall * accent;
+    }
+    return ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+  }
+
   function buildGraph() {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return false;
     ctx = new AC();
 
-    master = ctx.createGain();
-    master.gain.value = 0;
+    /* 总线上先做一次三段均衡：低音补一点、中低切一点、高音提一点 */
+    const lowShelf = ctx.createBiquadFilter();
+    lowShelf.type = 'lowshelf';
+    lowShelf.frequency.value = 130;
+    lowShelf.gain.value = 2.5;
+
+    const mud = ctx.createBiquadFilter();
+    mud.type = 'peaking';
+    mud.frequency.value = 380;
+    mud.Q.value = 0.9;
+    mud.gain.value = -2.8;
+
+    const air = ctx.createBiquadFilter();
+    air.type = 'highshelf';
+    air.frequency.value = 5200;
+    air.gain.value = 1.8;
 
     const comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = -20;
-    comp.knee.value = 24;
-    comp.ratio.value = 3;
-    comp.attack.value = 0.006;
-    comp.release.value = 0.28;
+    comp.threshold.value = -19;
+    comp.knee.value = 22;
+    comp.ratio.value = 2.6;
+    comp.attack.value = 0.008;
+    comp.release.value = 0.25;
+
+    master = ctx.createGain();
+    master.gain.value = 0;
 
     const rev = ctx.createConvolver();
     rev.buffer = impulse(ctx);
     wet = ctx.createGain();
-    wet.gain.value = 0.30;
+    wet.gain.value = 0.24;
 
-    master.connect(comp);
+    master.connect(lowShelf);
+    lowShelf.connect(mud);
+    mud.connect(air);
+    air.connect(comp);
     master.connect(wet);
     wet.connect(rev);
     rev.connect(comp);
     comp.connect(ctx.destination);
+
+    waves = {
+      soft: pianoWave(1.55),
+      mid: pianoWave(1.25),
+      bright: pianoWave(1.0)
+    };
     return true;
   }
 
-  /* ── 钢琴：四个泛音，高次泛音衰减更快，力度同时影响音量与亮度 ── */
-  function piano(time, midi, dur, vel) {
+  /* ── 钢琴：泛音列振荡器 + 极轻的击弦瞬态 ── */
+  function piano(time, midi, dur, vel, pan = 0) {
     const f = mtof(midi);
-    const parts = [
-      { ratio: 1.0,   gain: 1.00, decay: 1.0 },
-      { ratio: 2.002, gain: 0.46, decay: 0.72 },
-      { ratio: 3.006, gain: 0.22, decay: 0.52 },
-      { ratio: 4.012, gain: 0.10, decay: 0.38 }
-    ];
-    const bright = 900 + vel * 3600;
+    const wave = vel > 0.62 ? waves.bright : vel > 0.4 ? waves.mid : waves.soft;
+
+    const o = ctx.createOscillator();
+    o.setPeriodicWave(wave);
+    o.frequency.value = f;
+    /* 轻微失谐的第二振荡器，模拟同音三根弦的拍频 */
+    const o2 = ctx.createOscillator();
+    o2.type = 'sine';
+    o2.frequency.value = f;
+    o2.detune.value = rand(2, 6);
+
+    const g = ctx.createGain();
+    const g2 = ctx.createGain();
+    g2.gain.value = 0.22;
+
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
-    lp.frequency.value = bright;
-    lp.Q.value = 0.5;
-    lp.connect(master);
+    lp.frequency.value = Math.min(14000, 1400 + vel * 6500 + f * 1.6);
+    lp.Q.value = 0.35;
 
-    const body = ctx.createGain();
-    body.gain.value = 0.42;
-    body.connect(lp);
+    const panner = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
 
-    parts.forEach(p => {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = 'triangle';
-      o.frequency.value = f * p.ratio;
-      o.detune.value = rand(-4, 4);
-
-      const peak = Math.max(0.0002, vel * 0.30 * p.gain);
-      const d = Math.max(0.18, dur * p.decay);
-      g.gain.setValueAtTime(0.0001, time);
-      g.gain.linearRampToValueAtTime(peak, time + 0.005);
-      g.gain.exponentialRampToValueAtTime(0.0001, time + d);
-
-      o.connect(g);
-      g.connect(body);
-      o.start(time);
-      o.stop(time + d + 0.05);
-    });
-  }
-
-  /* 低音：正弦 + 一点三角，尾音长 */
-  function bass(time, midi, dur, vel) {
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = 'sine';
-    o.frequency.value = mtof(midi);
+    const peak = Math.max(0.0003, vel * 0.34);
+    const body = Math.max(0.16, dur);
     g.gain.setValueAtTime(0.0001, time);
-    g.gain.linearRampToValueAtTime(vel * 0.26, time + 0.012);
-    g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+    g.gain.linearRampToValueAtTime(peak, time + 0.004);
+    g.gain.exponentialRampToValueAtTime(peak * 0.30, time + body * 0.35);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + body);
+
     o.connect(g);
-    g.connect(master);
-    o.start(time);
-    o.stop(time + dur + 0.05);
+    o2.connect(g2);
+    g2.connect(g);
+    g.connect(lp);
+    if (panner) { panner.pan.value = pan; lp.connect(panner); panner.connect(master); }
+    else lp.connect(master);
+
+    o.start(time); o2.start(time);
+    o.stop(time + body + 0.05); o2.stop(time + body + 0.05);
+
+    /* 击弦瞬态：10ms 的带通噪声，给音头一点颗粒 */
+    if (vel > 0.45) {
+      const nlen = Math.floor(ctx.sampleRate * 0.012);
+      const nb = ctx.createBuffer(1, nlen, ctx.sampleRate);
+      const nd = nb.getChannelData(0);
+      for (let i = 0; i < nlen; i++) nd[i] = (Math.random() * 2 - 1) * (1 - i / nlen);
+      const ns = ctx.createBufferSource();
+      ns.buffer = nb;
+      const nf = ctx.createBiquadFilter();
+      nf.type = 'bandpass';
+      nf.frequency.value = Math.min(6000, f * 3.2);
+      nf.Q.value = 1.1;
+      const ng = ctx.createGain();
+      ng.gain.value = vel * 0.035;
+      ns.connect(nf); nf.connect(ng); ng.connect(master);
+      ns.start(time);
+    }
   }
 
-  /* 弦垫：只在有力度时出现，铺底不抢 */
-  function pad(time, notes, dur, gain) {
-    if (gain <= 0.01) return;
-    notes.forEach((m, i) => {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      const lp = ctx.createBiquadFilter();
-      o.type = 'sawtooth';
-      o.frequency.value = mtof(m);
-      o.detune.value = (i - 1) * 7;
-      lp.type = 'lowpass';
-      lp.frequency.value = 760;
-      lp.Q.value = 0.3;
-      g.gain.setValueAtTime(0, time);
-      g.gain.linearRampToValueAtTime(gain * 0.035, time + dur * 0.45);
-      g.gain.linearRampToValueAtTime(gain * 0.028, time + dur * 0.8);
-      g.gain.linearRampToValueAtTime(0, time + dur);
-      o.connect(lp); lp.connect(g); g.connect(master);
-      o.start(time); o.stop(time + dur + 0.05);
-    });
+  /* 低音也是钢琴，只是更低、更长、稍偏左 */
+  function bass(time, midi, dur, vel) {
+    piano(time, midi, dur, Math.min(0.72, vel * 0.9), -0.22);
   }
 
   function sectionOf(index) {
@@ -183,41 +232,38 @@ export function createMusic({ volume = 0.55 } = {}) {
     const ch = CHORDS[Math.floor(index / 2) % CHORDS.length];
     const sec = sectionOf(index);
     const stepDur = BAR / 16;
-    const local = index % sec.bars;
+    const i32 = index % TOTAL_BARS;
 
-    /* 低音：每小节一次，高潮段在第 3 拍再加一次 */
-    const bassVel = sec.vel * (0.7 + 0.3 * Math.min(1, sec.oct / 2));
-    bass(t, ch.root, BAR * 0.95, bassVel);
-    if (sec.oct >= 1) bass(t + BEAT * 2, ch.root + 12, BEAT * 1.5, bassVel * 0.45);
+    /* 低音：根音 + 五度，长音铺底 */
+    bass(t, ch.root, BAR * 0.95, sec.vel * 0.8);
+    if (sec.step <= 2) bass(t + BEAT * 2, ch.root + 7, BEAT * 1.4, sec.vel * 0.42);
 
-    /* 音型：上行四音再折回，第 1/3 拍重音 */
+    /* 织体：上行四音再折回，重音落在一三拍 */
     const shape = [0, 1, 2, 3, 2, 1, 0, 1];
-    for (let i = 0; i < 16; i++) {
-      if (i % sec.step !== 0) continue;
-      const idx = shape[i % 8];
-      const octave = 12 * (sec.oct >= 2 && i % 8 >= 4 ? 2 : 1);
-      const midi = ch.tones[idx] + octave;
-
-      const accent = i % 4 === 0 ? 1 : 0.62;
-      const rise = 0.82 + 0.18 * (i / 15);          /* 小节内轻微渐强 */
-      const jitter = rand(-0.004, 0.004);
-      piano(t + i * stepDur + jitter, midi, stepDur * 3.4, sec.vel * accent * rise * rand(0.9, 1.08));
+    for (let i = 0; i < 16; i += sec.step) {
+      const midi = ch.tones[shape[i % 8]] + 12;
+      const accent = i % 4 === 0 ? 1 : 0.66;
+      const rise = 0.84 + 0.16 * (i / 15);
+      piano(t + i * stepDur + rand(-0.004, 0.004), midi, stepDur * 3.2,
+        sec.vel * accent * rise * rand(0.92, 1.06), 0.12);
     }
 
-    /* 高潮段加一层高八度的弱音，织体更厚（手机上省掉，避免节点过多） */
-    if (sec.oct >= 2 && !light) {
-      for (let i = 0; i < 16; i += 2) {
-        const midi = ch.tones[shape[i % 8]] + 24;
-        piano(t + i * stepDur, midi, stepDur * 2.2, sec.vel * 0.26);
+    /* 高潮段：右手加一层高八度的弱奏，厚度靠层数而不是音量 */
+    if (sec.mel && sec.step === 1 && !light) {
+      for (let i = 4; i < 16; i += 4) {
+        piano(t + i * stepDur, ch.tones[shape[i % 8]] + 24, stepDur * 2.2, sec.vel * 0.30, -0.18);
       }
     }
 
-    /* 每两小节换一次和声垫 */
-    if (index % 2 === 0) pad(t, ch.tones.map(m => m + 12), BAR * 2, sec.pad);
-
-    /* 段落转折处给一个长音，像呼吸 */
-    if (local === 0) {
-      piano(t + BEAT * 0.5, ch.tones[3] + 12 + (sec.oct >= 2 ? 12 : 0), BAR * 1.6, sec.vel * 0.55);
+    /* 主旋律：八小节一句，按预计算的拍位落音 */
+    if (sec.mel) {
+      const beatsIn = ((index - MEL_START) * 4 % MOTIF_BEATS + MOTIF_BEATS) % MOTIF_BEATS;
+      const lift = (i32 >= 16 && i32 < 24) ? 12 : 0;   /* 高潮段整体提八度 */
+      for (const e of MOTIF_EVENTS) {
+        const local = e.b - beatsIn;
+        if (local < 0 || local >= 4) continue;
+        piano(t + local * BEAT, e.m + lift, BEAT * e.d * 1.05, sec.vel * 0.95, 0);
+      }
     }
   }
 
@@ -240,10 +286,11 @@ export function createMusic({ volume = 0.55 } = {}) {
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     if (started) return;
     started = true;
+    bar = 0;
     nextTime = ctx.currentTime + 0.12;
     master.gain.cancelScheduledValues(ctx.currentTime);
     master.gain.setValueAtTime(0.0001, ctx.currentTime);
-    master.gain.exponentialRampToValueAtTime(muted ? 0.0001 : volume * 0.5, ctx.currentTime + 2.6);
+    master.gain.exponentialRampToValueAtTime(muted ? 0.0001 : volume * 0.5, ctx.currentTime + 2.4);
     clearInterval(timer);
     timer = setInterval(tick, 160);
     tick();
