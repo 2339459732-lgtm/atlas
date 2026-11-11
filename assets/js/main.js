@@ -510,10 +510,20 @@ function buildMarkers() {
       return { id: l.id, lat: l.lat, lng: l.lng, name: l.name, el: b, _x: 0, _y: 0, _visible: false };
     });
   earth?.setMarkers(markers);
+  requestAnimationFrame(() => {
+    markers.forEach(m => {
+      const lb = m.el.querySelector('.marker__label');
+      if (lb) m._lw = lb.offsetWidth;
+    });
+  });
   renderPlanetList();
 }
 
+const labelBoxes = [];
+
 function updateMarkers(project) {
+  labelBoxes.length = 0;
+
   for (const m of markers) {
     const p = project(m.lat, m.lng);
     m._x = p.x; m._y = p.y; m._visible = p.visible;
@@ -523,12 +533,32 @@ function updateMarkers(project) {
       continue;
     }
     const depth = clamp((p.depth - 0.02) / 1.1, 0, 1);
+    m._depth = depth;
     m.el.style.transform =
       `translate3d(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px, 0) translate(-50%, -50%) scale(${(0.86 + depth * 0.2).toFixed(3)})`;
     m.el.style.opacity = String(0.5 + depth * 0.5);
     m.el.style.pointerEvents = 'auto';
     m.el.style.zIndex = String(10 + Math.round(depth * 20));
+    m.el.classList.toggle('is-left', p.x > state.w * 0.6);
   }
+
+  /* 屏幕空间避让：越靠近球心越优先，重叠者只留圆点 */
+  const order = markers
+    .filter(m => m._visible && m._depth > 0.22)
+    .sort((a, b) => (b._depth || 0) - (a._depth || 0));
+
+  for (const m of order) {
+    const w = m._lw || 86;
+    const h = 22;
+    const left = m.el.classList.contains('is-left') ? m._x - 18 - w : m._x + 18;
+    const box = { l: left, r: left + w, t: m._y - h / 2, b: m._y + h / 2 };
+    const clash = labelBoxes.some(o => !(box.r < o.l || box.l > o.r || box.b < o.t || box.t > o.b));
+    m.el.style.setProperty('--label', clash ? '0' : '1');
+    if (!clash) labelBoxes.push(box);
+  }
+  markers.forEach(m => {
+    if (!m._visible || !(m._depth > 0.22)) m.el.style.setProperty('--label', '0');
+  });
 }
 
 function renderPlanetList() {

@@ -193,8 +193,8 @@ kbd {
 }
 .nav.is-stuck {
   height: 60px;
-  background: color-mix(in oklab, var(--bg) 78%, transparent);
-  backdrop-filter: blur(22px) saturate(1.25);
+  background: color-mix(in oklab, var(--bg) 93%, transparent);
+  backdrop-filter: blur(14px) saturate(1.15);
   border-bottom-color: var(--line);
 }
 
