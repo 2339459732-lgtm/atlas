@@ -308,7 +308,7 @@ void main() {
   vec3 perp = dir - uPole * b;
 
   /* 银盘剖面：亮脊套在宽晕里，带外迅速回到深空底色 */
-  float halo = exp(-pow(abs(b) * 6.20, 2.0));
+  float halo = exp(-pow(abs(b) * 5.40, 2.0));
   float spine = exp(-pow(abs(b) * 16.0, 2.0));
   float band = halo * 0.42 + spine * 0.72;
 
@@ -330,19 +330,19 @@ void main() {
 
   /* 暗尘：在「银极 ×24 / 银盘方向 ×5」的拉伸坐标系里取样，
      沿银盘方向变化慢、垂直方向快 → 平行于银河的细丝，而不是圆斑 */
-  vec3 dq = uPole * b * 46.0 + perp * 8.2;
+  vec3 dq = uPole * b * 34.0 + perp * 7.4;
   float d1 = fbm(dq + 31.0, 3.0);
   float d2 = fbm(dq * 3.4 + 57.0, 2.0);
-  float dust = smoothstep(0.52, 0.66, d1 * 0.62 + d2 * 0.40);
+  float dust = smoothstep(0.55, 0.70, d1 * 0.62 + d2 * 0.40);
   dust *= smoothstep(0.78, 0.18, abs(b));
-  glow *= 1.0 - 0.94 * dust;
+  glow *= 1.0 - 0.80 * dust;
 
   /* 银心：一团更亮更暖的核球辉光 */
   glow += core * 0.16;
 
   /* 软肩：直接把叠了三层的亮度送出去会爆成白块，
      用指数肩压到 0.52 以内，亮部仍保留层次 */
-  glow = 0.52 * (1.0 - exp(-glow * 1.55));
+  glow = 0.58 * (1.0 - exp(-glow * 1.70));
 
   /* 色调：银心暖琥珀 → 外围冷蓝 */
   vec3 cool = vec3(0.34, 0.44, 0.68);
@@ -621,7 +621,7 @@ export function createEarth(canvas, opts = {}) {
     const fwd = nrm([-e[0], -e[1], -e[2]]);
     const rgt = nrm([fwd[1], -fwd[0], 0]);
     const upv = crs(rgt, fwd);
-    const off = 0.17;                       /* 银道到视轴的角距（弧度） */
+    const off = 0.215;                       /* 银道到视轴的角距（弧度） */
     const lean = 0.55;
     const pole = nrm([
       fwd[0] * Math.sin(off) + 0.94 * (rgt[0] * Math.cos(lean) + upv[0] * Math.sin(lean)),
@@ -934,7 +934,7 @@ export function createEarth(canvas, opts = {}) {
   function fit() {
     const aspect = state.w / state.h || 1;
     const fov = 30 * DEG;
-    const k = 0.74;   /* 球体留出安全边距，避免被舞台边缘裁切 */
+    const k = 0.62;   /* 球体占比：留出足够的天空，画面才有宇宙尺度 */
     const needV = 1 / (k * Math.tan(fov / 2));
     const needH = 1 / (k * Math.tan(fov / 2) * aspect);
     state.baseDist = Math.max(needV, needH);
