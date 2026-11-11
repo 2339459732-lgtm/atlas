@@ -167,7 +167,7 @@ void main() {
   float spine = exp(-pow(abs(b) / 0.062, 2.0));
   float halo = exp(-pow(abs(b) / 0.235, 2.0));
 
-  float d = (0.040 + 0.95 * spine + 0.24 * halo) * env * (1.0 + 1.55 * core);
+  float d = (0.115 + 0.80 * spine + 0.20 * halo) * env * (1.0 + 1.15 * core);
 
   for (int i = 0; i < 6; i++) {
     if (float(i) >= uLaneN) break;
@@ -325,63 +325,97 @@ function mulberry32(a) {
   };
 }
 
-function densityFn({ pole, core, e1, e2 }) {
-  return function (x, y, z) {
-    const b = x * pole[0] + y * pole[1] + z * pole[2];
-    const l = Math.atan2(x * e2[0] + y * e2[1] + z * e2[2], x * e1[0] + y * e1[1] + z * e1[2]);
-    const al = l < 0 ? -l : l;
-    const e = al / 1.62;
-    const env = 0.26 + 0.74 * Math.exp(-(e * e * e));
-    const sb = b < 0 ? -b : b;
-    const t1 = sb / 0.062, t2 = sb / 0.235;
-    const spine = Math.exp(-(t1 * t1));
-    const halo = Math.exp(-(t2 * t2));
-    let c0 = x * core[0] + y * core[1] + z * core[2];
-    c0 = c0 > 0 ? c0 : 0;
-    const c2 = c0 * c0, c4 = c2 * c2, c8 = c4 * c4;
-    const coreF = c8 * c2;                 /* c0^10 */
-    let d = (0.040 + 0.95 * spine + 0.24 * halo) * env * (1 + 1.55 * coreF);
-    for (const L of LANES) {
-      const bc = L.b0 + L.amp * Math.sin(L.k * (l - L.ph));
-      const t = (b - bc) / L.w;
-      d *= 1 - L.d * Math.exp(-(t * t));
-    }
-    return d;
-  };
+/* 银盘剖面：底色 + 窄亮脊 + 宽晕，三者相加后乘 cos(b) 得每单位立体角的密度 */
+const BASE = 0.115;
+const SPINE_A = 0.95, SPINE_W = 0.062;
+const HALO_A = 0.24, HALO_W = 0.235;
+const LONG_W = 1.62;
+const CORE_BOOST = 1.15;
+const PROFILE_MAX = BASE + SPINE_A + HALO_A;   /* b = 0 处 */
+
+function profileOf(sb) {
+  const t1 = sb / SPINE_W, t2 = sb / HALO_W;
+  return (BASE + SPINE_A * Math.exp(-(t1 * t1)) + HALO_A * Math.exp(-(t2 * t2)));
 }
 
 /**
  * @returns {{ dir: Float32Array, pack: Float32Array, count: number }}
  *   dir  —— 每颗星的世界方向（单位向量）
  *   pack —— (尺寸, 亮度, 色温索引, 种子)
+ *
+ * 采样在「银纬 / 银经」角度空间里做，而不是在球面上做拒绝采样：
+ * 前者每次尝试只要几次乘法和两个 exp，二十万颗星约 60ms；
+ * 后者要反复采样整球，同样的数量级要 1.5s 以上。
  */
-export function catalog({ count, pole, core, e1, e2, seed = 20261112, maxDensity = 1.62 }) {
+export function catalog({ count, pole, core, e1, e2, seed = 20261112 }) {
   const rnd = mulberry32(seed);
-  const dens = densityFn({ pole, core, e1, e2 });
 
   const dir = new Float32Array(count * 3);
   const pack = new Float32Array(count * 4);
 
-  let i = 0, guard = 0;
-  while (i < count && guard < count * 60) {
+  /* 银道面内的正交基：任取一个与银极不平行的方向即可 */
+  const ax = Math.abs(pole[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  let u = [
+    pole[1] * ax[2] - pole[2] * ax[1],
+    pole[2] * ax[0] - pole[0] * ax[2],
+    pole[0] * ax[1] - pole[1] * ax[0]
+  ];
+  let n = Math.hypot(u[0], u[1], u[2]) || 1;
+  u = [u[0] / n, u[1] / n, u[2] / n];
+  const v = [
+    pole[1] * u[2] - pole[2] * u[1],
+    pole[2] * u[0] - pole[0] * u[2],
+    pole[0] * u[1] - pole[1] * u[0]
+  ];
+
+  let i = 0, guard = 0, cap = count * 40;
+  while (i < count && guard < cap) {
     guard++;
-    /* 球面均匀采样 */
-    const z = rnd() * 2 - 1;
-    const th = rnd() * Math.PI * 2;
-    const r = Math.sqrt(1 - z * z);
-    const x = r * Math.cos(th), y = z, zz = r * Math.sin(th);
 
-    if (rnd() * maxDensity > dens(x, y, z)) continue;
+    /* 银纬：按剖面拒绝采样。cos(beta) 让每单位立体角的密度正确 */
+    let beta = 0, sb = 0, ok = false;
+    for (let k = 0; k < 24; k++) {
+      beta = (rnd() * 2 - 1) * 1.5;
+      sb = Math.abs(Math.sin(beta));
+      if (rnd() * PROFILE_MAX <= profileOf(sb) * Math.cos(beta)) { ok = true; break; }
+    }
+    if (!ok) continue;
 
-    dir[i * 3] = x; dir[i * 3 + 1] = y; dir[i * 3 + 2] = zz;
+    /* 银经：均匀取样，再按亮度包络与暗带遮挡筛选 */
+    const l = (rnd() * 2 - 1) * Math.PI;
+    const al = Math.abs(l) / LONG_W;
+    const env = 0.26 + 0.74 * Math.exp(-(al * al * al));
+    if (rnd() > env) continue;
+
+    let keep = 1;
+    for (let q = 0; q < LANES.length; q++) {
+      const L = LANES[q];
+      const bc = L.b0 + L.amp * Math.sin(L.k * (l - L.ph));
+      const t = (Math.sign(beta) * sb - bc) / L.w;
+      keep *= 1 - L.d * Math.exp(-(t * t));
+    }
+    if (rnd() > keep) continue;
+
+    const cb = Math.cos(beta), sbb = Math.sin(beta);
+    const cl = Math.cos(l), sl = Math.sin(l);
+    dir[i * 3] = pole[0] * sbb + (u[0] * cl + v[0] * sl) * cb;
+    dir[i * 3 + 1] = pole[1] * sbb + (u[1] * cl + v[1] * sl) * cb;
+    dir[i * 3 + 2] = pole[2] * sbb + (u[2] * cl + v[2] * sl) * cb;
+
+    const x = dir[i * 3], y = dir[i * 3 + 1], z = dir[i * 3 + 2];
+    const c0 = Math.max(0, x * core[0] + y * core[1] + z * core[2]);
+    const coreF = Math.pow(c0, 8);
 
     /* 星等：四级幂律。亮星只占 0.2%，但体积与亮度都远高于暗星 */
-    const q = rnd();
+    const m = rnd();
     let size, bright;
-    if (q < 0.0020) { size = 5.2 + rnd() * 6.0; bright = 1.00; }
-    else if (q < 0.0380) { size = 2.0 + rnd() * 2.1; bright = 0.86; }
-    else if (q < 0.2400) { size = 1.15 + rnd() * 0.85; bright = 0.62; }
+    if (m < 0.0020) { size = 5.2 + rnd() * 6.0; bright = 1.00; }
+    else if (m < 0.0380) { size = 2.0 + rnd() * 2.1; bright = 0.86; }
+    else if (m < 0.2400) { size = 1.15 + rnd() * 0.85; bright = 0.62; }
     else { size = 0.66 + Math.pow(rnd(), 1.9) * 0.80; bright = 0.30 + rnd() * 0.26; }
+
+    /* 银心附近整体更亮：密度靠采样，亮度靠这一步 */
+    bright *= 1 + 0.9 * coreF;
 
     /* 色温：绝大部分是白/暖白，蓝白与橙是少数 */
     const cq = rnd();
