@@ -17,12 +17,9 @@
      k   摆动频率                ph  相位
      w   半宽（弧度）            d   遮挡强度 0–1                       */
 export const LANES = [
-  { b0: 0.000, amp: 0.019, k: 1.90, ph: 0.70, w: 0.0165, d: 0.78 },  /* 主暗带，压在银心下方 */
-  { b0: -0.034, amp: 0.013, k: 2.70, ph: 2.10, w: 0.0105, d: 0.60 },
-  { b0: 0.027, amp: 0.010, k: 3.30, ph: 4.40, w: 0.0085, d: 0.52 },
-  { b0: -0.068, amp: 0.019, k: 2.20, ph: 1.20, w: 0.0135, d: 0.44 },
-  { b0: 0.055, amp: 0.015, k: 2.60, ph: 5.30, w: 0.0115, d: 0.38 },
-  { b0: 0.006, amp: 0.028, k: 1.10, ph: 3.00, w: 0.0062, d: 0.34 }
+  { b0: 0.003, amp: 0.018, k: 4.6, ph: 0.60, w: 0.0135, d: 0.80 },  /* 主暗带：宽而浅，读作区域而非线条 */
+  { b0: -0.030, amp: 0.016, k: 6.2, ph: 2.40, w: 0.0092, d: 0.62 },
+  { b0: 0.030, amp: 0.014, k: 5.4, ph: 4.10, w: 0.0078, d: 0.54 }
 ];
 
 /* 色温配色：蓝白 → 正白 → 暖白 → 橙。索引即 aPack.z */
@@ -37,9 +34,9 @@ export const PALETTE = [
 
 /* 银河带在画面中的目标位置（0–1，y 自顶向下） */
 export const LAYOUT = {
-  bandY: 0.215,   /* 站内：亮脊贴着球体上缘升起 */
+  bandY: 0.155,   /* 站内：亮脊从球体上缘升起，不被球体遮住 */
   coreX: 0.52,    /* 银心横向位置，与参考图一致 */
-  width: 0.062     /* 亮脊半宽（弧度） */
+  width: 0.046     /* 亮脊半宽（弧度） */
 };
 
 /* ── 星点 ──────────────────────────────────────────────────────────
@@ -160,23 +157,36 @@ void main() {
 
   float b = dot(dir, uPole);
   float l = atan(dot(dir, uE2), dot(dir, uE1));
-  float core = pow(max(dot(dir, uCore), 0.0), 10.0);
+  float core = pow(max(dot(dir, uCore), 0.0), 22.0);
 
   /* 沿银道的亮度包络：两端渐隐，中间最亮 */
   float env = 0.26 + 0.74 * exp(-pow(abs(l) / 1.62, 3.0));
-  float spine = exp(-pow(abs(b) / 0.062, 2.0));
-  float halo = exp(-pow(abs(b) / 0.235, 2.0));
+  float spine = exp(-pow(abs(b) / 0.046, 2.0));
+  float halo = exp(-pow(abs(b) / 0.115, 2.0));
 
-  float d = (0.115 + 0.80 * spine + 0.20 * halo) * env * (1.0 + 1.15 * core);
+  float clump = 0.64 + 0.26 * sin(3.1 * l + 9.0 * b)
+                     + 0.17 * sin(6.9 * l - 15.0 * b + 1.7)
+                     + 0.11 * sin(13.0 * l + 26.0 * b + 3.1);
+  clump = max(0.18, clump);
 
+  float d = (0.100 + 0.88 * spine + 0.26 * halo) * env * clump * (1.0 + 1.15 * core);
+
+  /* 暗带：中心线沿银经起伏，宽度内实心、边缘在 0.45–1.0 之间收住，
+     强度再沿银经呼吸一次，避免出现几条等宽的直线。 */
   for (int i = 0; i < 6; i++) {
     if (float(i) >= uLaneN) break;
-    float bc = uLane[i].x + uLane[i].y * sin(uLane[i].z * (l - uLane[i].w));
-    float t = (b - bc) / uLaneW[i].x;
-    d *= 1.0 - uLaneW[i].y * exp(-t * t);
+    float k = uLane[i].z;
+    float bc = uLane[i].x + uLane[i].y * sin(k * (l - uLane[i].w));
+    float t = abs(b - bc) / uLaneW[i].x;
+    float core = smoothstep(1.0, 0.55, t);
+    /* 沿银经的「呼吸」会归零，于是每条暗带自然断成数段——
+       真实的尘埃带是断续的，而不是一条通到底的缎带。 */
+    float g = sin(k * 0.63 * l + uLane[i].w * 1.7) * 0.5 + 0.5;
+    float breathe = pow(g, 2.1) * 1.25;
+    d *= 1.0 - uLaneW[i].y * breathe * core;
   }
 
-  vec3 col = mix(uCool, uWarm, clamp(core * 1.25 + spine * 0.16, 0.0, 1.0)) * d * uGlow;
+  vec3 col = mix(uCool, uWarm, clamp(core * 0.70 + spine * 0.22, 0.0, 1.0)) * d * uGlow;
   col += mix(uBottom, uTop, smoothstep(0.0, 1.0, vP.y));
 
   float dd = distance(vP, vec2(0.5)) / 0.82;
@@ -316,6 +326,11 @@ export function frame({ yaw, pitch, bandY, coreX, aspect, tanHalf }) {
    采用拒绝采样：先在球面上取均匀方向，再按密度接收。
    ══════════════════════════════════════════════════════════════════ */
 
+function smoothstep(a, b, x) {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+
 function mulberry32(a) {
   return function () {
     a |= 0; a = (a + 0x6D2B79F5) | 0;
@@ -326,9 +341,9 @@ function mulberry32(a) {
 }
 
 /* 银盘剖面：底色 + 窄亮脊 + 宽晕，三者相加后乘 cos(b) 得每单位立体角的密度 */
-const BASE = 0.115;
-const SPINE_A = 0.95, SPINE_W = 0.062;
-const HALO_A = 0.24, HALO_W = 0.235;
+const BASE = 0.100;
+const SPINE_A = 0.88, SPINE_W = 0.046;
+const HALO_A = 0.26, HALO_W = 0.115;
 const LONG_W = 1.62;
 const CORE_BOOST = 1.15;
 const PROFILE_MAX = BASE + SPINE_A + HALO_A;   /* b = 0 处 */
@@ -387,12 +402,24 @@ export function catalog({ count, pole, core, e1, e2, seed = 20261112 }) {
     const env = 0.26 + 0.74 * Math.exp(-(al * al * al));
     if (rnd() > env) continue;
 
+    /* 谐波团块：三组正弦叠加，确定性、可参数化，用来打破完美对称 */
+    const bb0 = Math.sign(beta) * sb;
+    let clump = 0.64 + 0.26 * Math.sin(3.1 * l + 9.0 * bb0)
+                     + 0.17 * Math.sin(6.9 * l - 15.0 * bb0 + 1.7)
+                     + 0.11 * Math.sin(13.0 * l + 26.0 * bb0 + 3.1);
+    clump = Math.max(0.18, clump);
+    if (rnd() > clump) continue;
+
     let keep = 1;
+    const bb = Math.sign(beta) * sb;
     for (let q = 0; q < LANES.length; q++) {
       const L = LANES[q];
       const bc = L.b0 + L.amp * Math.sin(L.k * (l - L.ph));
-      const t = (Math.sign(beta) * sb - bc) / L.w;
-      keep *= 1 - L.d * Math.exp(-(t * t));
+      const t = Math.abs(bb - bc) / L.w;
+      const core = 1 - smoothstep(0.55, 1.0, t);
+      const g = Math.sin(L.k * 0.63 * l + L.ph * 1.7) * 0.5 + 0.5;
+      const breathe = Math.pow(g, 2.1) * 1.25;
+      keep *= 1 - L.d * breathe * core;
     }
     if (rnd() > keep) continue;
 

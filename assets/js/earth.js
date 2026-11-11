@@ -368,7 +368,7 @@ export function createEarth(canvas, opts = {}) {
      星表由 skyfield.js 按密度场逐点生成：位置、尺寸、亮度、色温、种子
      全部记录在缓冲区里，可枚举、可复现（种子固定），不是随机撒点。 */
 
-  const starCount = mobile ? 72000 : 260000;
+  const starCount = mobile ? 68000 : 230000;
 
   /* 银道坐标系：由机位反推，使亮脊落在 LAYOUT.bandY、银心落在 LAYOUT.coreX。
      第一次 resize 拿到真实宽高比后计算，保证横幅画面里也是水平的。 */
