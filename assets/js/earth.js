@@ -273,13 +273,17 @@ void main() {
   vec2 ndc = uv * 2.0 - 1.0;
   vec3 dir = normalize(uRight * (ndc.x * uTanHalf * uAspect) + uUp * (ndc.y * uTanHalf) - uFwd);
 
-  float lon = atan(dir.z, dir.x);
-  float lat = asin(clamp(dir.y, -1.0, 1.0));
+  /* 让银道面斜过来（约 32°），否则它正好落在球体背后，看不见 */
+  float tilt = 0.56;
+  vec3 sd = vec3(dir.x, dir.y * cos(tilt) - dir.z * sin(tilt), dir.y * sin(tilt) + dir.z * cos(tilt));
+
+  float lon = atan(sd.z, sd.x);
+  float lat = asin(clamp(sd.y, -1.0, 1.0));
   vec2 skyUV = vec2(lon / 6.2831853 + 0.5, lat / 3.1415926 + 0.5);
 
   vec3 sky = texture2D(uSky, skyUV).rgb;
-  /* 提一点对比，让银河与暗尘分开；再压低整体，避免抢地球 */
-  sky = pow(max(sky - 0.012, 0.0), vec3(1.25)) * 1.55;
+  /* 轻微提对比即可；原来的 1.55 增益把星点全推成了噪点 */
+  sky = pow(max(sky - 0.010, 0.0), vec3(1.18)) * 1.05;
 
   vec3 base = mix(uBottom, uTop, smoothstep(0.0, 1.0, uv.y));
   vec3 col = mix(base, sky, clamp(uSkyGain, 0.0, 1.0));
@@ -335,7 +339,7 @@ void main() {
   gl_Position = vec4(clip.xy, 0.9999 * clip.w, clip.w);
   float tw = 0.86 + 0.14 * sin(uTime * 0.7 + aSeed * 6.283);
   gl_PointSize = aSize * uDpr * tw;
-  vA = uStars * tw * (0.58 + 0.42 * pow(aSeed, 0.7));
+  vA = uStars * tw * (0.34 + 0.40 * pow(aSeed, 0.7));
   vC = mix(vec3(0.74, 0.84, 1.0), vec3(1.0, 0.95, 0.86), fract(aSeed * 7.31));
   vSpike = aSpike;
 }`;
