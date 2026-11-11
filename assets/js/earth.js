@@ -360,8 +360,7 @@ export function createEarth(canvas, opts = {}) {
     cidx: buffer(cloudGeo.idx, gl.ELEMENT_ARRAY_BUFFER),
     apos: buffer(atmoGeo.pos),
     aidx: buffer(atmoGeo.idx, gl.ELEMENT_ARRAY_BUFFER),
-    quad: buffer(new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1])),
-    meteor: buffer(meteorParts)
+    quad: buffer(new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]))
   };
 
   /* ── 星空 ──
@@ -374,6 +373,7 @@ export function createEarth(canvas, opts = {}) {
      第一次 resize 拿到真实宽高比后计算，保证横幅画面里也是水平的。 */
   let GAL = null;
   let starBuf = null;
+  let meteorBuf = null;
   let starN = 0;
   let skyReady = false;
 
@@ -388,6 +388,7 @@ export function createEarth(canvas, opts = {}) {
       count: starCount, pole: GAL.pole, core: GAL.core, e1: GAL.e1, e2: GAL.e2
     });
     starBuf = { dir: buffer(cat.dir), pack: buffer(cat.pack) };
+    meteorBuf = buffer(meteorParts);
     starN = cat.count;
     skyReady = true;
   }
@@ -829,7 +830,7 @@ export function createEarth(canvas, opts = {}) {
       g.enable(g.BLEND);
       g.blendFunc(g.ONE, g.ONE);
       g.useProgram(progMeteor.p);
-      g.bindBuffer(g.ARRAY_BUFFER, buf.meteor);
+      g.bindBuffer(g.ARRAY_BUFFER, meteorBuf);
       g.enableVertexAttribArray(progMeteor.a.aM);
       g.vertexAttribPointer(progMeteor.a.aM, 3, g.FLOAT, false, 0, 0);
       g.uniform1f(progMeteor.u.uDpr, state.dpr);
