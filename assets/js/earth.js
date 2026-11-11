@@ -304,43 +304,45 @@ void main() {
   vec2 ndc = vP * 2.0 - 1.0;
   vec3 dir = normalize(uRight * (ndc.x * uTanHalf * uAspect) + uUp * (ndc.y * uTanHalf) - uFwd);
 
-  /* 银道分解：b 为银纬正弦，par 沿银极，perp 落在银盘内 */
   float b = dot(dir, uPole);
-  vec3 par = uPole * b;
-  vec3 perp = dir - par;
+  vec3 perp = dir - uPole * b;
 
-  float band = exp(-pow(abs(b) * 3.30, 2.0));
-  band *= smoothstep(1.30, 0.20, abs(b));   /* 边缘柔和收束，不留硬边 */
+  /* 银盘剖面：亮脊套在宽晕里，带外迅速回到深空底色 */
+  float halo = exp(-pow(abs(b) * 4.30, 2.0));
+  float spine = exp(-pow(abs(b) * 12.0, 2.0));
+  float band = halo * 0.54 + spine * 0.72;
 
   float coreAng = max(0.0, dot(dir, uCore));
-  float core = pow(coreAng, 8.0);
+  float core = pow(coreAng, 6.0);
 
-  /* 云气：低频定轮廓 → 中频出脊 → 高频补颗粒 */
-  float n1 = fbm(dir * 2.35 + 4.1, uOct);
-  float n2 = fbm(dir * 6.80 + 19.3, max(uOct - 1.0, 2.0));
-  float n3 = vnoise(dir * 26.0 + 41.7);
+  /* 域扭曲：幅度必须远小于噪声单元，否则拉出梵高式旋涡 */
+  vec3 p = dir * 7.0;
+  vec3 w = vec3(fbm(p + 3.1, 2.0), fbm(p + 7.7, 2.0), fbm(p + 13.3, 2.0)) - 0.49;
+  vec3 q = p + w * 1.15;
 
-  float ridge = 1.0 - abs(n1 * 2.0 - 1.0);
-  float cloud = ridge * 0.52 + n2 * 0.48;
-  cloud = pow(clamp(cloud, 0.0, 1.0), 1.35);
+  /* 亮部：低频、几乎无结构 */
+  float n1 = fbm(q * 1.45, uOct);
+  float glow = band * (0.52 + 0.92 * n1);
+  glow *= 0.80 + 0.58 * core;
 
-  float dens = band * (0.28 + 1.30 * cloud) * (0.50 + 1.30 * core);
-  dens += core * band * 0.60;
+  /* 暗尘：在「银极 ×24 / 银盘方向 ×5」的拉伸坐标系里取样，
+     沿银盘方向变化慢、垂直方向变化快 → 得到平行于银河的细丝而不是圆斑 */
+  vec3 dq = uPole * b * 24.0 + perp * 5.0;
+  float d1 = fbm(dq + 31.0, 3.0);
+  float d2 = fbm(dq * 2.9 + 57.0, 2.0);
+  float dust = smoothstep(0.48, 0.70, d1 * 0.62 + d2 * 0.40);
+  dust *= smoothstep(0.80, 0.20, abs(b));
+  glow *= 1.0 - 0.90 * dust;
 
-  /* 暗尘：沿银极压扁，形成平行于银盘的丝状遮挡 */
-  vec3 dq = par * 22.0 + perp * 6.4 + 27.7;
-  float dust = fbm(dq, 3.0);
-  dust = smoothstep(0.40, 0.86, dust);
-  dens *= 1.0 - 0.74 * dust * band;
+  /* 星团颗粒 */
+  float gran = vnoise(q * 30.0 + 5.0);
+  glow *= 0.84 + 0.30 * gran;
 
   /* 色调：银心暖琥珀 → 外围冷蓝 */
-  vec3 cool = vec3(0.30, 0.40, 0.64);
-  vec3 warm = vec3(0.95, 0.70, 0.44);
-  vec3 col = mix(cool, warm, clamp(core * 0.90 + cloud * 0.30, 0.0, 1.0));
-  col *= dens;
-
-  /* 未分辨星团的颗粒感，压掉大面积平滑 */
-  col *= 0.84 + 0.32 * n3;
+  vec3 cool = vec3(0.20, 0.31, 0.57);
+  vec3 warm = vec3(1.00, 0.78, 0.50);
+  vec3 col = mix(cool, warm, clamp(core * 1.35 + n1 * 0.20, 0.0, 1.0));
+  col *= glow;
 
   gl_FragColor = vec4(col, 1.0);
 }`;
@@ -613,7 +615,7 @@ export function createEarth(canvas, opts = {}) {
     const fwd = nrm([-e[0], -e[1], -e[2]]);
     const rgt = nrm([fwd[1], -fwd[0], 0]);
     const upv = crs(rgt, fwd);
-    const off = 0.30;                       /* 银道到视轴的角距（弧度） */
+    const off = 0.235;                       /* 银道到视轴的角距（弧度） */
     const lean = 0.55;
     const pole = nrm([
       fwd[0] * Math.sin(off) + 0.94 * (rgt[0] * Math.cos(lean) + upv[0] * Math.sin(lean)),
