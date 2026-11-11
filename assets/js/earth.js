@@ -115,7 +115,8 @@ void main() {
   float day = smoothstep(-0.075, 0.17, ndl);
 
   vec3 dayC = pow(texture2D(uDay, vUV).rgb, vec3(2.2));
-  vec3 nightC = pow(texture2D(uNight, vUV).rgb, vec3(2.2));
+  /* 夜图带一点紫底色，取高次幂压掉，只留城市的灯 */
+  vec3 nightC = pow(texture2D(uNight, vUV).rgb, vec3(2.7));
   float ocean = texture2D(uSpec, vUV).r;
 
   /* 云影：云层下方略压暗 */
@@ -128,7 +129,9 @@ void main() {
   lit += vec3(1.0, 0.96, 0.88) * spec * smoothstep(0.05, 0.35, ndl);
   lit += dayC * pow(1.0 - max(dot(N, V), 0.0), 3.0) * 0.10;
 
-  vec3 dark = nightC * 2.4 * uNightGain * smoothstep(0.12, -0.22, ndl) + dayC * 0.055;
+  vec3 dark = nightC * 1.9 * uNightGain * smoothstep(0.12, -0.22, ndl)
+           + dayC * 0.05
+           + vec3(0.004, 0.007, 0.014);
 
   vec3 col = mix(dark, lit, day);
 
