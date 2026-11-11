@@ -34,7 +34,9 @@ export function createMusic({ volume = 0.55 } = {}) {
   let audioEl = null;
   const listeners = new Set();
 
-  const emit = () => listeners.forEach(fn => fn({ playing: started && !muted, started, muted }));
+  /* 已启动 ≠ 真在出声：AudioContext 被挂起时没有声音，状态要按实际运行算 */
+  let running = () => false;
+  const emit = () => listeners.forEach(fn => fn({ playing: started && !muted && running(), started, muted }));
 
   /* ── 混响：用噪声衰减造一个 2.4 秒的空间，不引入任何音频文件 ── */
   function impulse(c, seconds = 2.4, decay = 2.8) {
@@ -197,7 +199,7 @@ export function createMusic({ volume = 0.55 } = {}) {
   /* 页面加载时就探测好，手势回调里不必再 await，保住用户激活 */
   const fileReady = src ? hasFile() : Promise.resolve(false);
 
-  const running = () => (ctx ? ctx.state === 'running' : !!(audioEl && !audioEl.paused && !audioEl.ended));
+  running = () => (ctx ? ctx.state === 'running' : !!(audioEl && !audioEl.paused && !audioEl.ended));
 
   async function start() {
     /* 已启动但被浏览器挂起：在手势里补一次 resume */
@@ -277,7 +279,7 @@ export function createMusic({ volume = 0.55 } = {}) {
     stop,
     toggle,
     armUnlock,
-    isPlaying: () => started && !muted,
+    isPlaying: () => started && !muted && running(),
     onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
   };
 }
