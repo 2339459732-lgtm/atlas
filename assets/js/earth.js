@@ -115,6 +115,9 @@ void main() {
   float day = smoothstep(-0.075, 0.17, ndl);
 
   vec3 dayC = pow(texture2D(uDay, vUV).rgb, vec3(2.2));
+  /* 4K 源图偏艳，统一压掉约 10% 饱和，让 1K/2K/4K 三档观感一致 */
+  float dLum = dot(dayC, vec3(0.299, 0.587, 0.114));
+  dayC = mix(vec3(dLum), dayC, 0.9);
   /* 夜图带一点紫底色，取高次幂压掉，只留城市的灯 */
   /* ── 夜面染色 ──
      不再直接使用夜图的 RGB（那会让灯光带上一层青绿），而是只取亮度，
