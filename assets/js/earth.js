@@ -544,12 +544,18 @@ export function createEarth(canvas, opts = {}) {
   /* ── 纹理 ── */
   /* 文件名里已经带分辨率后缀，这里只拼目录，别再追加（否则会出现 x-1k-1k） */
   const texUrl = (name) => `assets/tex/${name}`;
-  const texNames = {
-    day: mobile ? 'earth-day-1k.jpg' : 'earth-day.jpg',
+  /* 两档贴图：先铺低清保证出图速度，桌面端再后台换成高清 */
+  const texLow = {
+    day: 'earth-day-1k.jpg',
     night: 'earth-night-1k.jpg',
     clouds: 'earth-clouds-1k.png',
     spec: 'earth-specular-1k.jpg',
     normal: 'earth-normal.jpg'
+  };
+  const texHi = {
+    day: 'earth-day.jpg',
+    night: 'earth-night.png',
+    spec: 'earth-specular.jpg'
   };
   const textures = {};
 
@@ -630,9 +636,8 @@ export function createEarth(canvas, opts = {}) {
       progress?.(0.06);
 
       /* 先用最小的一张把球体点亮（约 90 KB），交互立刻可用 */
-      const quick = mobile ? texNames.day : 'earth-day-1k.jpg';
       try {
-        const img = await loadImage(texUrl(quick));
+        const img = await loadImage(texUrl(texLow.day));
         gl.deleteTexture(textures.day);
         textures.day = upload(img, true);
       } catch (e) {
@@ -642,20 +647,37 @@ export function createEarth(canvas, opts = {}) {
       onReady({ ok: true, partial: true });
       progress?.(0.35);
 
-      /* 其余贴图并行补齐；非移动端再补一张高分辨率白昼图 */
-      const rest = mobile ? ['night', 'clouds', 'spec', 'normal'] : ['day', 'night', 'clouds', 'spec', 'normal'];
+      /* 低清全套并行补齐 */
+      const rest = ['night', 'clouds', 'spec', 'normal'];
       let done = 0;
       await Promise.all(rest.map(async k => {
         try {
-          const img = await loadImage(texUrl(texNames[k]));
+          const img = await loadImage(texUrl(texLow[k]));
           if (textures[k]) gl.deleteTexture(textures[k]);
           textures[k] = upload(img, true);
         } catch (e) {
           console.warn('[earth] 跳过贴图 ' + k, e);
         }
         done++;
-        progress?.(0.35 + 0.65 * (done / rest.length));
+        progress?.(0.35 + 0.5 * (done / rest.length));
       }));
+
+      /* 桌面端再升级到 2K：白天、夜景、海面高光。移动端留在 1K 省流量 */
+      if (!mobile) {
+        const hiKeys = Object.keys(texHi);
+        let hd = 0;
+        await Promise.all(hiKeys.map(async k => {
+          try {
+            const img = await loadImage(texUrl(texHi[k]));
+            if (textures[k]) gl.deleteTexture(textures[k]);
+            textures[k] = upload(img, true);
+          } catch (e) {
+            console.warn('[earth] 高清贴图跳过 ' + k, e);
+          }
+          hd++;
+          progress?.(0.85 + 0.15 * (hd / hiKeys.length));
+        }));
+      }
 
       onReady({ ok: true });
     } catch (e) {
