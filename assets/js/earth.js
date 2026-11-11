@@ -269,10 +269,10 @@ void main() {
   col += vec3(0.006, 0.009, 0.020) * (1.0 - uv.y);
 
   vec2 p = (uv - 0.5) * vec2(1.62, 1.0);
-  float ang = -0.52;
+  float ang = -0.40;
   vec2 q = vec2(p.x * cos(ang) - p.y * sin(ang), p.x * sin(ang) + p.y * cos(ang));
 
-  float band = exp(-pow(abs(q.y - 0.20) * 7.4, 2.0));
+  float band = exp(-pow(abs(q.y - 0.30) * 7.0, 2.0));
   band *= smoothstep(1.00, 0.10, abs(q.x));
 
   float cloudA = fbm(vec2(q.x * 6.0, q.y * 17.0) + 2.3);
@@ -294,7 +294,7 @@ void main() {
   spec += pow(noise(vec2(q.x * 130.0, q.y * 260.0) + 7.0), 22.0);
   col += vec3(0.72, 0.80, 1.0) * spec * 24.0 * band * (0.35 + 0.65 * dust) * uNebula;
 
-  float coreGlow = exp(-pow(abs(q.x + 0.18) * 3.2, 2.0)) * exp(-pow(abs(q.y - 0.20) * 14.0, 2.0));
+  float coreGlow = exp(-pow(abs(q.x + 0.18) * 3.2, 2.0)) * exp(-pow(abs(q.y - 0.30) * 14.0, 2.0));
   col += vec3(0.30, 0.26, 0.24) * coreGlow * dust * uNebula * 0.5;
 
   float dark = smoothstep(0.46, 0.92, fbm(vec2(q.x * 21.0, q.y * 60.0) + 31.0));
