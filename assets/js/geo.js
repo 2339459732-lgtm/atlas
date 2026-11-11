@@ -27,8 +27,12 @@ function titleScore(title, q) {
 }
 
 async function wiki(lang, q) {
+  /* 同时取跨语言标题：中文条目 → 英文名，英文条目 → 中文名。
+     这样「用中文输入、用英文浏览」能落到同一个实体上，而不是另搜一个地方。 */
+  const ll = lang === 'zh' ? 'en' : 'zh';
   const url = `https://${lang}.wikipedia.org/w/api.php?action=query&generator=search` +
-    `&gsrsearch=${encodeURIComponent(q)}&gsrlimit=5&prop=coordinates&format=json&origin=*`;
+    `&gsrsearch=${encodeURIComponent(q)}&gsrlimit=5&prop=coordinates|langlinks&lllang=${ll}` +
+    `&format=json&origin=*`;
   const j = await fetchJSON(url);
   const pages = j?.query?.pages ? Object.values(j.query.pages) : [];
   return pages
@@ -37,6 +41,8 @@ async function wiki(lang, q) {
       lat: +p.coordinates[0].lat,
       lng: +p.coordinates[0].lon,
       title: p.title,
+      lang,
+      alttitle: (p.langlinks && p.langlinks[0] && p.langlinks[0]['*']) || '',
       source: `Wikipedia · ${lang}`,
       score: titleScore(p.title, q) + (p.index != null ? Math.max(0, 12 - p.index * 3) : 0)
     }));
@@ -44,7 +50,7 @@ async function wiki(lang, q) {
 
 async function osm(q) {
   const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5` +
-    `&accept-language=zh-CN&q=${encodeURIComponent(q)}`;
+    `&accept-language=zh-CN&namedetails=1&q=${encodeURIComponent(q)}`;
   const j = await fetchJSON(url);
   if (!Array.isArray(j)) return [];
   const good = new Set(['city', 'town', 'village', 'administrative', 'state', 'country', 'county', 'region', 'province']);
@@ -53,6 +59,8 @@ async function osm(q) {
     lng: +x.lon,
     title: (x.display_name || '').split(',')[0] || q,
     display: x.display_name,
+    /* OSM 的 name:en 是同一实体的英文名，中文输入靠它拿到英文 */
+    titleEn: (x.namedetails && x.namedetails['name:en']) || '',
     source: 'OpenStreetMap',
     score: titleScore((x.display_name || '').split(',')[0], q) * 0.6
       + (good.has(x.addresstype) ? 45 : 8)
@@ -71,7 +79,17 @@ export async function geocode(name) {
 
   all.sort((a, b) => b.score - a.score);
   const best = all[0];
-  const out = { lat: best.lat, lng: best.lng, label: best.title, source: best.source, alternatives: all.slice(1, 4) };
+
+  /* 同一实体的中英双名：维基走语言链接，OSM 走 name:en */
+  const labelEn = best.lang === 'en' ? best.title : (best.titleEn || best.alttitle || '');
+  const labelZh = best.lang === 'zh' ? best.title : (best.alttitle || '');
+
+  const out = {
+    lat: best.lat, lng: best.lng,
+    label: best.title, labelEn, labelZh,
+    source: best.source,
+    alternatives: all.slice(1, 4)
+  };
   cache.set(q, out);
   return out;
 }
@@ -90,6 +108,53 @@ const CLOSE = [
   '一直没有走远，也没有靠近',
   '把远方写得很轻，很慢'
 ];
+
+/* ── 英文语料：与中文同一套意象，不做逐字直译 ── */
+const EN_LOW = ['the smell of salt on the wind', 'noon shadow under the trees',
+  'damp air after the heat', 'light through the banyan leaves', 'sand still cool from the tide'];
+const EN_MID = ['bells somewhere in the old town', 'lamps along a long street',
+  'stone that has just dried', 'a shutter left half open', 'the shadow of a church'];
+const EN_HIGH = ['snow falling through a long night', 'light that refuses to end',
+  'the outline of firs', 'a lake held under ice', 'clouds hanging very low'];
+
+const EN_CLOSE = [
+  'slows the whole city down to a walk',
+  'reads like a letter never sent',
+  'stays as quiet as a sentence left unfinished',
+  'is kept a long time by the evening light',
+  'never comes closer and never goes far',
+  'writes the distance down slowly, and lightly'
+];
+
+const MONTH_EN = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+
+function composeIntroEn({ name = '', lat = null, date = '' }) {
+  const seed = hash('en|' + name + '|' + (date || '') + '|' + (lat == null ? '' : lat.toFixed(1)));
+  const abs = lat == null ? 35 : Math.abs(lat);
+  const zone = abs < 23.5 ? EN_LOW : abs < 55 ? EN_MID : EN_HIGH;
+  const scene = pick(zone, seed);
+  const close = pick(EN_CLOSE, seed >> 3);
+
+  const m = /(\d{4})\s*[年./-]\s*(\d{1,2})?/.exec(String(date || ''));
+  const month = m && m[2] ? MONTH_EN[Math.min(11, Math.max(0, +m[2] - 1))] : '';
+  const latWord = lat == null ? '' : `${Math.round(abs)}° ${lat >= 0 ? 'north' : 'south'}`;
+
+  const patterns = [];
+  if (month) patterns.push(`${month} in ${name}, where ${scene} ${close}.`);
+  if (latWord) patterns.push(`${latWord} — ${scene} ${close}.`);
+  patterns.push(`${name}, where ${scene} ${close}.`);
+
+  /* 英文以 ~78 字符为舒适长度，落在 55–105 之间挑最接近的 */
+  const fit = patterns.filter(p => p.length >= 55 && p.length <= 105);
+  const pool = fit.length ? fit : patterns;
+  let best = pool[0], bestGap = Infinity;
+  for (const p of pool) {
+    const gap = Math.abs(p.length - 78);
+    if (gap < bestGap) { bestGap = gap; best = p; }
+  }
+  return best;
+}
 
 const CN_NUM = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
 
@@ -115,7 +180,9 @@ function hash(s) {
 
 const pick = (arr, seed) => arr[seed % arr.length];
 
-export function composeIntro({ name = '', lat = null, lng = null, date = '' } = {}) {
+export function composeIntro({ name = '', lat = null, lng = null, date = '', lang = 'zh' } = {}) {
+  if (lang === 'en') return composeIntroEn({ name, lat, date });
+
   const seed = hash(name + '|' + (date || '') + '|' + (lat == null ? '' : lat.toFixed(1)));
   const abs = lat == null ? 35 : Math.abs(lat);
   const zone = abs < 23.5 ? LOW : abs < 55 ? MID : HIGH;

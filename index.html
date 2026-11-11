@@ -81,6 +81,14 @@ try {
       <kbd id="kbd-mod">⌘K</kbd>
     </button>
 
+    <button type="button" class="sound-btn" id="sound-btn" aria-pressed="true" aria-label="背景音乐" data-i18n-aria="music.toggle" data-i18n-title="music.toggle">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+        <path d="M4.6 9.4h2.7L11.6 6v12L7.3 14.6H4.6z" stroke-linejoin="round"/>
+        <path class="sound-btn__wave" d="M15.2 9.3a4 4 0 0 1 0 5.4M17.7 6.9a7.2 7.2 0 0 1 0 10.2" stroke-linecap="round"/>
+        <path class="sound-btn__slash" d="M15.4 9.6l5 4.8M20.4 9.6l-5 4.8" stroke-linecap="round"/>
+      </svg>
+    </button>
+
     <button type="button" class="lang-btn" id="lang-btn" aria-label="切换语言" data-i18n-aria="nav.lang">
       <span id="lang-label">EN</span>
     </button>
@@ -225,6 +233,11 @@ try {
       </div>
 
       <p class="planet__hint" data-i18n="planet.hint">拖动旋转 · 滚轮缩放 · 点击空白处落一个地标</p>
+
+      <div class="planet__zoom" role="group" aria-label="缩放">
+        <button type="button" class="hud-btn hud-btn--sq" id="earth-zoom-in" aria-label="放大" data-i18n-aria="planet.zoomIn">+</button>
+        <button type="button" class="hud-btn hud-btn--sq" id="earth-zoom-out" aria-label="缩小" data-i18n-aria="planet.zoomOut">−</button>
+      </div>
     </div>
 
     <aside class="planet__panel">
@@ -584,5 +597,12 @@ try {
 </dialog>
 
 <script type="module" src="assets/js/main.js"></script>
+
+<div class="audio-hint" id="audio-hint" hidden>
+  <button type="button" class="audio-hint__btn" id="audio-hint-btn">
+    <span class="audio-hint__eq" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span data-i18n="music.tap">点击播放背景音乐</span>
+  </button>
+</div>
 </body>
 </html>

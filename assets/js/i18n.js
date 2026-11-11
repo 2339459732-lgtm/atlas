@@ -17,6 +17,10 @@ export const DICT = {
   'nav.search': ['搜索', 'Search'],
   'nav.theme': ['主题', 'Theme'],
   'nav.more': ['更多操作', 'More'],
+  'music.toggle': ['背景音乐', 'Background music'],
+  'music.tap': ['点击播放背景音乐', 'Click to play the soundtrack'],
+  'music.on': ['音乐已开启', 'Music on'],
+  'music.off': ['音乐已关闭', 'Music off'],
   'nav.lang': ['切换语言', 'Switch language'],
   'nav.brandHome': ['ATLAS 图册 · 回到顶部', 'ATLAS · Back to top'],
   'brand.cn': ['图册', 'ATLAS'],
@@ -71,14 +75,17 @@ export const DICT = {
     'Every place is a point on the sphere. Turn it, and watch where it falls against the light — that is the latitude you have been to.'],
   'planet.count': ['{n} 处地标', '{n} places'],
   'planet.new': ['+ 落一处新的', '+ Drop a new one'],
-  'planet.hint': ['拖动旋转 · 滚轮缩放 · 点击空白处落一个地标', 'Drag to rotate · Scroll to zoom · Click the surface to drop a pin'],
+  'planet.hint': ['拖动旋转 · ⌘/Ctrl + 滚轮缩放 · 点击球面落一个地标', 'Drag to rotate · ⌘/Ctrl + scroll to zoom · Click the surface to drop a pin'],
   'planet.auto': ['自转', 'Spin'],
   'planet.reset': ['正对', 'Reset'],
+  'planet.zoomIn': ['放大', 'Zoom in'],
+  'planet.zoomOut': ['缩小', 'Zoom out'],
   'planet.loading': ['正在绘制地球', 'Rendering the globe'],
   'planet.noWebgl': ['这台设备暂不支持 WebGL', 'WebGL is unavailable on this device'],
   'planet.toastNoWebgl': ['这台设备不支持 WebGL，地球未能载入', 'WebGL is unavailable — the globe could not load'],
   'planet.empty': ['还没有地标', 'No places yet'],
   'planet.albumCount': ['{n} 张', '{n} photos'],
+  'planet.markerAria': ['{name} · {n} 张照片', '{name} · {n} photos'],
 
   /* 相册 */
   'wall.eyebrow': ['相册', 'COLLECTION'],
@@ -93,6 +100,9 @@ export const DICT = {
   'wall.photoCount': ['{n} 张', '{n} photos'],
   'wall.empty0': ['空', 'Empty'],
   'wall.unlocated': ['尚未落点', 'No coordinates yet'],
+  'wall.coverAlt': ['{name} 封面', '{name} — cover'],
+  'wall.open': ['打开相册', 'Open album'],
+  'wall.openAlt': ['打开《{name}》', 'Open “{name}”'],
 
   /* 索引 */
   'idx.eyebrow': ['索引', 'INDEX'],
@@ -124,6 +134,8 @@ export const DICT = {
   /* 大图 */
   'lb.cover': ['设为封面', 'Set as cover'],
   'lb.isCover': ['已是封面', 'Cover'],
+  'lb.view': ['查看 {name}', 'View {name}'],
+  'lb.del': ['删除 {name}', 'Delete {name}'],
   'lb.hint': ['滚轮缩放 · 双击复位 · ← → 翻页', 'Scroll to zoom · Double-click to reset · ← → to browse'],
 
   /* 命令面板 */
@@ -193,6 +205,7 @@ export const DICT = {
   'vault.lm': ['地标', 'Places'],
   'vault.ph': ['照片', 'Photos'],
   'vault.size': ['占用', 'Storage'],
+  'vault.stats': ['{a} 处地标 · {b} 张照片', '{a} places · {b} photos'],
   'vault.pass': ['备份口令', 'Backup passphrase'],
   'vault.passPh': ['至少 6 位', 'At least 6 characters'],
   'vault.export': ['导出加密备份', 'Export backup'],
@@ -235,6 +248,10 @@ export const DICT = {
   'common.next': ['下一张', 'Next'],
   'common.delete': ['删除', 'Delete'],
   'common.view': ['查看', 'View'],
+  'common.photo': ['照片', 'Photo'],
+  'common.untitled': ['未命名', 'Untitled'],
+  'common.swatch': ['颜色 {c}', 'Colour {c}'],
+  'common.stats': ['{a} 处地标 · {b} 张照片', '{a} places · {b} photos'],
   'toast.saved': ['已保存', 'Saved'],
   'toast.removed': ['已移除', 'Removed'],
   'toast.pending': ['地标签好之后，这些照片会入这本书', 'These photos will be added once the place is created'],
@@ -246,6 +263,7 @@ export const DICT = {
   'toast.exported': ['已导出 · 单个 HTML，双击可看', 'Exported · a single HTML file, just open it'],
   'toast.coverSet': ['已设为这本的封面', 'Set as this album\'s cover'],
   'toast.located': ['已定位 · {name}', 'Located · {name}'],
+  'toast.exportFail': ['导出失败', 'Export failed'],
   'toast.synced': ['已在地球上标注 · {name}', 'Pinned on the globe · {name}']
 };
 

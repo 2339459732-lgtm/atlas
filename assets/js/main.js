@@ -9,6 +9,7 @@ import { createDust } from './drift.js';
 import { geocode, composeIntro } from './geo.js';
 import { sha256Hex, VAULT_HASH, makeBackup, readBackup, photoBlob } from './vault.js';
 import { t, applyI18n, initLang, getLang, setLang, LANGS } from './i18n.js';
+import { createMusic } from './audio.js';
 
 /* 入口私钥（SHA-256）。改口令：把新口令的 sha256 填到这里 */
 const GATE_HASH = 'c7efaa94c1114dfc8e1d4007d5369b11ab55fa19dea1a31ccf5aabcb3cc39a55';
@@ -269,7 +270,8 @@ function normalizeLM(l) {
     : parseCoord(l.coord || '');
   return {
     id: l.id || 'lm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-    name: l.name || '未命名',
+    name: l.name || (getLang() === 'en' ? 'Untitled' : '未命名'),
+    nameEn: l.nameEn || '',
     coord: l.coord || (geo ? fmtCoord(geo.lat, geo.lng) : ''),
     date: l.date || '',
     note: l.note || '',
@@ -335,7 +337,7 @@ function renderWall() {
     const frame = el('div', 'card__frame' + (cover ? '' : ' is-empty'));
     if (cover) {
       const img = el('img');
-      img.alt = `${lm.name} 封面`;
+      img.alt = t('wall.coverAlt', { name: placeName(lm) });
       img.loading = i > 3 ? 'lazy' : 'eager';
       img.decoding = 'async';
       img.addEventListener('load', () => img.classList.add('is-in'), { once: true });
@@ -343,7 +345,7 @@ function renderWall() {
       if (img.complete) img.classList.add('is-in');
       frame.appendChild(img);
       frame.appendChild(el('div', 'card__veil'));
-      frame.appendChild(el('span', 'card__hint', '打开相册'));
+      frame.appendChild(el('span', 'card__hint', t('wall.open')));
     } else {
       frame.appendChild(el('span', 'card__ghost', esc(lm.name)));
     }
@@ -394,7 +396,7 @@ function updateCard(lm) {
   if (!card) return;
   const n = photosOf(lm.id).length;
   const cnt = card.querySelector('.card__count');
-  if (cnt) cnt.textContent = n ? n + ' 张' : '空';
+  if (cnt) cnt.textContent = n ? t('wall.photoCount', { n }) : t('wall.empty0');
   const frame = card.querySelector('.card__frame');
   if (frame?.classList.contains('is-empty') && n) renderWall();
 }
@@ -423,7 +425,7 @@ function renderIndex() {
   if (!list) return;
   list.innerHTML = '';
   if (!state.landmarks.length) {
-    list.innerHTML = '<p class="ledger__empty">还没有地标。先建一处，再往里放照片。</p>';
+    list.innerHTML = `<p class="ledger__empty">${esc(t('idx.empty'))}</p>`;
     return;
   }
   state.landmarks.forEach((lm, i) => {
@@ -496,7 +498,7 @@ function initEarth() {
     onProject: ({ project }) => updateMarkers(project)
   });
   if (!earth) {
-    loader.innerHTML = '<span class="planet__loader-t">这台设备暂不支持 WebGL</span>';
+    loader.innerHTML = `<span class="planet__loader-t">${esc(t('planet.noWebgl'))}</span>`;
     return;
   }
   earth.setTheme(THEMES[state.theme].globe);
@@ -519,7 +521,7 @@ function buildMarkers() {
         `<span class="marker__dot"></span>` +
         `<span class="marker__label">${esc(placeName(l))}</span>` +
         `<span class="marker__card"><span class="marker__name">${esc(placeName(l))}</span>` +
-        `<span class="marker__meta">${esc(l.coord || '未标注')} · ${photosOf(l.id).length} 张</span></span>`;
+        `<span class="marker__meta">${esc(l.coord || t('wall.unlocated'))} · ${esc(t('wall.photoCount', { n: photosOf(l.id).length }))}</span></span>`;
       b.addEventListener('click', e => {
         e.stopPropagation();
         openAlbum(l.id, e);
@@ -805,7 +807,7 @@ function renderAlbumGrid() {
       shot.style.height = r.h + 'px';
       shot.style.flex = `0 0 ${w}px`;
       shot.style.transitionDelay = Math.min(idx, 8) * 25 + 'ms';
-      shot.setAttribute('aria-label', `查看 ${p.name}`);
+      shot.setAttribute('aria-label', t('lb.view', { name: p.name }));
 
       const img = el('img');
       img.alt = p.name;
@@ -817,7 +819,7 @@ function renderAlbumGrid() {
 
       const del = el('button', 'shot__del');
       del.type = 'button';
-      del.setAttribute('aria-label', `删除 ${p.name}`);
+      del.setAttribute('aria-label', t('lb.del', { name: p.name }));
       del.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg>';
       del.addEventListener('click', e => { e.stopPropagation(); removePhoto(p); });
       shot.appendChild(del);
@@ -897,7 +899,7 @@ async function uploadTo(landmarkId, files) {
     const rec = {
       id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7),
       landmarkId,
-      name: (f.name.replace(/\.[^.]+$/, '') || '未命名').slice(0, 46),
+      name: (f.name.replace(/\.[^.]+$/, '') || t('common.untitled')).slice(0, 46),
       blob, thumb, exif,
       w: full.width, h: full.height,
       t: Date.now() + i
@@ -933,7 +935,7 @@ async function removePhoto(p) {
   renderAlbumGrid();
   syncStats();
   buildMarkers();
-  showNote('已移除');
+  showNote(t('toast.removed'));
 }
 
 /* ───────── 大图 ───────── */
@@ -996,7 +998,7 @@ function lbShow(i) {
   const coverBtn = $('#lb-cover');
   if (coverBtn) {
     const isCover = lm?.coverId ? lm.coverId === p.id : photosOf(p.landmarkId)[0]?.id === p.id;
-    coverBtn.textContent = isCover ? '已是封面' : '设为封面';
+    coverBtn.textContent = isCover ? t('lb.isCover') : t('lb.cover');
     coverBtn.disabled = isCover;
   }
   resetZoom();
@@ -1133,7 +1135,7 @@ function renderPalette(q) {
       .map(p => {
         const lm = landmarkById(p.landmarkId);
         return {
-          id: p.id, label: p.name, meta: lm?.name || '照片', kind: 'photo',
+          id: p.id, label: p.name, meta: lm ? placeName(lm) : t('common.photo'), kind: 'photo',
           thumb: p.thumb || '', run: () => {
             openAlbum(p.landmarkId);
             setTimeout(() => {
@@ -1214,7 +1216,7 @@ function paintSwatches(active) {
     const b = el('button');
     b.type = 'button';
     b.style.background = c;
-    b.setAttribute('aria-label', `颜色 ${c}`);
+    b.setAttribute('aria-label', t('common.swatch', { c }));
     b.setAttribute('aria-pressed', String(c.toLowerCase() === swatchPick.toLowerCase()));
     b.addEventListener('click', () => {
       $$('button', box).forEach(x => x.setAttribute('aria-pressed', 'false'));
@@ -1229,9 +1231,9 @@ function openDialog(geo) {
   state.editing = null;
   pickGeo = geo || null;
   $('#dlg-form').reset();
-  $('#dlg-kicker').textContent = 'NEW LANDMARK';
-  $('#dlg-title').textContent = '新建地标';
-  $('#dlg-submit').textContent = '建这一本';
+  $('#dlg-kicker').textContent = t('dlg.newKicker');
+  $('#dlg-title').textContent = t('dlg.newTitle');
+  $('#dlg-submit').textContent = t('dlg.create');
   $('#dlg-err').hidden = true;
   paintSwatches(ACCENTS[Math.floor(Math.random() * ACCENTS.length)]);
   if (geo) $('#f-coord').value = fmtCoord(geo.lat, geo.lng);
@@ -1243,9 +1245,9 @@ function openEditDialog(lm) {
   if (!lm) return;
   state.editing = lm.id;
   pickGeo = lm.lat != null ? { lat: lm.lat, lng: lm.lng } : null;
-  $('#dlg-kicker').textContent = 'EDIT LANDMARK';
-  $('#dlg-title').textContent = '编辑地标';
-  $('#dlg-submit').textContent = '保存';
+  $('#dlg-kicker').textContent = t('dlg.editKicker');
+  $('#dlg-title').textContent = t('dlg.editTitle');
+  $('#dlg-submit').textContent = t('dlg.save');
   $('#dlg-err').hidden = true;
   $('#f-name').value = lm.name;
   $('#f-coord').value = lm.coord || '';
@@ -1260,28 +1262,38 @@ $('#dlg-cancel').addEventListener('click', () => dlg.close());
 $('#dlg-form').addEventListener('submit', async e => {
   e.preventDefault();
   const name = ($('#f-name').value || '').trim();
-  if (!name) { $('#dlg-err').hidden = false; $('#dlg-err').textContent = '给这处地方一个名字。'; return; }
+  if (!name) { $('#dlg-err').hidden = false; $('#dlg-err').textContent = t('dlg.errName'); return; }
   const coordRaw = ($('#f-coord').value || '').trim();
   let geo = parseCoord(coordRaw) || pickGeo;
-  if (!geo) {
-    /* 用户直接回车提交、没触发过 blur 时，这里补一次解析 */
-    try {
-      const hit = await geocode(name);
-      if (hit) {
-        geo = { lat: hit.lat, lng: hit.lng };
-        $('#f-coord').value = fmtCoord(geo.lat, geo.lng);
-      }
-    } catch {}
+  const hasCJK = /[\u4e00-\u9fa5]/.test(name);
+
+  /* 需要坐标，或英文界面下需要把中文名转成英文名时，都走一次解析（有缓存） */
+  let hit = null;
+  if (!geo || (getLang() === 'en' && hasCJK)) {
+    try { hit = await geocode(name); } catch {}
   }
+  if (!geo && hit) {
+    geo = { lat: hit.lat, lng: hit.lng };
+    $('#f-coord').value = fmtCoord(geo.lat, geo.lng);
+  }
+
+  /* 中英双名：name 保留用户输入，nameEn 用于英文界面 */
+  const nameEn = (hit && hit.labelEn) || (hasCJK ? '' : name);
+
   const keyRaw = ($('#f-key').value || '').trim();
   const keyHash = keyRaw ? await sha256Hex(keyRaw) : '';
   const noteVal = ($('#f-note').value || '').trim()
-    || composeIntro({ name, lat: geo?.lat ?? null, lng: geo?.lng ?? null, date: $('#f-date').value });
+    || composeIntro({
+      name: getLang() === 'en' ? (nameEn || name) : name,
+      lat: geo?.lat ?? null, lng: geo?.lng ?? null,
+      date: $('#f-date').value, lang: getLang()
+    });
 
   if (state.editing) {
     const lm = landmarkById(state.editing);
     if (!lm) return;
     lm.name = name.slice(0, 16);
+    lm.nameEn = nameEn.slice(0, 24);
     lm.coord = coordRaw || (geo ? fmtCoord(geo.lat, geo.lng) : '');
     lm.date = ($('#f-date').value || '').trim();
     lm.note = noteVal;
@@ -1301,6 +1313,7 @@ $('#dlg-form').addEventListener('submit', async e => {
   const lm = normalizeLM({
     id: 'lm-' + Date.now().toString(36),
     name: name.slice(0, 16),
+    nameEn: nameEn.slice(0, 24),
     coord: coordRaw || (geo ? fmtCoord(geo.lat, geo.lng) : ''),
     date: ($('#f-date').value || '').trim(),
     note: ($('#f-note').value || '').trim(),
@@ -1365,15 +1378,15 @@ $('#site-form').addEventListener('submit', e => {
     if (!armed) {
       armed = setTimeout(() => {
         armed = 0;
-        del.textContent = '删除';
+        del.textContent = t('common.delete');
         del.classList.remove('is-armed');
       }, 2800);
-      del.textContent = '确定删除？';
+      del.textContent = t('album.confirm');
       del.classList.add('is-armed');
       return;
     }
     clearTimeout(armed); armed = 0;
-    del.textContent = '删除';
+    del.textContent = t('common.delete');
     del.classList.remove('is-armed');
     for (const p of photosOf(lm.id)) {
       await dbDel(p.id);
@@ -1502,17 +1515,17 @@ function buildExport() {
       `<figcaption>${esc(p.name)}</figcaption></figure>`).join('');
     const meta = [g.lm.coord, g.lm.date].filter(Boolean).join('  ·  ');
     return `<section class="ch"><header><p class="kick">ALBUM ${pad2(state.landmarks.indexOf(g.lm) + 1)}</p>` +
-      `<h2>${esc(g.lm.name)}</h2>` +
-      `<p class="meta">${esc(meta)}${meta ? '  ·  ' : ''}${g.list.length} 张</p>` +
+      `<h2>${esc(placeName(g.lm))}</h2>` +
+      `<p class="meta">${esc(meta)}${meta ? '  ·  ' : ''}${esc(t('wall.photoCount', { n: g.list.length }))}</p>` +
       (g.lm.note ? `<p class="note">${esc(g.lm.note)}</p>` : '') +
       `</header><div class="grid">${shots}</div></section>`;
   }).join('');
 
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">` +
+  return `<!doctype html><html lang="${getLang() === 'en' ? 'en' : 'zh-CN'}"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width,initial-scale=1">` +
     `<title>${esc(state.site.name)} ${esc(state.site.cn)}</title><style>${EXPORT_CSS}</style></head><body>` +
     `<header class="top"><span class="mark">${esc(state.site.name)}<em>${esc(state.site.cn)}</em></span>` +
-    `<span class="stat">${groups.length} 地标 · ${total} 张</span></header>` +
+    `<span class="stat">${esc(t('common.stats', { a: groups.length, b: total }))}</span></header>` +
     `<div class="hero"><h1>${esc(state.site.title)}</h1>` +
     (state.site.lede ? `<p>${esc(state.site.lede)}</p>` : '') + `</div>` +
     `<main>${sections}</main>` +
@@ -1590,7 +1603,7 @@ $('#lb-cover')?.addEventListener('click', () => {
   saveLandmarks();
   renderWall();
   const btn = $('#lb-cover');
-  btn.textContent = '已是封面';
+  btn.textContent = t('lb.isCover');
   btn.disabled = true;
   showNote(t('toast.coverSet'));
 });
@@ -1609,6 +1622,10 @@ $('#earth-auto')?.addEventListener('click', e => {
   earth?.setAuto(on);
 });
 $('#earth-reset')?.addEventListener('click', () => earth?.reset());
+
+/* 缩放按钮：滚轮之外的第二条路，触屏也能推拉 */
+$('#earth-zoom-in')?.addEventListener('click', () => earth?.zoomBy(0.86));
+$('#earth-zoom-out')?.addEventListener('click', () => earth?.zoomBy(1.16));
 
 /* 磁吸 */
 if (fine() && !reduced()) {
@@ -1689,10 +1706,10 @@ function setGeo(stateName, text) {
 async function locateFromName() {
   if (!geoEl || geoBusy) return;
   const name = ($('#f-name').value || '').trim();
-  if (name.length < 2) { setGeo('idle', '填写地名后自动识别坐标'); return; }
+  if (name.length < 2) { setGeo('idle', t('geo.idle')); return; }
 
   geoBusy = true;
-  setGeo('loading', '正在解析坐标…');
+  setGeo('loading', t('geo.loading'));
   let hit = null;
   try { hit = await geocode(name); } catch { hit = null; }
   geoBusy = false;
@@ -1700,12 +1717,17 @@ async function locateFromName() {
   if (hit) {
     pickGeo = { lat: hit.lat, lng: hit.lng };
     $('#f-coord').value = fmtCoord(hit.lat, hit.lng);
-    setGeo('ok', `${hit.label} · ${hit.source}`);
+    const shown = getLang() === 'en' ? (hit.labelEn || hit.label) : hit.label;
+    setGeo('ok', `${shown} · ${hit.source}`);
     if (!$('#f-note').value.trim()) {
-      $('#f-note').value = composeIntro({ name, lat: hit.lat, lng: hit.lng, date: $('#f-date').value });
+      $('#f-note').value = composeIntro({
+        name: getLang() === 'en' ? (hit.labelEn || name) : name,
+        lat: hit.lat, lng: hit.lng,
+        date: $('#f-date').value, lang: getLang()
+      });
     }
   } else {
-    setGeo('fail', '未找到坐标 · 可在地球上点选');
+    setGeo('fail', t('geo.fail'));
   }
 }
 
@@ -1743,7 +1765,7 @@ function renderDeck() {
     const b = el('button', 'slide');
     b.type = 'button';
     b.dataset.i = String(i);
-    b.setAttribute('aria-label', `${lm.name}，${photosOf(lm.id).length} 张`);
+    b.setAttribute('aria-label', t('planet.markerAria', { name: placeName(lm), n: photosOf(lm.id).length }));
 
     const card = el('div', 'slide__card');
     if (cover) {
@@ -1763,30 +1785,35 @@ function renderDeck() {
     b.appendChild(ghost);
 
     b.appendChild(el('span', 'slide__tag', isLocked(lm) ? 'LOCKED' : t('ov.count', { n: photosOf(lm.id).length })));
-    b.addEventListener('click', e => openAlbum(lm.id, e));
+    b.addEventListener('click', e => {
+      /* 刚拖动过就不算点击，避免松手时误开相册 */
+      if (Date.now() - deckClickGuard < 260) { e.preventDefault(); e.stopPropagation(); return; }
+      openAlbum(lm.id, e);
+    });
     stage.appendChild(b);
   });
 
   deckIndex = clamp(deckIndex, 0, albums.length - 1);
+  bindDeckDrag();
   layoutDeck();
 }
 
-function layoutDeck() {
+function layoutDeck(fi = deckIndex) {
   const slides = $$('.slide');
   if (!slides.length) return;
   const w = slides[0].offsetWidth || 240;
 
   slides.forEach((s, i) => {
-    const d = i - deckIndex;
+    const d = i - fi;
     const ad = Math.abs(d);
     s.style.transform =
       `translate(-50%, -50%) translateX(${(d * w * 0.62).toFixed(1)}px) translateZ(${(-ad * 120).toFixed(0)}px)` +
       ` rotateY(${(-d * 15).toFixed(1)}deg) scale(${d === 0 ? 1 : 0.94})`;
     s.style.opacity = ad > 3 ? '0' : String(Math.max(0, 1 - ad * 0.26));
-    s.style.zIndex = String(20 - ad);
+    s.style.zIndex = String(20 - Math.round(ad));
     s.style.filter = ad >= 2 ? 'blur(2px) brightness(.72)' : 'none';
     s.style.pointerEvents = ad > 3 ? 'none' : 'auto';
-    s.classList.toggle('is-active', d === 0);
+    s.classList.toggle('is-active', Math.abs(d) < 0.5);
   });
 
   const lm = state.landmarks[deckIndex];
@@ -1799,6 +1826,56 @@ function layoutDeck() {
   }
   $('#car-prev').disabled = deckIndex === 0;
   $('#car-next').disabled = deckIndex >= state.landmarks.length - 1;
+}
+
+/* ── 轮播拖拽：跟手转动，松手吸附到最近一张 ── */
+let deckDrag = null;
+let deckClickGuard = 0;
+
+function deckStepWidth() {
+  const s = $$('.slide')[0];
+  return (s?.offsetWidth || 240) * 0.62;
+}
+
+function bindDeckDrag() {
+  const stage = $('#deck-stage');
+  if (!stage || stage.dataset.drag === '1') return;
+  stage.dataset.drag = '1';
+
+  stage.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (!state.landmarks.length) return;
+    deckDrag = { x: e.clientX, start: deckIndex, moved: 0 };
+    clearInterval(deckTimer);
+    stage.classList.add('is-dragging');
+    try { stage.setPointerCapture(e.pointerId); } catch {}
+  });
+
+  stage.addEventListener('pointermove', e => {
+    if (!deckDrag) return;
+    const dx = e.clientX - deckDrag.x;
+    deckDrag.moved = Math.max(deckDrag.moved, Math.abs(dx));
+    const fi = deckDrag.start - dx / deckStepWidth();
+    layoutDeck(clamp(fi, -0.55, state.landmarks.length - 0.45));
+  });
+
+  const settle = e => {
+    if (!deckDrag) return;
+    const dx = (e.clientX ?? deckDrag.x) - deckDrag.x;
+    const w = deckStepWidth();
+    const dragged = Math.abs(dx) > 6;
+    let steps = Math.round(-dx / w);
+    if (!steps && Math.abs(dx) > w * 0.22) steps = dx < 0 ? 1 : -1;
+    deckIndex = clamp(deckDrag.start + steps, 0, state.landmarks.length - 1);
+    deckDrag = null;
+    stage.classList.remove('is-dragging');
+    layoutDeck();
+    restartDeckTimer();
+    if (dragged) deckClickGuard = Date.now();
+  };
+  stage.addEventListener('pointerup', settle);
+  stage.addEventListener('pointercancel', settle);
+  stage.addEventListener('lostpointercapture', settle);
 }
 
 function deckGo(step) {
@@ -1854,7 +1931,7 @@ function renderTags() {
   const counts = new Map();
   state.landmarks.forEach(lm => albumTags(lm).forEach(t => counts.set(t, (counts.get(t) || 0) + 1)));
   if (!counts.size) {
-    box.innerHTML = '<p class="ov__note">还没有地标，标签会在建第一本之后出现。</p>';
+    box.innerHTML = `<p class="ov__note">${esc(t('ov.noTag'))}</p>`;
     return;
   }
   [...counts.entries()]
@@ -1912,10 +1989,10 @@ $('#album-lock-form')?.addEventListener('submit', async e => {
     saveUnlocked();
     err.hidden = true;
     openAlbum(lm.id);
-    toast(`《${lm.name}》已解锁 · 仅本次会话`);
+    toast(t('album.unlocked', { name: placeName(lm) }));
   } else {
     err.hidden = false;
-    err.textContent = '私钥不正确';
+    err.textContent = t('vault.err');
     box.classList.remove('is-shake');
     void box.offsetWidth;
     box.classList.add('is-shake');
@@ -1981,7 +2058,7 @@ $('#vault-form')?.addEventListener('submit', async e => {
     showVaultPanel();
   } else {
     err.hidden = false;
-    err.textContent = '私钥不正确';
+    err.textContent = t('vault.err');
     vaultBox.classList.remove('is-shake');
     void vaultBox.offsetWidth;
     vaultBox.classList.add('is-shake');
@@ -1998,7 +2075,7 @@ $('#vault-export')?.addEventListener('click', async () => {
   const btn = $('#vault-export');
   const pass = $('#vault-pass2').value || '';
   btn.setAttribute('aria-busy', 'true');
-  btn.textContent = '正在打包…';
+  btn.textContent = t('vault.exporting');
   try {
     const text = await makeBackup({
       site: state.site,
@@ -2016,14 +2093,14 @@ $('#vault-export')?.addEventListener('click', async () => {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
     try { localStorage.setItem('atlas.backed.v1', String(Date.now())); } catch {}
-    btn.textContent = '已导出';
-    toast('备份已生成 · 请妥善保管文件与口令');
+    btn.textContent = t('vault.exported');
+    toast(t('vault.exportedToast'));
   } catch (err) {
-    btn.textContent = '导出加密备份';
-    toast(err?.message || '导出失败', true);
+    btn.textContent = t('vault.export');
+    toast(err?.message || t('toast.exportFail'), true);
   } finally {
     btn.removeAttribute('aria-busy');
-    setTimeout(() => { btn.textContent = '导出加密备份'; }, 3200);
+    setTimeout(() => { btn.textContent = t('vault.export'); }, 3200);
   }
 });
 
@@ -2132,12 +2209,17 @@ function locateOnGlobe(id) {
 function initGate() {
   const gate = document.getElementById('gate');
   if (!gate) return;
-  if (!GATE_ENABLED) { gate.hidden = true; return; }
+  if (!GATE_ENABLED) {
+    gate.hidden = true;
+    document.documentElement.removeAttribute('data-gate');
+    return;
+  }
   gate.hidden = false;
   if (sessionStorage.getItem('atlas.gate') === '1') {
     document.documentElement.setAttribute('data-gate', 'open');
     return;
   }
+  document.documentElement.setAttribute('data-gate', 'locked');
   const form = document.getElementById('gate-form');
   const input = document.getElementById('gate-pass');
   const err = document.getElementById('gate-err');
@@ -2158,6 +2240,53 @@ function initGate() {
       input.select();
     }
   });
+}
+
+/* ───────── 背景音乐 ───────── */
+const LS_MUTED = 'atlas.muted.v1';
+
+function initMusic() {
+  const btn = $('#sound-btn');
+  const hint = $('#audio-hint');
+  const hintBtn = $('#audio-hint-btn');
+  if (!btn) return null;
+
+  const music = createMusic();
+  const paint = ({ playing }) => {
+    btn.setAttribute('aria-pressed', String(!!playing));
+    if (playing) hint && (hint.hidden = true);
+  };
+  music.onChange(paint);
+  paint({ playing: false });
+
+  const wanted = () => {
+    try { return localStorage.getItem(LS_MUTED) !== '1'; } catch { return true; }
+  };
+
+  const begin = async () => {
+    if (!wanted()) return;
+    const ok = await music.start();
+    if (!ok) {
+      /* 被自动播放策略拦下：先给一个不打扰的提示，等任意一次手势再起 */
+      setTimeout(() => { if (hint && !music.isPlaying()) hint.hidden = false; }, 900);
+      music.armUnlock(() => { if (hint) hint.hidden = true; });
+    }
+  };
+
+  btn.addEventListener('click', async () => {
+    const on = await music.toggle();
+    try { localStorage.setItem(LS_MUTED, on ? '0' : '1'); } catch {}
+    if (hint) hint.hidden = true;
+    toast(t(on ? 'music.on' : 'music.off'));
+  });
+
+  hintBtn?.addEventListener('click', async () => {
+    await music.start();
+    if (hint) hint.hidden = true;
+  });
+
+  begin();
+  return music;
 }
 
 /* ───────── 启动 ───────── */
@@ -2232,6 +2361,8 @@ async function boot() {
     renderWall();
     syncEarth();
   }
+
+  initMusic();
 }
 
 boot();

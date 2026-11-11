@@ -6,6 +6,9 @@
 
 const DEG = Math.PI / 180;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+/* 缩放范围：0.5 贴近地表，1.9 退到远轨，给足推拉空间 */
+const MIN_DIST = 0.50;
+const MAX_DIST = 1.90;
 
 /* ── 极简矩阵工具（列主序） ── */
 function perspective(out, fovy, aspect, near, far) {
@@ -328,7 +331,7 @@ export function createEarth(canvas, opts = {}) {
 
   const state = {
     /* 初始视角：以中国（约 105°E）为正面，俯角 23°，略偏东 */
-    yaw: 0.30, pitch: 0.40, dist: 1, spin: 0.04,
+    yaw: 0.30, pitch: 0.40, dist: 1, distTo: 1, spin: 0.04,
     targetYaw: null, targetPitch: null,
     velYaw: 0, velPitch: 0,
     auto: true, hovered: null, ready: false,
@@ -559,6 +562,13 @@ export function createEarth(canvas, opts = {}) {
       /* 自转 */
       if (state.auto && !state.dragging) state.spin += dt * 0.018;   /* 约 1°/s，缓慢自西向东 */
 
+      /* 缩放阻尼：滚轮/按钮改的是目标值，这里平滑追上去 */
+      if (Math.abs(state.distTo - state.dist) > 0.0002) {
+        state.dist += (state.distTo - state.dist) * Math.min(1, dt * 9);
+      } else if (state.dist !== state.distTo) {
+        state.dist = state.distTo;
+      }
+
       /* 视角阻尼 */
       if (state.targetYaw != null) {
         state.yaw += (state.targetYaw - state.yaw) * Math.min(1, dt * 6);
@@ -569,7 +579,7 @@ export function createEarth(canvas, opts = {}) {
         }
       } else if (!state.dragging) {
         state.yaw += state.velYaw;
-        state.pitch = clamp(state.pitch + state.velPitch, -1.15, 1.15);
+        state.pitch = clamp(state.pitch + state.velPitch, -1.45, 1.45);
         state.velYaw *= 0.93;
         state.velPitch *= 0.93;
         if (Math.abs(state.velYaw) < 0.00002) state.velYaw = 0;
@@ -837,7 +847,7 @@ export function createEarth(canvas, opts = {}) {
     down = { x: e.clientX, y: e.clientY };
     state.moved += Math.abs(dx) + Math.abs(dy);
     state.yaw -= dx * 0.005;
-    state.pitch = clamp(state.pitch + dy * 0.004, -1.15, 1.15);
+    state.pitch = clamp(state.pitch + dy * 0.004, -1.45, 1.45);
     state.velYaw = -dx * 0.004;
     state.velPitch = dy * 0.003;
   });
@@ -857,9 +867,13 @@ export function createEarth(canvas, opts = {}) {
     canvas.classList.remove('is-grab');
   });
 
+  /* 滚轮直接缩放；到达缩放上下限后不再拦截，把滚动交还页面 */
   canvas.addEventListener('wheel', e => {
+    const step = e.deltaMode === 1 ? 0.06 : 0.09;
+    const next = clamp(state.distTo * (e.deltaY > 0 ? 1 + step : 1 - step), MIN_DIST, MAX_DIST);
+    if (Math.abs(next - state.distTo) < 0.0005) return;   /* 已到头：放行页面滚动 */
     e.preventDefault();
-    state.dist = clamp(state.dist * (e.deltaY > 0 ? 1.06 : 0.94), 0.82, 1.22);
+    state.distTo = next;
     state.auto = false;
   }, { passive: false });
 
@@ -951,7 +965,7 @@ export function createEarth(canvas, opts = {}) {
     reset() {
       state.targetYaw = 0.30;
       state.targetPitch = 0.40;
-      state.dist = 1;
+      state.dist = 1; state.distTo = 1;
       state.spin = 0.04;
       state.auto = true;
     },
@@ -959,11 +973,19 @@ export function createEarth(canvas, opts = {}) {
       state.yaw = 0.30;
       state.pitch = 0.40;
       state.spin = 0.04;
+      state.dist = 1; state.distTo = 1;
       state.velYaw = 0; state.velPitch = 0;
       state.targetYaw = null; state.targetPitch = null;
       dirty = true;
     },
     setAuto(v) { state.auto = v; },
+    zoomBy(f) {
+      state.distTo = clamp(state.distTo * f, MIN_DIST, MAX_DIST);
+      state.dist = state.distTo;
+      state.auto = false;
+      return state.distTo;
+    },
+    getZoom: () => state.distTo,
     isReady: () => state.ready,
     _project: (lat, lng) => {
       const eye = cameraEye();
