@@ -292,7 +292,7 @@ void main() {
   col *= 1.0 - 0.7 * band * dark;
 
   float d = distance(uv * vec2(1.0, 1.35), vec2(0.34, 0.62));
-  col += uGlow * uGlowAmt * exp(-d * d * 3.4);
+  col += uGlow * uGlowAmt * exp(-d * d * 5.2);
   float vig = smoothstep(1.34, 0.30, distance(uv, vec2(0.5)));
   col *= mix(0.70, 1.0, vig);
   col += (hash(uv * 1024.0) - 0.5) * uGrain;
