@@ -671,12 +671,12 @@ export function createEarth(canvas, opts = {}) {
     const roll = Math.random();
     let d;
 
-    if (roll < 0.26) {
+    if (roll < 0.38) {
       /* 各向同性背景 */
       const z = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2;
       const r = Math.sqrt(1 - z * z);
       d = [r * Math.cos(th), z, r * Math.sin(th)];
-    } else if (roll < 0.74) {
+    } else if (roll < 0.86) {
       /* 银盘：|b| 指数衰减，星密集在 ±8° 内 */
       const b = (Math.random() < 0.5 ? 1 : -1) * Math.pow(Math.random(), 2.0) * 0.30;
       const l = Math.random() * Math.PI * 2;
@@ -934,7 +934,8 @@ export function createEarth(canvas, opts = {}) {
   function fit() {
     const aspect = state.w / state.h || 1;
     const fov = 30 * DEG;
-    const k = 0.62;   /* 球体占比：留出足够的天空，画面才有宇宙尺度 */
+    /* 宽屏留出天空才显尺度；窄屏受宽度限制，球太小反而留下大片空场 */
+    const k = (state.w / state.h) < 1.05 ? 0.80 : 0.62;
     const needV = 1 / (k * Math.tan(fov / 2));
     const needH = 1 / (k * Math.tan(fov / 2) * aspect);
     state.baseDist = Math.max(needV, needH);
