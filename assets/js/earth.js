@@ -311,12 +311,12 @@ void main() {
     if (k < 1.0) {
       float r1 = hash(vec2(cyc, fi + 1.3));
       float r2 = hash(vec2(cyc + 9.1, fi + 5.7));
-      vec2 start = vec2(-0.30 + r1 * 0.90, 0.90 + r2 * 0.16);
+      vec2 start = vec2(-0.20 + r1 * 0.95, 0.62 + r2 * 0.22);
       vec2 dirv = normalize(vec2(0.90, -0.46));
-      vec2 head = start + dirv * k * 0.92;
-      float s = meteor(uv, head, dirv, 0.24, 0.0030);
+      vec2 head = start + dirv * k * 0.78;
+      float s = meteor(uv, head, dirv, 0.19, 0.0022);
       float fade = smoothstep(0.0, 0.12, k) * (1.0 - smoothstep(0.75, 1.0, k));
-      col += vec3(0.88, 0.94, 1.0) * s * fade * 1.7;
+      col += vec3(0.88, 0.94, 1.0) * s * fade * 1.35;
       col += vec3(0.58, 0.70, 1.0) * pow(s, 0.55) * fade * 0.22;
       /* 头部亮点 */
       float headGlow = smoothstep(0.014, 0.0, length(uv - head));
