@@ -176,6 +176,16 @@ export const DICT = {
   'planet.albumCount': ['{n} 张', '{n} photos'],
   'planet.markerAria': ['{name} · {n} 张照片', '{name} · {n} photos'],
 
+  /* 图层仪表 */
+  'layer.btn': ['图层', 'Layers'],
+  'layer.title': ['图层', 'Layers'],
+  'layer.panel': ['图层仪表', 'Layer instrument'],
+  'layer.close': ['收起图层', 'Collapse layers'],
+  'layer.presets': ['图层预设', 'Layer presets'],
+  'layer.share': ['复制视图链接', 'Copy view link'],
+  'layer.shared': ['视图链接已复制', 'View link copied'],
+  'layer.reset': ['重置', 'Reset'],
+
   /* 相册 */
   'wall.eyebrow': ['相册', 'COLLECTION'],
   'wall.title': ['相册', 'Albums'],

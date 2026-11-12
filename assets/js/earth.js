@@ -20,11 +20,13 @@ const MAX_DIST = 1.90;
 const SUN_DIR = [-0.426, 0.386, 0.818];
 
 /* ── 极简矩阵工具（列主序） ── */
-function perspective(out, fovy, aspect, near, far) {
+function perspective(out, fovy, aspect, near, far, shift = 0) {
   const f = 1 / Math.tan(fovy / 2);
   out[0] = f / aspect; out[1] = 0; out[2] = 0; out[3] = 0;
   out[4] = 0; out[5] = f; out[6] = 0; out[7] = 0;
-  out[8] = 0; out[9] = 0; out[10] = (far + near) / (near - far); out[11] = -1;
+  /* shift 是 NDC 横移：z_clip 参与 x_clip，等价于把镜头的光轴平移，
+     球与它上面的注记一起移，不用改画布尺寸。 */
+  out[8] = shift; out[9] = 0; out[10] = (far + near) / (near - far); out[11] = -1;
   out[12] = 0; out[13] = 0; out[14] = (2 * far * near) / (near - far); out[15] = 0;
   return out;
 }
@@ -384,10 +386,13 @@ export function createEarth(canvas, opts = {}) {
     targetYaw: null, targetPitch: null,
     velYaw: 0, velPitch: 0,
     auto: true, hovered: null, ready: false,
-    dpr: 1, w: 0, h: 0, baseDist: 3.6, quality: 1,
+    dpr: 1, w: 0, h: 0, baseDist: 3.6, quality: 1, reserve: 0,
     dragging: false, moved: 0, last: null,
     sunYaw: 0, t: 0, sunGeo: null,
-    meteors: [], nextMeteor: 4.5, meteorIdx: 0
+    meteors: [], nextMeteor: 4.5, meteorIdx: 0,
+    /* 图层开关：只控制"画不画"，不改主题参数。
+       主题决定"长什么样"，图层决定"这一层在不在"——两者正交，切主题不会把图层重置。 */
+    flags: { clouds: true, atmo: true, stars: true, sky: true, meteors: true }
   };
 
   /* ── 程序 ── */
@@ -733,13 +738,15 @@ export function createEarth(canvas, opts = {}) {
   }
 
   function fit() {
-    const aspect = state.w / state.h || 1;
     const fov = 30 * DEG;
     /* 宽屏留出天空才显尺度；窄屏受宽度限制，球太小反而留下大片空场 */
     const k = (state.w / state.h) < 1.05 ? 0.80 : 0.56;
     const needV = 1 / (k * Math.tan(fov / 2));
-    const needH = 1 / (k * Math.tan(fov / 2) * aspect);
-    state.baseDist = Math.max(needV, needH);
+    /* 右侧停靠面板时，球只占"剩余宽度"：先按可用宽度算一个下限，
+       再把光轴左移半个停靠宽度，球不会被面板压住。 */
+    const availW = Math.max(180, state.w - state.reserve);
+    const needW = state.h / (0.90 * Math.tan(fov / 2) * availW);
+    state.baseDist = Math.max(needV, needW);
   }
 
   const proj = new Float32Array(16);
@@ -779,7 +786,8 @@ export function createEarth(canvas, opts = {}) {
     /* ── 流星调度 ──
        按区间随机生成，最多同时两颗；每颗走完后从列表里摘掉。 */
     state.meteors = state.meteors.filter(m => t - m.born < METEOR_SPEC.life);
-    if (state.ready && t > state.nextMeteor && state.meteors.length < 2) {
+    if (!state.flags.meteors && state.meteors.length) state.meteors.length = 0;
+    if (state.flags.meteors && state.ready && t > state.nextMeteor && state.meteors.length < 2) {
       const spec = METEOR_SPEC.paths[state.meteorIdx % METEOR_SPEC.paths.length];
       state.meteorIdx++;
       state.meteors.push({ born: t, p0: spec.p0, c: spec.c, p1: spec.p1 });
@@ -853,7 +861,7 @@ export function createEarth(canvas, opts = {}) {
 
     const eye = cameraEye();
     const aspect = state.w / state.h || 1;
-    perspective(proj, 30 * DEG, aspect, 0.1, 100);
+    perspective(proj, 30 * DEG, aspect, 0.1, 100, state.w ? state.reserve / state.w : 0);
     lookAt(view, eye, [0, 0, 0], [0, 1, 0]);
     rotY(model, state.spin);
     mul(mvp, proj, view);
@@ -912,7 +920,9 @@ export function createEarth(canvas, opts = {}) {
       sr[0] * fwd[1] - sr[1] * fwd[0]
     ];
 
-    const skyGain = (themeState.sky == null ? 5.1 : themeState.sky) * (themeState.stars > 0.01 ? 1 : 0);
+    const skyGain = (themeState.sky == null ? 5.1 : themeState.sky)
+      * (themeState.stars > 0.01 ? 1 : 0)
+      * (state.flags.sky ? 1 : 0);
     g.uniform3fv(progBg.u.uTop, themeState.spaceTop);
     g.uniform3fv(progBg.u.uBottom, themeState.spaceBottom);
     g.uniform1f(progBg.u.uGrain, themeState.grain);
@@ -931,7 +941,7 @@ export function createEarth(canvas, opts = {}) {
     g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
 
     /* ── 星点：整张星表一次画完 ── */
-    if (starBuf && themeState.stars > 0.001) {
+    if (starBuf && themeState.stars > 0.001 && state.flags.stars) {
       g.enable(g.BLEND);
       /* 纯加色：光点在物理上就是叠加的光 */
       g.blendFunc(g.ONE, g.ONE);
@@ -946,7 +956,7 @@ export function createEarth(canvas, opts = {}) {
       g.uniformMatrix4fv(progStar.u.uView, false, view);
       g.uniform1f(progStar.u.uDpr, state.dpr);
       g.uniform1f(progStar.u.uTime, t);
-      g.uniform1f(progStar.u.uStars, themeState.stars);
+      g.uniform1f(progStar.u.uStars, themeState.stars * (state.flags.stars ? 1 : 0));
       g.drawArrays(g.POINTS, 0, starN);
     }
 
@@ -1056,7 +1066,7 @@ export function createEarth(canvas, opts = {}) {
     g.uniformMatrix4fv(progCloud.u.uModel, false, cm);
     g.uniform3fv(progCloud.u.uSun, sun);
     g.uniform3fv(progCloud.u.uCam, eye);
-    g.uniform1f(progCloud.u.uOpacity, themeState.cloud);
+    g.uniform1f(progCloud.u.uOpacity, themeState.cloud * (state.flags.clouds ? 1 : 0));
     g.uniform1f(progCloud.u.uExposure, themeState.exposure);
     bindTex(progCloud.u.uClouds, textures.clouds, 0);
     g.drawElements(g.TRIANGLES, cloudGeo.idx.length, g.UNSIGNED_SHORT, 0);
@@ -1070,7 +1080,7 @@ export function createEarth(canvas, opts = {}) {
     g.uniform3fv(progAtmo.u.uCam, eye);
     g.uniform3fv(progAtmo.u.uSun, sun);
     g.uniform3fv(progAtmo.u.uAtmo, themeState.atmo);
-    g.uniform1f(progAtmo.u.uIntensity, themeState.atmoIntensity);
+    g.uniform1f(progAtmo.u.uIntensity, themeState.atmoIntensity * (state.flags.atmo ? 1 : 0));
     g.enable(g.CULL_FACE);
     g.cullFace(g.FRONT);
     g.blendFunc(g.SRC_ALPHA, g.ONE);
@@ -1083,7 +1093,7 @@ export function createEarth(canvas, opts = {}) {
     if (onProject) {
       onProject({
         project: (lat, lng) => projectPoint(lat, lng, proj, view, model, eye),
-        eye, spin: state.spin
+        eye, spin: state.spin, sun: [sun[0], sun[1], sun[2]]
       });
     }
   }
@@ -1256,7 +1266,8 @@ export function createEarth(canvas, opts = {}) {
     ];
     const aspect = state.w / state.h;
     const th = Math.tan(15 * DEG);
-    const nx = (px / state.w) * 2 - 1;
+    /* 反解光轴横移：投影时 NDC 整体左移 reserve/w，这里加回去 */
+    const nx = (px / state.w) * 2 - 1 + (state.w ? state.reserve / state.w : 0);
     const ny = 1 - (py / state.h) * 2;
     const dir = [
       f[0] + r[0] * nx * th * aspect + u[0] * ny * th,
@@ -1294,6 +1305,21 @@ export function createEarth(canvas, opts = {}) {
     },
     stop() { state.running = false; },
     setTheme(t) { themeState = { ...theme, ...t }; },
+    /* 右侧停靠宽度（CSS 像素）：0 = 居中。改完立刻重算机位。 */
+    setReserve(px) {
+      const cap = state.w ? state.w * 0.62 : 1e9;
+      const v = Math.max(0, Math.min(cap, px || 0));
+      if (Math.abs(v - state.reserve) < 0.5) return;
+      state.reserve = v;
+      fit();
+    },
+    getReserve: () => state.reserve,
+    /* 渲染层开关：云 / 大气 / 星点 / 银河 / 流星。返回生效后的完整开关。 */
+    setFlags(patch) {
+      if (patch) Object.assign(state.flags, patch);
+      return { ...state.flags };
+    },
+    getFlags: () => ({ ...state.flags }),
     setMarkers(list) { markers = list; },
     updateMarkerPositions(list) {
       markers = list;
@@ -1348,13 +1374,13 @@ export function createEarth(canvas, opts = {}) {
     },
     getZoom: () => state.distTo,
     /* 验收用：读取当前视角，不参与渲染 */
-    _debug: () => ({ yaw: state.yaw, pitch: state.pitch, dist: state.dist, spin: state.spin, q: state.quality }),
+    _debug: () => ({ yaw: state.yaw, pitch: state.pitch, dist: state.dist, spin: state.spin, q: state.quality, baseDist: state.baseDist, reserve: state.reserve, w: state.w, h: state.h }),
     isReady: () => state.ready,
     _project: (lat, lng) => {
       const eye = cameraEye();
       const aspect = state.w / state.h || 1;
       const p = new Float32Array(16), v = new Float32Array(16), m = new Float32Array(16);
-      perspective(p, 30 * DEG, aspect, 0.1, 100);
+      perspective(p, 30 * DEG, aspect, 0.1, 100, state.w ? state.reserve / state.w : 0);
       lookAt(v, eye, [0, 0, 0], [0, 1, 0]);
       rotY(m, state.spin);
       return projectPoint(lat, lng, p, v, m, eye);

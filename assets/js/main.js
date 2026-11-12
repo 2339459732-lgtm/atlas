@@ -5,6 +5,10 @@
 
 import { readExif } from './exif.js';
 import { createEarth } from './earth.js';
+import { createOverlay } from './earth-overlay.js';
+import { createNomenclature } from './nomenclature.js';
+import { createLayerStore } from './layers.js';
+import { createLayerPanel } from './layer-panel.js';
 import { createDust } from './drift.js';
 import { geocode, composeIntro } from './geo.js';
 import { sha256Hex, VAULT_HASH, makeBackup, readBackup, photoBlob } from './vault.js';
@@ -535,6 +539,7 @@ const loader = $('#earth-loader');
 const progressEl = $('#earth-progress');
 
 let markers = [];
+let markersOn = true;   /* 地标层开关：关掉后同时撤掉拾取，避免点到看不见的点 */
 let earthStarted = false;
 let earthReady = false;
 
@@ -560,20 +565,169 @@ function initEarth() {
       buildMarkers();
       paintRes();
     },
-    onProject: ({ project }) => updateMarkers(project)
+    onProject: payload => {
+      updateMarkers(payload.project);
+      overlay?.draw(payload);
+      if (nomenclature) {
+        nomenclature.setZoom(earth.getZoom());
+        nomenclature.update(payload.project);
+      }
+    }
   });
   if (!earth) {
     loader.innerHTML = `<span class="planet__loader-t">${esc(t('planet.noWebgl'))}</span>`;
+    /* 没有画布就没有图层可切：把空面板收起来，不留一个假开关 */
+    const panel = $('#layer-panel');
+    if (panel) panel.hidden = true;
+    const toggle = $('#lyr-toggle');
+    if (toggle) toggle.hidden = true;
     return;
   }
   earth.setTheme(THEMES[state.theme].globe);
   earth.initTier(currentRes());
   window.atlasEarth = earth;   /* 调试/验收用只读句柄 */
+  initLayers();
 
   /* 兜底：无论贴图多慢，18 秒后都撤掉遮罩，交互不被挡住 */
   setTimeout(() => {
     if (!earthReady) loader.classList.add('is-done');
   }, 18000);
+}
+
+/* ───────── 图层仪表 ─────────
+   三层职责：layers.js 管状态与依赖，earth-overlay/nomenclature 管画法，
+   layer-panel.js 管呈现。main 只负责把它们接起来，不持有开关状态。 */
+let overlay = null;
+let nomenclature = null;
+let layerStore = null;
+let layerPanel = null;
+const LAYER_RAIL = 336;   /* 面板 316 + 右距 18 + 缝 2 */
+
+function initLayers() {
+  if (layerStore || !earth) return;
+  const stage = $('#planet-stage');
+  const overlayCanvas = $('#earth-overlay');
+  const namesEl = $('#nomenclature');
+  if (!stage || !overlayCanvas || !namesEl) return;
+
+  overlay = createOverlay(overlayCanvas);
+  overlay.setPlaces(state.landmarks);
+  window.atlasOverlay = overlay;   /* 验收用只读句柄 */
+  nomenclature = createNomenclature({
+    layer: namesEl,
+    stage,
+    getLang,
+    getName: l => placeName(l),
+    onOpen: id => openAlbum(id),
+    onHover: () => {
+      if (!earth) return;
+      earth.setAuto(false);
+      $('#earth-auto')?.setAttribute('aria-pressed', 'false');
+    }
+  });
+  nomenclature.build(state.landmarks, photosOf);
+
+  const markerEl = $('#markers');
+  const ctx = {
+    earth,
+    overlay,
+    nomenclature,
+    markers: {
+      setEnabled(on) {
+        markersOn = !!on;
+        if (markerEl) {
+          markerEl.dataset.on = on ? 'yes' : 'no';
+          markerEl.style.opacity = on ? '' : '0';
+          markerEl.style.pointerEvents = on ? '' : 'none';
+        }
+        earth?.setMarkers(markersOn ? markers : []);
+      }
+    }
+  };
+
+  const panelEl = $('#layer-panel');
+  layerStore = createLayerStore({
+    ctx,
+    onChange: () => { layerPanel?.sync(); paintLayerChrome(); },
+    onNotice: n => layerPanel?.flash(getLang() === 'zh' ? n.zh : n.en)
+  });
+  layerPanel = createLayerPanel({
+    panel: panelEl,
+    list: $('#lyr-list'),
+    presets: $('#lyr-presets'),
+    countEl: $('#lyr-count'),
+    noticeEl: $('#lyr-notice'),
+    getLang,
+    store: layerStore,
+    onClose: () => setPanelOpen(false)
+  });
+  layerPanel.build();
+  window.atlasLayers = layerStore;   /* 验收用只读句柄 */
+
+  /* 小屏先看球，图层收进抽屉；大屏默认摊开 */
+  const mq = matchMedia('(max-width: 1080px)');
+  setPanelOpen(!mq.matches, false);
+  mq.addEventListener?.('change', e => setPanelOpen(!e.matches));
+
+  $('#lyr-toggle')?.addEventListener('click', () => {
+    const open = panelEl?.dataset.open !== 'yes';
+    setPanelOpen(open);
+    if (open) panelEl.querySelector('.lyr__close')?.focus();
+  });
+  $('#lyr-share')?.addEventListener('click', async () => {
+    const url = layerStore.shareUrl();
+    try { await navigator.clipboard.writeText(url); layerPanel.flash(t('layer.shared')); }
+    catch { layerPanel.flash(url); }
+    try { history.replaceState(null, '', url); } catch {}
+  });
+  $('#lyr-reset')?.addEventListener('click', () => layerStore.reset());
+
+  layerStore.init();
+  layerPanel.sync();
+  paintLayerChrome();
+}
+
+function setPanelOpen(open, focus = false) {
+  const panelEl = $('#layer-panel');
+  if (!panelEl) return;
+  panelEl.dataset.open = open ? 'yes' : 'no';
+  $('#lyr-toggle')?.setAttribute('aria-expanded', String(open));
+  /* 球在停靠区左侧重新取景：不是把面板盖在球上，而是给仪器让出一栏 */
+  const compact = matchMedia('(max-width: 1080px)').matches;
+  const reserve = open && !compact ? LAYER_RAIL : 0;
+  earth?.setReserve(reserve);
+  nomenclature?.setReserve(reserve);
+  if (open) {
+    layerPanel?.sync();
+    if (focus) panelEl.querySelector('.lyr__close')?.focus();
+  }
+}
+
+/* 徽章与图例：只显示"有单位/有数量"的层，避免复述面板 */
+function paintLayerChrome() {
+  if (!layerStore) return;
+  const L = getLang();
+  const badge = $('#lyr-badge');
+  if (badge) badge.textContent = String(layerStore.count());
+
+  const box = $('#planet-legend');
+  if (!box) return;
+  const items = layerStore.legend().map(x => {
+    let label = L === 'zh' ? x.label.zh : x.label.en;
+    /* 里程与点数直接并进对应的图例项，避免把项数挤掉 */
+    if (x.id === 'F02.thread') {
+      const st = overlay?.stats();
+      if (st?.legs) label += ` · ${st.km.toLocaleString(L === 'zh' ? 'zh-CN' : 'en-US')} km`;
+    }
+    if (x.id === 'F08.nomenclature') {
+      const n = nomenclature?.count() || 0;
+      if (n) label += ` · ${n}${L === 'zh' ? ' 处' : ' sites'}`;
+    }
+    return label;
+  });
+  const uniq = [...new Set(items)].slice(0, 4);
+  box.innerHTML = uniq.map(v => `<span><i></i>${esc(v)}</span>`).join('');
+  box.hidden = uniq.length === 0;
 }
 
 function buildMarkers() {
@@ -608,7 +762,10 @@ function buildMarkers() {
       markerLayer.appendChild(b);
       return { id: l.id, lat: l.lat, lng: l.lng, name: l.name, el: b, _x: 0, _y: 0, _visible: false };
     });
-  earth?.setMarkers(markers);
+  earth?.setMarkers(markersOn ? markers : []);
+  overlay?.setPlaces(state.landmarks);
+  nomenclature?.build(state.landmarks, photosOf);
+  paintLayerChrome();
   requestAnimationFrame(() => {
     markers.forEach(m => {
       const lb = m.el.querySelector('.marker__label');
@@ -2645,6 +2802,7 @@ function applyLang() {
   renderIndex();
   renderPlanetList();
   buildMarkers();
+  layerPanel?.rebuild();
   if (state.current) {
     const lm = currentLandmark();
     if (lm && !isLocked(lm)) {

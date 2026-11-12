@@ -381,3 +381,60 @@ ALTER TABLE atlas_photos ADD COLUMN rev BIGINT NOT NULL DEFAULT 0,
   指针在球外才把滚轮让给页面。
 - 验证：连续 20 次滚轮到极限，`scrollY` 不变（1989 → 1989），面板 `top` 不变（0 → 0），
   画布出现 `is-limit` 类；指针移到球外再滚，页面正常滚动。
+
+## 12 图层体系（Solar Atlas 拆解 → ATLAS）
+
+参考：`solar-system-atlas.pages.dev/solar/?layers=L03.dsn,F08.nomenclature`。
+把 2.5 MB 单包与 284 KB 样式反解后，拿到的是五件事：注册表字段、ID 语法、
+`?layers=` 解析、面板几何、命名分层。ATLAS 照搬结构，不照搬内容。
+
+### 12.1 拆解结论
+
+- 参考站是单视图 SPA：`#root` + 一个 CSS + 一个 JS；全屏画布，UI 悬浮。
+- 图层注册项统一为 `{id,title,summary,group,confidence,sources,scaleModes,budget,render,load,legend}`；
+  内置 8 层，分 communication / dynamics / surface / heliophysics。
+- ID 语法 `/^[A-Z]\d{2}\.[a-z0-9-]+$/`；`layers` 逗号分隔、trim、正则过滤、去重。
+- 面板：右 20 / 上 84 / 下 168 / 宽 384 / 圆角 20 / 模糊 22；分区 10px 等宽 0.2em；
+  激活行 2px 竖条 + 10% 渐变。
+- 置信度四档 OBS / MODEL / HYPO / STORY；`F08` 的 1100 个 IAU 地名按缩放分级露出，
+  圈=真实范围，点开就地介绍。
+
+### 12.2 落地
+
+- 新增 `layers.js`（注册表 + 状态机）、`layer-panel.js`（面板）、
+  `earth-overlay.js`（经纬网/晨昏线/旅程线）、`nomenclature.js`（地名志）。
+- 11 层：`L01.base` … `L08.meteor`、`F01.landmarks`、`F02.thread`、`F08.nomenclature`。
+  4 组按阅读顺序：注记 → 地表 → 深空 → 基底；3 个预设：默认 / 测绘 / 纯净。
+- 来源分三类：观测（影像/EXIF）、推算（公式生成）、私有（本机数据）。
+- 依赖：开 `F08` 自动补 `F01`；关 `F01` 级联关 `F02`/`F08`；基底锁死。
+- URL 与 `atlas.layers.v1` 由同一次 `emit()` 写入；默认状态自动清掉 `layers` 参数。
+- 面板四层密度：组 → 行（开关/编号/来源）→ 一行摘要 → 展开（参数/来源/许可/预算/单独显示）；
+  组头可跳转，列表可滚动，底部图例只列"有单位/数量"的层。
+
+### 12.3 球面实现
+
+- 复用 `earth.onProject` 交出的 `project(lat,lng)`，与标记同一帧、同一可见性判定；
+  背面的线断开，不连弦。
+- 经纬网 15°、采样 2.5°；赤道/本初子午线 1.35px；回归线与极圈虚线。
+- 晨昏线用太阳高度角等值线：`sin(e)·s + cos(e)·(cosθ·u + sinθ·v)`，
+  e=0 为晨昏线，−6/−12/−18 为三档暮光；另标正午点。
+- 旅程线按创建时间做球面 slerp（2° 步长），虚线；`stats()` 给总里程。
+- 地名志：区域编号 `EAS·03` / 完整 `F08.EAS.03`；圈径 `7+√n×2.6`（7–17px）；
+  三档 5/11/全部（阈值 1.30 / 0.86）；标签按权重避让，靠右自动翻左；
+  点开卡片显示坐标/片量/最近年份；悬停即停自转。
+
+### 12.4 停靠取景
+
+- `earth.setReserve(336)`：`fit()` 按 `w - reserve` 算机位，投影矩阵 `m[8] = reserve/w`
+  把光轴左移半栏；`unproject()` 加回偏移，点击仍准。
+- 面板收起 `reserve=0`，球回中心；≤1080px 改底部抽屉，抽屉高度受球区高度约束，
+  并让开固定导航（`calc(100% - var(--nav-h) - 20px)`）。
+- 修：移动端 HUD 原本 `top:12px` 被固定导航盖住（含新图层按钮），
+  改为 `calc(var(--nav-h) + 8px)`；无 WebGL 时面板与按钮一起隐藏。
+
+### 12.5 验收
+
+- 默认 8/11，URL 干净；`?layers=L02.graticule,XX.foo,L99.nope` 只开 L01+L02；
+  `?layers=F08.nomenclature` 自动补 F01；关 F01 级联关 F02/F08；刷新恢复；分享去噪。
+- `reserve=336` 时球心 x≈306，面板左缘 592，球右缘 573，不重叠；控制台 0 error。
+- 文档：`LAYER_SYSTEM.md`（拆解 + 契约 + 扩展 + 验收）。

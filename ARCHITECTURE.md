@@ -151,7 +151,11 @@ main.js（应用编排，唯一修改 state 的地方）
  ├─ store.js    本机持久化：信封版本 / IndexedDB / 墓碑 / 脏标记 / 跨标签广播 / 体检
  ├─ cloud.js    云端传输：OAuth + atlas_albums/photos + 对象存储（只传不算）
  ├─ accounts.js 本机账号与命名空间：PBKDF2、恢复码、失败节流、cloudId 绑定
- ├─ earth.js    球体几何 / 5 套着色器 / 相机与拾取 / 光点
+ ├─ earth.js    球体几何 / 5 套着色器 / 相机与拾取 / 光点 / 图层开关与停靠取景
+ ├─ layers.js   图层注册表 / ID 解析 / 依赖与状态机（URL + localStorage）
+ ├─ layer-panel.js 图层仪表面板：组 → 行 → 摘要 → 详情
+ ├─ earth-overlay.js 2D 测绘层：经纬网 / 晨昏线 / 旅程线
+ ├─ nomenclature.js 地名志：区域编号 / 三档露出 / 圈径 / 卡片
  ├─ geo.js      地名 → 坐标；25 字介绍生成
  ├─ vault.js    SHA-256 校验 / AES-GCM 备份
  ├─ drift.js    首屏微尘
@@ -169,10 +173,30 @@ main.js（应用编排，唯一修改 state 的地方）
 
 云同步：本地 + 本地墓碑 ⇄ 云端行，按 rev/at 合并；删除优先，墓碑保留 45 天
 备份：相册 + 照片 Blob → gzip → AES-GCM；导入逐条过契约并清墓碑
+图层：?layers= → layers.parse → store.init → apply(on, ctx) → earth/overlay/nomenclature
+      → 同一 emit 写回 URL 与 localStorage；面板只读 store
 ```
 
 **边界规则**：`main.js` 之外不直接调用 IndexedDB，也不自己拼 `atlas.*` 键；
 `cloud.js` 不判断"本地新还是云端新"，合并只在 `model.pickNewer` 里做一次。
+
+## 图层体系（2.6）
+
+球面不是一张贴图，而是一叠可开关的层。11 个图层分两个家族：
+
+- `L01–L08` 渲染层：地球本体、经纬网、晨昏线、大气、云、星表、银河、流星；
+- `F01–F08` 要素层：地标、旅程线、地名志。
+
+ID 是稳定地址（`/^[A-Z]\d{2}\.[a-z0-9-]+$/`），组序只影响阅读顺序。
+`layers.js` 只做声明，`apply(on, ctx)` 是唯一副作用入口；`main.js` 注入
+`{earth, overlay, nomenclature, markers}`。开关会补齐正向依赖、级联关闭反向依赖，
+并把结果同时写进 URL 与 `atlas.layers.v1`。
+
+界面分四层：组（4 个）→ 行（开关/编号/来源）→ 摘要一行 → 展开详情（参数/来源/预算/
+单独显示）。三个预设：默认、测绘、纯净。右侧停靠时，地球用 `setReserve(336)` 把光轴
+左移半个栏宽，球与注记整体让位，而不是被面板盖住。
+
+细节与验收见 `LAYER_SYSTEM.md`。
 
 ## 技术选型一览
 - 无框架、无构建步骤：原生 ES Modules，GitHub Pages 直接托管。

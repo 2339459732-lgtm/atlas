@@ -246,7 +246,9 @@ try {
   <section class="planet" id="planet" aria-labelledby="planet-title">
     <div class="planet__stage" id="planet-stage">
       <canvas class="planet__canvas" id="earth-canvas" aria-label="可交互的三维地球"></canvas>
+      <canvas class="planet__overlay" id="earth-overlay" aria-hidden="true"></canvas>
       <div class="planet__markers" id="markers"></div>
+      <div class="planet__names" id="nomenclature" role="group" aria-label="地名志"></div>
 
       <div class="planet__loader" id="earth-loader">
         <span class="planet__loader-ring" aria-hidden="true"></span>
@@ -265,7 +267,14 @@ try {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="12" cy="12" r="7.6"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>
           <span data-i18n="planet.reset">正对</span>
         </button>
+        <button type="button" class="hud-btn hud-btn--layers" id="lyr-toggle" aria-expanded="false" aria-controls="layer-panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M12 3.4 21 8l-9 4.6L3 8l9-4.6Z"/><path d="m3 12.4 9 4.6 9-4.6"/><path d="m3 16.8 9 4.6 9-4.6"/></svg>
+          <span data-i18n="layer.btn">图层</span>
+          <i class="hud-btn__count" id="lyr-badge">8</i>
+        </button>
       </div>
+
+      <div class="planet__legend" id="planet-legend" hidden></div>
 
       <p class="planet__hint" data-i18n="planet.hint">拖动旋转 · 滚轮缩放 · 点击球面落一处地标</p>
 
@@ -275,6 +284,28 @@ try {
         <button type="button" class="hud-btn hud-btn--sq" id="earth-zoom-in" aria-label="放大" data-i18n-aria="planet.zoomIn">+</button>
         <button type="button" class="hud-btn hud-btn--sq" id="earth-zoom-out" aria-label="缩小" data-i18n-aria="planet.zoomOut">−</button>
       </div>
+
+      <!-- 图层仪表：组 → 行 → 摘要 → 详情，四级信息密度 -->
+      <aside class="lyr" id="layer-panel" data-open="no" aria-label="图层" data-i18n-aria="layer.panel">
+        <header class="lyr__head">
+          <div>
+            <p class="lyr__kicker">INSTRUMENT<span>02</span></p>
+            <h3 class="lyr__title"><span data-i18n="layer.title">图层</span><span class="lyr__count" id="lyr-count" aria-live="polite">08/11</span></h3>
+          </div>
+          <button type="button" class="lyr__close" id="lyr-close" aria-label="收起图层" data-i18n-aria="layer.close">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+          </button>
+        </header>
+        <div class="lyr__presets" id="lyr-presets" role="group" aria-label="图层预设" data-i18n-aria="layer.presets"></div>
+        <div class="lyr__tabs" id="lyr-tabs" role="group" aria-label="分组"></div>
+        <div class="lyr__list" id="lyr-list"></div>
+        <p class="lyr__notice" id="lyr-notice" role="status" hidden></p>
+        <footer class="lyr__foot">
+          <button type="button" class="lyr__act" id="lyr-share" data-i18n="layer.share">复制视图链接</button>
+          <span class="lyr-foot__stat">≈ 41 MB · 5.7 ms</span>
+          <button type="button" class="lyr__act" id="lyr-reset" data-i18n="layer.reset">重置</button>
+        </footer>
+      </aside>
     </div>
 
     <aside class="planet__panel">
