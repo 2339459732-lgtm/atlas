@@ -108,6 +108,45 @@ export async function signOutCloud() {
 
 /* ── 数据 ── */
 
+/* 网络调用一律加超时：没有它，一次挂起的请求会让 syncNow 的 running
+   永远为 true，之后所有同步（包括手动"立即同步"）都被静默挡掉。 */
+const NET_TIMEOUT = 25000;
+function guard(p, label, ms = NET_TIMEOUT) {
+  let timer = 0;
+  const t = new Promise((_, rej) => {
+    timer = setTimeout(() => {
+      const e = new Error('network_timeout');
+      e.code = 'timeout';
+      e.label = label;
+      rej(e);
+    }, ms);
+  });
+  return Promise.race([Promise.resolve(p), t]).finally(() => clearTimeout(timer));
+}
+
+/* 分页：PostgREST 默认每次最多返回 1000 行。不分页的话，
+   第 1001 张照片之后的内容永远不会出现在新设备上——
+   看起来像"数据没同步"，实际是只拉了第一页。
+   按 local_id 排序保证分页稳定（taken_at 会重复）。 */
+const PAGE = 500;
+async function fetchAll(table, cols) {
+  const out = [];
+  for (let from = 0; from < 200000; from += PAGE) {
+    const { data, error } = await guard(
+      client.database.from(table)
+        .select(cols)
+        .order('local_id', { ascending: true })
+        .range(from, from + PAGE - 1),
+      table
+    );
+    if (error) throw error;
+    const rows = data || [];
+    out.push(...rows);
+    if (rows.length < PAGE) break;
+  }
+  return out;
+}
+
 /* updated_at 是服务端的 timestamptz，比较新旧时用毫秒整数更稳。
    rev 由客户端维护，updated_at_ms 只作为同 rev 时的次序依据。 */
 const withMs = rows => (rows || []).map(r => ({
@@ -118,24 +157,19 @@ const withMs = rows => (rows || []).map(r => ({
 export async function pullAll() {
   if (!client || !session) return { albums: [], photos: [] };
   const [a, p] = await Promise.all([
-    client.database.from('atlas_albums')
-      .select('local_id, payload, rev, deleted, updated_at')
-      .order('updated_at', { ascending: true }),
-    client.database.from('atlas_photos')
-      .select('local_id, album_local_id, name, w, h, taken_at, thumb, remote_path, exif, rev, deleted, updated_at')
-      .order('taken_at', { ascending: true })
+    fetchAll('atlas_albums', 'local_id, payload, rev, deleted, updated_at'),
+    fetchAll('atlas_photos', 'local_id, album_local_id, name, w, h, taken_at, thumb, remote_path, exif, rev, deleted, updated_at')
   ]);
-  if (a.error) throw a.error;
-  if (p.error) throw p.error;
-  return { albums: withMs(a.data), photos: withMs(p.data) };
+  return { albums: withMs(a), photos: withMs(p) };
 }
 
 /* 站点设置：单行文档，按 rev → updated_at 合并 */
 export async function pullSettings() {
   if (!client || !session) return null;
-  const { data, error } = await client.database.from('atlas_settings')
-    .select('payload, rev, updated_at')
-    .limit(1);
+  const { data, error } = await guard(
+    client.database.from('atlas_settings').select('payload, rev, updated_at').limit(1),
+    'atlas_settings'
+  );
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) return null;
@@ -144,24 +178,29 @@ export async function pullSettings() {
 
 export async function pushSettings(payload, rev) {
   if (!client || !session) return;
-  const { error } = await client.database.from('atlas_settings')
-    .upsert([{ payload, rev: rev | 0 }], { onConflict: 'owner_id' });
+  const { error } = await guard(
+    client.database.from('atlas_settings')
+      .upsert([{ payload, rev: rev | 0 }], { onConflict: 'owner_id' }),
+    'settings_push', 15000
+  );
   if (error) throw error;
 }
 
 export async function pushAlbums(rows) {
   if (!client || !session || !rows.length) return;
-  const { error } = await client.database
-    .from('atlas_albums')
-    .upsert(rows, { onConflict: 'owner_id,local_id' });
+  const { error } = await guard(
+    client.database.from('atlas_albums').upsert(rows, { onConflict: 'owner_id,local_id' }),
+    'albums_push', 20000
+  );
   if (error) throw error;
 }
 
 export async function pushPhotos(rows) {
   if (!client || !session || !rows.length) return;
-  const { error } = await client.database
-    .from('atlas_photos')
-    .upsert(rows, { onConflict: 'owner_id,local_id' });
+  const { error } = await guard(
+    client.database.from('atlas_photos').upsert(rows, { onConflict: 'owner_id,local_id' }),
+    'photos_push', 20000
+  );
   if (error) throw error;
 }
 
@@ -187,11 +226,14 @@ export async function deleteAlbum(localId) {
 export async function uploadPhotoBlob(uid, localId, blob) {
   if (!client || !session) return null;
   const path = client.storage.userPath(uid, `photos/${localId}.jpg`);
-  const { error } = await client.storage.upload(path, blob, {
-    contentType: blob.type || 'image/jpeg',
-    cacheControl: '3600',
-    upsert: true
-  });
+  const { error } = await guard(
+    client.storage.upload(path, blob, {
+      contentType: blob.type || 'image/jpeg',
+      cacheControl: '3600',
+      upsert: true
+    }),
+    'photo_upload', 60000
+  );
   if (error) throw error;
   return path;
 }
@@ -207,7 +249,7 @@ export async function removePhotoBlob(uid, localId) {
 
 export async function downloadPhotoBlob(path) {
   if (!client || !session || !path) return null;
-  const { data, error } = await client.storage.download(path);
+  const { data, error } = await guard(client.storage.download(path), 'photo_download', 45000);
   if (error) throw error;
   return data instanceof Blob ? data : null;
 }

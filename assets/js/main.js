@@ -23,7 +23,7 @@ import {
   albumFromRow, photoFromRow, albumToRow, photoToRow
 } from './model.js';
 import {
-  loadAlbums, saveAlbums, allPhotos, putPhoto, delPhotos, delPhotosOfAlbum,
+  loadAlbums, saveAlbums, allPhotos, getPhotoBlob, putPhoto, delPhotos, delPhotosOfAlbum,
   tombstone, clearTombstones, unpushedTombstones, markTombstonesPushed,
   pruneTombstones, markDirty, clearDirty, pending, repairPhotos,
   meta as storeMeta, markSynced, onExternalChange, health as storeHealth
@@ -213,6 +213,48 @@ function dropURL(id) {
   if (u) { try { URL.revokeObjectURL(u); } catch {} urlCache.delete(id); }
 }
 
+/**
+ * 原图按需取：本地有就读 IndexedDB，云端有就下载并落库。
+ * 只在大图、导出、上传这三处调用——网格永远用缩略图，
+ * 这样打开一个有几百张照片的相册不会把解码后的位图全堆进内存。
+ */
+const blobPending = new Map();
+function ensureBlob(photo) {
+  if (!photo) return Promise.resolve(null);
+  if (photo.blob) return Promise.resolve(photo.blob);
+  if (blobPending.has(photo.id)) return blobPending.get(photo.id);
+
+  const job = (async () => {
+    let blob = null;
+    try { blob = await getPhotoBlob(photo.id); } catch {}
+    if (!blob && photo.remote && cloudUser()) {
+      try {
+        blob = await downloadPhotoBlob(photo.remote);
+        if (blob) { photo.blob = blob; photo.hasBlob = true; await dbPut(photo); photo.blob = null; }
+      } catch (e) { console.warn('[photo] download', e); }
+    }
+    if (!blob) return null;
+    photo.blob = blob;
+    photo.hasBlob = true;
+    return blob;
+  })().finally(() => blobPending.delete(photo.id));
+
+  blobPending.set(photo.id, job);
+  return job;
+}
+
+/* 大图 / 缩略轨：先把缩略图显示出来，原图就绪后替换，避免空白等待 */
+function showPhoto(img, photo) {
+  if (!img || !photo) return;
+  img.src = photo.thumb || urlFor(photo);
+  if (photo.blob) { img.src = urlFor(photo); return; }
+  if (!photo.hasBlob && !photo.remote) return;
+  ensureBlob(photo).then(blob => {
+    if (!blob || !img.isConnected) return;
+    img.src = urlFor(photo);
+  }).catch(() => {});
+}
+
 /* ───────── 照片存储（委托 store.js） ─────────
    上层仍然叫 dbAll/dbPut/dbDel，但实现只有一个，且带契约校验。 */
 const dbAll = () => allPhotos();
@@ -269,6 +311,9 @@ function applyTheme(name) {
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', THEMES[key].meta);
   $$('.theme__pop [data-theme]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.theme === key)));
+  /* 手机上主题按钮收进"更多"菜单，这里同步显示当前主题名 */
+  const mt = document.getElementById('menu-theme-name');
+  if (mt) mt.textContent = t('theme.' + key);
   earth?.setTheme(THEMES[key].globe);
   dust?.retheme();
   try { localStorage.setItem(LS_THEME, key); } catch {}
@@ -863,10 +908,9 @@ function renderAlbumGrid() {
         img.alt = p.name;
         img.decoding = 'async';
         img.loading = idx < 8 ? 'eager' : 'lazy';
-        img.src = urlFor(p);
+        img.src = p.thumb || urlFor(p);
         img.dataset.pid = p.id;
         shot.appendChild(img);
-        queueBlob(p);
         shot.appendChild(el('span', 'shot__no', pad2(idx + 1)));
 
         const del = el('button', 'shot__del');
@@ -1057,15 +1101,20 @@ function fitCanvas(img, maxPx) {
   g.drawImage(img, 0, 0, w, h);
   return c;
 }
+/* 缩略图是"能认出这是哪张"的最小尺寸，不是预览图。
+   640 px 长边在 2× 屏的网格里已经够锐；再大只会让同步体积
+   和内存翻倍（旧版 1280 一张要 200 KB+）。 */
 function makeThumb(canvas) {
-  const w = Math.min(1280, canvas.width);
-  const h = Math.max(1, Math.round(canvas.height * (w / canvas.width)));
+  const long = Math.max(canvas.width, canvas.height);
+  const k = Math.min(1, 640 / long);
+  const w = Math.max(1, Math.round(canvas.width * k));
+  const h = Math.max(1, Math.round(canvas.height * k));
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   const g = c.getContext('2d');
   g.imageSmoothingQuality = 'high';
   g.drawImage(canvas, 0, 0, w, h);
-  return c.toDataURL('image/jpeg', 0.82);
+  return c.toDataURL('image/jpeg', 0.72);
 }
 
 /* 配额写满时给出可执行的提示，而不是默默少几张 */
@@ -1117,6 +1166,7 @@ async function uploadTo(landmarkId, files) {
       thumb, exif
     }, { untitled: t('common.untitled') });
     rec.blob = blob;
+    rec.hasBlob = true;
     rec.rev = 1;
     rec.at = Date.now();
 
@@ -1201,7 +1251,7 @@ function lbShow(i) {
   const p = lbState.list[i];
   if (!p) return;
   lbState.index = i;
-  lbImg.src = urlFor(p);
+  showPhoto(lbImg, p);
   lbImg.alt = p.name;
   $('#lb-no').textContent = `${pad2(i + 1)} / ${pad2(lbState.list.length)}`;
   $('#lb-name').textContent = p.name;
@@ -1664,6 +1714,7 @@ menuPop.addEventListener('click', e => {
   if (act === 'new') openDialog();
   if (act === 'settings') openSettings();
   if (act === 'export') exportStandalone();
+  if (act === 'theme') cycleTheme();
 });
 themePop.addEventListener('click', e => {
   const b = e.target.closest('[data-theme]');
@@ -2351,7 +2402,15 @@ function showVaultPanel() {
   $('#vault-panel').hidden = false;
   updateVaultStats();
 }
-async function updateVaultStats() {
+let vaultTimer = 0;
+function updateVaultStats(delay = 240) {
+  /* 体检是 O(n) 的（还要读 storage.estimate），每次落盘都跑会让
+     大相册的编辑操作明显发涩。这里合并成一次，260ms 内只算一遍。 */
+  clearTimeout(vaultTimer);
+  vaultTimer = setTimeout(runVaultStats, delay);
+}
+
+async function runVaultStats() {
   $('#vault-lm').textContent = state.landmarks.length;
   $('#vault-ph').textContent = state.photos.length;
   let size = 0;
@@ -2434,7 +2493,8 @@ $('#vault-export')?.addEventListener('click', async () => {
       site: state.site,
       landmarks: state.landmarks,
       photos: state.photos,
-      passphrase: pass
+      passphrase: pass,
+      loadBlob: p => ensureBlob(p)
     });
     const blob = new Blob([text], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -3035,22 +3095,28 @@ async function syncPush() {
 
   /* ② 原图：每轮最多 6 张，失败累计 3 次就跳过（不阻塞其他条目） */
   const dirtyPhotos = new Set(p.photos);
-  const todo = state.photos.filter(x => !x.remote && x.blob && (x.upFail || 0) < 3);
+  const todo = state.photos.filter(x => !x.remote && (x.hasBlob || x.blob) && (x.upFail || 0) < 3);
   const batch = todo.slice(0, APP.limits.syncPhotosPerRound);
 
   for (let i = 0; i < batch.length; i++) {
     const ph = batch[i];
     setCloudState('busy', t('cloud.uploading', { i: i + 1, n: batch.length }));
     try {
-      ph.remote = await uploadPhotoBlob(u.id, ph.id, ph.blob);
+      const blob = await ensureBlob(ph);
+      if (!blob) { ph.upFail = (ph.upFail || 0) + 1; continue; }
+      ph.remote = await uploadPhotoBlob(u.id, ph.id, blob);
       ph.rev = (ph.rev | 0) + 1;
       ph.at = Date.now();
       ph.upFail = 0;
       await dbPut(ph);
+      /* 原图已经进了对象存储，本地只留元数据 */
+      ph.blob = null;
       dirtyPhotos.add(ph.id);
     } catch (e) {
       ph.upFail = (ph.upFail || 0) + 1;
       console.warn('[sync] upload', e);
+      /* 失败计数要落库，否则刷新后又会从头重试同一张 */
+      try { await dbPut(ph); } catch {}
     }
   }
 
@@ -3076,6 +3142,15 @@ async function syncPush() {
   if (todo.length > batch.length) schedulePush(700);
 }
 
+/* 正在写东西的时候不要拉取：syncPull 会用合并结果整体替换 state.landmarks，
+   而编辑弹窗持有的是替换前的对象引用，提交时会写到已经被丢弃的那一份上。 */
+function isEditing() {
+  const dlg = document.getElementById('dlg');
+  if (dlg && dlg.open) return true;
+  const form = $('#memoir-form');
+  return !!(form && !form.hidden);
+}
+
 async function syncNow(reason = 'auto') {
   if (running || !cloudUser() || !cloudAvailable() || !scopeBound()) return;
   if (navigator.onLine === false) { renderCloud(); return; }
@@ -3093,9 +3168,10 @@ async function syncNow(reason = 'auto') {
   renderCloud();
 
   try {
-    if (!pulledOnce) await syncPull();
+    const canPull = !isEditing();
+    if (!pulledOnce && canPull) await syncPull();
     await syncPush();
-    pulledOnce = true;
+    if (canPull) pulledOnce = true;
     SYNC.phase = 'idle';
     SYNC.error = '';
     SYNC.tries = 0;
@@ -3125,32 +3201,9 @@ async function syncNow(reason = 'auto') {
   }
 }
 
-/* 原图按需下载：换设备首次打开相册时，先用缩略图铺满，再逐张补原图 */
-const blobQueue = [];
-let blobActive = 0;
-function queueBlob(photo) {
-  if (!photo || photo.blob || !photo.remote) return;
-  if (blobQueue.includes(photo)) return;
-  blobQueue.push(photo);
-  pumpBlob();
-}
-function pumpBlob() {
-  while (blobActive < 3 && blobQueue.length) {
-    const p = blobQueue.shift();
-    blobActive++;
-    downloadPhotoBlob(p.remote)
-      .then(async blob => {
-        if (!blob) return;
-        p.blob = blob;
-        try { await dbPut(p); } catch {}
-        document.querySelectorAll(`img[data-pid="${p.id}"]`).forEach(img => {
-          img.src = urlFor(p);
-        });
-      })
-      .catch(e => console.warn('[sync] download', e))
-      .finally(() => { blobActive--; pumpBlob(); });
-  }
-}
+/* 原图不再批量预取：网格只显示缩略图，大图 / 导出 / 上传时
+   各自调用 ensureBlob 单张取。旧实现在打开相册时会排队下载全部原图，
+   几十张就把移动端的内存和流量吃光。 */
 
 function initCloudSync() {
   initCloud().then(ok => {
@@ -3440,6 +3493,8 @@ function initAccounts() {
   btn.addEventListener('click', () => (dlg.open ? close() : open()));
   $('#acct-close').addEventListener('click', close);
   dlg.addEventListener('click', e => { if (e.target === dlg) close(); });
+  /* 编辑期间同步会跳过拉取（避免覆盖手里的表单），关窗后补一次 */
+  dlg.addEventListener('close', () => schedulePush(400));
   dlg.addEventListener('close', () => {
     btn.setAttribute('aria-expanded', 'false');
     if (needsReload) { needsReload = false; location.reload(); }

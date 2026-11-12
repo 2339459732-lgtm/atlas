@@ -393,9 +393,13 @@ export function albumToRow(a) {
       /* 字段时钟随 payload 走：换设备后才能做字段级合并 */
       mt: a.mt && Object.keys(a.mt).length ? a.mt : undefined
     },
-    rev: a.rev | 0,
-    deleted: a.deleted === true
+    rev: a.rev | 0
   };
+  /* 只在"确实是墓碑"时写 deleted。
+     普通 upsert 里带 `deleted:false` 会把另一台设备的删除记录覆盖掉——
+     省略该列时，PostgREST 的 upsert 在冲突更新中会保留原值。 */
+  if (a.deleted === true) row.deleted = true;
+  return row;
 }
 
 export function photoToRow(p) {
@@ -404,14 +408,14 @@ export function photoToRow(p) {
     album_local_id: p.landmarkId,
     name: p.name,
     w: p.w, h: p.h, taken_at: p.t,
-    thumb: p.thumb || null,
-    exif: p.exif || null,
-    rev: p.rev | 0,
-    deleted: p.deleted === true
+    rev: p.rev | 0
   };
-  /* 本地还没有原图/缩略图时不要把这些列写成 null：
+  if (p.deleted === true) row.deleted = true;
+  /* 本地还没有原图/缩略图/EXIF 时不要把这些列写成 null：
      upsert 省略的列在冲突更新时保持原值，避免把另一台设备
      已经上传好的 remote_path / thumb 抹掉。 */
   if (p.remote) row.remote_path = p.remote;
+  if (p.thumb) row.thumb = p.thumb;
+  if (p.exif) row.exif = p.exif;
   return row;
 }

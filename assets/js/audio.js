@@ -111,9 +111,11 @@ export function createSynth(ctx, opts = {}) {
   air.gain.value = 1.1;
 
   const comp = ctx.createDynamicsCompressor();
-  comp.threshold.value = -20;
-  comp.knee.value = 26;
-  comp.ratio.value = 2.6;
+  /* 阈值抬高、比例降低：引子要能"轻"下去，否则整首都在同一个响度上，
+     高潮再叠乐器也不觉得大。真正的峰值交给末级限幅。 */
+  comp.threshold.value = -16;
+  comp.knee.value = 20;
+  comp.ratio.value = 2.2;
   comp.attack.value = 0.02;
   comp.release.value = 0.28;
 
@@ -121,7 +123,17 @@ export function createSynth(ctx, opts = {}) {
      这里不用 WaveShaper 做软削波：它的输入一旦超过 ±1 就会被裁在曲线端点，
      高潮处会留下一声"咔"。峰值交给 compressor 收，宁可少 2 dB 也不要爆音。 */
   const makeup = ctx.createGain();
-  makeup.gain.value = 1.75;
+  makeup.gain.value = 1.58;
+
+  /* 末级限幅：高潮段叠了铜管 + 低音簇 + 大锣，峰值很容易冲过 1。
+     用高压缩比 + 快启动把尖顶收住（不用 WaveShaper：输入端一旦超过 ±1
+     就会被裁在曲线端点，反而留下咔声）。 */
+  const limit = ctx.createDynamicsCompressor();
+  limit.threshold.value = -5;
+  limit.knee.value = 2;
+  limit.ratio.value = 18;
+  limit.attack.value = 0.002;
+  limit.release.value = 0.12;
 
   const master = ctx.createGain();
   master.gain.value = 0;
@@ -131,7 +143,7 @@ export function createSynth(ctx, opts = {}) {
   const rev = ctx.createConvolver();
   rev.buffer = impulse(ctx, 4.4, 2.1);
   const wet = ctx.createGain();
-  wet.gain.value = wetAmount;
+  wet.gain.value = opts.dry ? 0.0001 : wetAmount;
 
   master.connect(hp);
   hp.connect(low); low.connect(mud); mud.connect(presence); presence.connect(air);
@@ -143,7 +155,8 @@ export function createSynth(ctx, opts = {}) {
   wet.connect(comp);
 
   comp.connect(makeup);
-  makeup.connect(ctx.destination);
+  makeup.connect(limit);
+  limit.connect(ctx.destination);
 
   /* 分轨总线：钢琴 / 铺底 / 低音，各自一个音量，方便按段落做配器 */
   const busPiano = ctx.createGain(); busPiano.gain.value = 1.0; busPiano.connect(master);
@@ -151,18 +164,33 @@ export function createSynth(ctx, opts = {}) {
   const busLow = ctx.createGain(); busLow.gain.value = 1.0; busLow.connect(master);
 
   /* ── 音色 ── */
-  /* 钢琴泛音列：tilt 越小越亮。7/9 次泛音略突出，是钢琴"金属感"的来源 */
-  function harmonicWave(tilt, accent) {
-    const n = 28;
-    const real = new Float32Array(n);
-    const imag = new Float32Array(n);
-    for (let i = 1; i < n; i++) {
-      let a = Math.pow(i, -tilt);
-      if (i === 7 || i === 9) a *= accent;
-      if (i === 2) a *= 1.05;
-      imag[i] = a;
+  /* 钢琴不是"一个音 + 一条泛音列"，而是几组衰减速度不同的分音叠在一起：
+     低次分音撑住音高与厚度，高次分音只负责击弦那一瞬间的"亮"。
+     用一条包络统管全部泛音，听起来就是风琴——旧版的主要毛病在这里。 */
+  const PIANO_BANKS = [
+    { parts: [1, 2],            decay: 1.00, cents: 0.0, vexp: 0.28, gain: 1.00, strings: 2 },
+    { parts: [3, 4, 5],         decay: 0.54, cents: 2.4, vexp: 0.70, gain: 0.82, strings: 1 },
+    { parts: [6, 7, 8, 10],     decay: 0.32, cents: 5.2, vexp: 1.20, gain: 0.60, strings: 1 },
+    { parts: [11, 13, 16, 20],  decay: 0.20, cents: 8.6, vexp: 1.80, gain: 0.42, strings: 1 }
+  ];
+
+  /* 击弦点在弦长 1/7~1/8 处，那个位置的泛音会被抵消：
+     真实钢琴在 7、8 次泛音附近是"凹"的，不是凸的。
+     旧版特意加强 7/9 次泛音，所以总带一点金属味。 */
+  function hammerWeight(n) {
+    return 1 - 0.58 * Math.exp(-Math.pow((n - 7.4) / 2.1, 2));
+  }
+
+  /* 每组一张波表：只含该组分音，组内按 1/n^1.15 衰减，
+     组与组之间的比例交给包络和力度指数控制。 */
+  function pianoWave(parts) {
+    const N = 24;
+    const real = new Float32Array(N);
+    const imag = new Float32Array(N);
+    for (const n of parts) {
+      imag[n] = Math.pow(parts[0] / n, 1.15) * hammerWeight(n);
     }
-    return ctx.createPeriodicWave(real, imag, { disableNormalization: false });
+    return ctx.createPeriodicWave(real, imag, { disableNormalization: true });
   }
 
   /* 管风琴音栓：只留 1/2/3/4/6/8 次泛音，接近 8'+4'+2'+Mixture 的叠加 */
@@ -176,68 +204,140 @@ export function createSynth(ctx, opts = {}) {
   }
 
   const waves = {
-    soft: harmonicWave(1.85, 1.15),
-    mid: harmonicWave(1.50, 1.35),
-    bright: harmonicWave(1.18, 1.55),
-    organ: organWave()
+    organ: organWave(),
+    piano: PIANO_BANKS.map(b => pianoWave(b.parts))
   };
 
-  /* ── 乐器 ── */
+  /* 击弦噪声共用一段缓冲：每音重新生成会让 GC 在高潮段频繁触发 */
+  const hammerBuf = (() => {
+    const len = Math.max(64, Math.floor(ctx.sampleRate * 0.07));
+    const b = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = b.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      const x = i / len;
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - x, 3.4);
+    }
+    return b;
+  })();
 
-  /* 钢琴：两个振荡器（第二根"弦"轻微失谐产生拍频）+ 两段衰减 + 击弦噪声 */
+  /* 同音重击：上一次的余韵必须被"止住"，否则同频叠加会糊成一片，
+     听起来像踩着延音踏板弹音阶。这里按 MIDI 记住正在响的那一个。 */
+  const ringing = new Map();
+
+  function dampVoice(entry, at, fast = true) {
+    if (!entry || !entry.gain) return;
+    const g = entry.gain;
+    try {
+      if (g.gain.cancelAndHoldAtTime) g.gain.cancelAndHoldAtTime(at);
+      else { g.gain.cancelScheduledValues(at); g.gain.setValueAtTime(0.0001, at); }
+      g.gain.setTargetAtTime(0.0001, at, fast ? 0.006 : 0.03);
+    } catch {}
+  }
+
+  /* ── 钢琴 ──
+     4 组振荡器 × 1~2 根弦 + 击弦噪声 + 制音器。
+     组内失谐（cents）模拟钢琴弦的刚性：真实泛音是"拉伸"的，
+     不是严格的整数倍，这层微失谐正是"木头味"的来源。 */
   function piano(t, midi, dur, vel, pan = 0) {
+    if (vel <= 0.004) return;
     const f = mtof(midi);
-    const wave = vel > 0.60 ? waves.bright : vel > 0.36 ? waves.mid : waves.soft;
 
-    const o = ctx.createOscillator();
-    o.setPeriodicWave(wave);
-    o.frequency.value = f;
-
-    const o2 = ctx.createOscillator();
-    o2.setPeriodicWave(wave);
-    o2.frequency.value = f;
-    o2.detune.value = rand(3, 7);
+    /* 低音衰减慢、高音衰减快：这是钢琴最容易被忽略的一条物理事实。
+       数值按"每秒约 17 dB"标定：C4 约 2.1 s 落到 -36 dB，
+       低音更长、高音更短，和真实钢琴的 t60 走向一致。 */
+    const tau = clamp(4.6 * Math.pow(2, -(midi - 33) / 24), 0.9, 5.0);
+    const atk = 0.0022 + 0.0016 * clamp((84 - midi) / 48, 0, 1);
+    const peak = Math.pow(vel, 1.15) * 0.105;
 
     const mix = ctx.createGain();
-    const g2 = ctx.createGain();
-    g2.gain.value = 0.30;
-    o.connect(mix);
-    o2.connect(g2); g2.connect(mix);
-
-    const g = ctx.createGain();
-    const peak = Math.max(0.0004, vel * 0.26);
-    const body = Math.max(0.22, dur * 1.15);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.linearRampToValueAtTime(peak, t + 0.005);
-    /* 两段衰减：先快后慢，接近真实钢琴的"敲击 + 余韵" */
-    g.gain.exponentialRampToValueAtTime(peak * 0.34, t + Math.min(0.34, body * 0.3));
-    g.gain.exponentialRampToValueAtTime(0.0001, t + body);
-
+    const noteGain = ctx.createGain();
+    noteGain.gain.value = 1;
     const p = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
-    mix.connect(g);
-    if (p) { p.pan.value = pan; g.connect(p); p.connect(busPiano); }
-    else g.connect(busPiano);
+    if (p) {
+      /* 真正录制的钢琴低音偏左、高音偏右；叠上调用方给的位置 */
+      p.pan.value = clamp(pan + clamp((midi - 62) * 0.006, -0.26, 0.26), -1, 1);
+      mix.connect(noteGain); noteGain.connect(p); p.connect(busPiano);
+    } else {
+      mix.connect(noteGain); noteGain.connect(busPiano);
+    }
 
-    o.start(t); o2.start(t);
-    o.stop(t + body + 0.05); o2.stop(t + body + 0.05);
-    o.onended = () => { try { mix.disconnect(); g.disconnect(); p && p.disconnect(); } catch {} };
+    const prev = ringing.get(midi);
+    if (prev) dampVoice(prev, t);
+    const entry = { gain: noteGain, at: t, end: t + tau + 0.12 };
+    ringing.set(midi, entry);
 
-    /* 击弦瞬态：8ms 带通噪声，力度越大越明显 */
-    if (vel > 0.30) {
-      const nlen = Math.max(24, Math.floor(ctx.sampleRate * 0.008));
-      const nb = ctx.createBuffer(1, nlen, ctx.sampleRate);
-      const nd = nb.getChannelData(0);
-      for (let i = 0; i < nlen; i++) nd[i] = (Math.random() * 2 - 1) * (1 - i / nlen);
+    let lastOsc = null;
+    const banks = light ? PIANO_BANKS.slice(0, 3) : PIANO_BANKS;
+    banks.forEach((bank, bi) => {
+      const amp = peak * bank.gain * Math.pow(vel, bank.vexp);
+      const d = tau * bank.decay;
+      const strings = light ? 1 : bank.strings;
+
+      for (let k = 0; k < strings; k++) {
+        const o = ctx.createOscillator();
+        o.setPeriodicWave(waves.piano[bi]);
+        o.frequency.value = f;
+        /* 组间失谐 + 弦间失谐 + 每音 ±2 音的随机，避免机械感 */
+        o.detune.value = bank.cents + (k ? 3.4 : -1.7) + rand(-2, 2);
+
+        const g = ctx.createGain();
+        const a = amp / strings;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(a, t + atk);
+        /* 两段衰减：击弦后 140ms 掉到 36%（"啪"），之后按每秒约 17 dB
+           缓慢落下去。尾段再快速收到 0，避免振荡器停振时留下咔声。 */
+        g.gain.exponentialRampToValueAtTime(Math.max(0.0002, a * 0.36), t + Math.min(0.14, d * 0.2));
+        g.gain.exponentialRampToValueAtTime(Math.max(0.0002, a * 0.008), t + d);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.05);
+
+        o.connect(g); g.connect(mix);
+        o.start(t); o.stop(t + d + 0.06);
+        lastOsc = o;
+      }
+    });
+
+    /* 制音器：手松开（或该换音了）之后按音区在 90~260ms 内收住。
+       只在音符还没自己衰减完时才有意义。 */
+    const off = t + Math.max(0.06, dur);
+    if (off < t + tau * 1.05) {
+      const rel = midi < 48 ? 0.26 : 0.13;
+      noteGain.gain.setValueAtTime(1, off);
+      noteGain.gain.setTargetAtTime(0.0001, off, rel / 3);
+    }
+
+    /* 击弦瞬态：高频"嗒" + 低频"咚"，两者比例随音区变化。
+       旧版只有一个 8ms 带通，音量小到几乎听不见，所以起音是"软"的。 */
+    if (vel > 0.16) {
       const ns = ctx.createBufferSource();
-      ns.buffer = nb;
-      const nf = ctx.createBiquadFilter();
-      nf.type = 'bandpass';
-      nf.frequency.value = Math.min(7000, f * 3.4);
-      nf.Q.value = 0.9;
+      ns.buffer = hammerBuf;
+      ns.playbackRate.value = rand(0.92, 1.08);
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = clamp(f * 4.2, 1800, 7200);
+      bp.Q.value = 0.75;
       const ng = ctx.createGain();
-      ng.gain.value = vel * vel * 0.02;
-      ns.connect(nf); nf.connect(ng); ng.connect(busPiano);
-      ns.start(t);
+      ng.gain.value = Math.pow(vel, 1.7) * 0.09;
+      ns.connect(bp); bp.connect(ng); ng.connect(mix);
+
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = clamp(220 + f * 0.5, 220, 900);
+      const lg = ctx.createGain();
+      lg.gain.value = Math.pow(vel, 2.1) * 0.055;
+      const ns2 = ctx.createBufferSource();
+      ns2.buffer = hammerBuf;
+      ns2.playbackRate.value = 0.6;
+      ns2.connect(lp); lp.connect(lg); lg.connect(mix);
+
+      ns.start(t); ns.stop(t + 0.08);
+      ns2.start(t); ns2.stop(t + 0.06);
+    }
+
+    if (lastOsc) {
+      lastOsc.onended = () => {
+        if (ringing.get(midi) === entry) ringing.delete(midi);
+        try { mix.disconnect(); noteGain.disconnect(); p && p.disconnect(); } catch {}
+      };
     }
   }
 
@@ -273,7 +373,7 @@ export function createSynth(ctx, opts = {}) {
 
   /* 弦乐群：锯齿波 + 低通 + 慢起音 + 颤音，负责"张力" */
   function strings(t, notes, dur, gain, open = 0.4) {
-    if (gain <= 0.004 || light) return;
+    if (gain <= 0.004) return;
     const atk = Math.max(0.6, dur * 0.35);
     const lfo = ctx.createOscillator();
     lfo.type = 'sine';
@@ -297,12 +397,12 @@ export function createSynth(ctx, opts = {}) {
       g.gain.setValueAtTime(amp, t + Math.max(atk, dur - dur * 0.25));
       g.gain.linearRampToValueAtTime(0.0001, t + dur);
 
-      for (let d = 0; d < 2; d++) {
+      for (let d = 0; d < (light ? 1 : 2); d++) {
         const o = ctx.createOscillator();
         o.type = 'sawtooth';
         o.frequency.value = mtof(m);
         o.detune.value = (d ? 8 : -8) + (i - 1.5) * 2;
-        lfoAmt.connect(o.detune);
+        if (!light) lfoAmt.connect(o.detune);
         o.connect(lp);
         o.start(t); o.stop(t + dur + 0.1);
       }
@@ -401,7 +501,55 @@ export function createSynth(ctx, opts = {}) {
     s.start(t);
   }
 
-  /* ── 编曲 ── */
+  /* 铜管：靠"起音后滤波打开"制造亮度，而不是单纯加音量。
+     只在高潮段用六小节，进得太早会失去分量。 */
+  function brass(t, notes, dur, gain, open = 0.5) {
+    if (gain <= 0.004) return;
+    notes.forEach((m, i) => {
+      const f = mtof(m);
+      /* 轻量模式只留一根管：铜管是"有没有"的问题，不是"几根"的问题 */
+      for (let d = 0; d < (light ? 1 : 2); d++) {
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.value = f;
+        o.detune.value = (d ? 6.5 : -5.5) + i * 1.1;
+
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.Q.value = 0.8;
+        lp.frequency.setValueAtTime(240 + f * 1.4, t);
+        lp.frequency.linearRampToValueAtTime(700 + f * (3.2 + open * 5.2), t + Math.min(dur * 0.5, 1.2));
+
+        const g = ctx.createGain();
+        const amp = gain * 0.015 * (i === 0 ? 1 : 0.7);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(amp, t + Math.min(0.4, dur * 0.35));
+        g.gain.setValueAtTime(amp, t + dur * 0.78);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+        o.connect(lp); lp.connect(g); g.connect(busPad);
+        o.start(t); o.stop(t + dur + 0.03);
+      }
+    });
+  }
+
+  /* 低频下潜：大锣落下时补一层 68→34 Hz 的滑音，身体能"感觉"到 */
+  function subDrop(t, from, to, dur, gain) {
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(from, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(20, to), t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(gain, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(busLow);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  /* ── 编曲 ──
+     一条力度曲线管全曲，配器按段进、按段撤；
+     高潮不是"更响"，而是层数更多、频带更宽、留白更狠。 */
   function scheduleBar(index, t) {
     const bar = ((index % BARS) + BARS) % BARS;
     const chord = CHORDS[bar % 4];
@@ -413,36 +561,49 @@ export function createSynth(ctx, opts = {}) {
     const inC = bar >= 16 && bar < 24;
     const inD = bar >= 24 && bar < 32;
     const inE = bar >= 32;
+    const gap = bar === 23;          /* 大锣前的两拍空白 */
 
-    /* 低音：每小节一个长音，第 3 拍补一个五度；高潮段加八度叠奏。
-       时值给到 1.3 小节，前后交叠，循环点不会掉进静音里 */
-    sub(t, chord.bass, BAR * 1.30, 0.35 + v * 0.75);
+    /* 低音：长音铺底，第 3 拍补五度；时值交叠到下一小节，循环点不掉进静音 */
+    sub(t, chord.bass, BAR * 1.30, 0.22 + v * 0.95);
     if (!inA) sub(t, chord.bass + 19, BEAT * 1.6, 0.10 + v * 0.18);
 
-    /* 管风琴：两小节一次换和声，起音比小节线稍早一点点，听起来像"呼吸" */
+    /* 管风琴：两小节一次换和声，比小节线稍早一点起音，像"呼吸" */
     if (bar % 2 === 0) {
       const voicing = chord.tones.map(m => m + 12);
       voicing.push(chord.root + 24);
-      organ(t, voicing, BAR * 2 + 0.55, clamp(v * 1.05, 0, 1));
+      organ(t, voicing, BAR * 2 + 0.55, Math.pow(clamp(v * 1.06, 0, 1), 1.35));
     }
 
-    /* 弦乐：第 12 小节就悄悄进来，只留一点空气；推进段之后逐步打开低通，
-       到高潮时整组弦乐已经"亮"开了——推进感主要来自这个缓慢的音色变化 */
-    if ((inB && bar >= 12) || inC || inD || (inE && bar < 36)) {
-      const open = clamp((v - 0.42) / 0.55, 0.05, 1);
-      strings(t, [chord.root + 24, chord.tones[1] + 12, chord.tones[2] + 12], BAR * (inD ? 1.35 : 1.1),
-        clamp(v * 1.1, 0, 1), open);
+    /* 弦乐：第 6 小节就悄悄进来（引子末尾的一点空气），
+       之后随力度曲线逐步打开低通；高潮段再叠一层低八度的"大提琴" */
+    if ((inA && bar >= 6) || inB || inC || inD || (inE && bar < 36)) {
+      const open = clamp((v - 0.36) / 0.6, 0.08, 1);
+      strings(t, [chord.root + 24, chord.tones[1] + 12, chord.tones[2] + 12],
+        BAR * (inD ? 1.32 : 1.1),
+        clamp(v * (inA ? 0.55 : 1.1), 0, 1), open);
     }
-    /* 退潮的最后两小节：弦乐不再断，直接把 G 拖过循环点，接住下一个 Am */
+    if (inD || (inC && bar >= 20)) {
+      strings(t, [chord.root, chord.tones[0]], BAR * 1.25, 0.42 + v * 0.22, 0.16);
+    }
+    /* 退潮的最后两小节：弦乐不断，直接把 G 拖过循环点接住下一个 Am */
     if (bar === 38) {
       strings(t, [chord.root + 24, chord.tones[2] + 12, chord.tones[3] + 12], BAR * 2.4, 0.30, 0.25);
     }
 
-    /* 固定音型：建立段是八分，推进/高潮是十六分，退潮回到八分并逐渐消失 */
+    /* 铜管：第 26 小节进、第 31 小节撤，正好卡在最高点上 */
+    if (bar >= 26 && bar <= 31) {
+      const atk = bar === 26 ? BEAT * 2 : 0;
+      brass(t + atk, [chord.root + 12, chord.tones[2] + 12, chord.root + 24],
+        BAR * (bar === 31 ? 0.92 : 1.05) - atk,
+        clamp((v - 0.35) * 1.5, 0, 1), clamp(v, 0, 1));
+    }
+
+    /* 固定音型：建立段八分，推进/高潮十六分，退潮回到八分 */
     const step = (inB || inE) ? 2 : 1;
     const ostOn = !inA && bar < 36;
     if (ostOn) {
-      for (let i = 0; i < 16; i += step) {
+      const stopAt = gap ? 8 : 16;
+      for (let i = 0; i < stopAt; i += step) {
         const idx = OST[i % 16];
         const midi = chord.tones[idx] + 12;
         const accent = i % 4 === 0 ? 1 : 0.62;
@@ -450,20 +611,20 @@ export function createSynth(ctx, opts = {}) {
         piano(t + i * s16 + rand(-0.006, 0.006), midi, s16 * (inD ? 4.2 : 5.4),
           v * accent * lift * rand(0.9, 1.08), 0.14);
       }
-      /* 高潮段：每拍再叠一个高八度，厚度靠层数而不是音量 */
-      if (inD && !light) {
+      /* 高潮段：每拍叠一个高八度，厚度靠层数而不是音量 */
+      if (inD) {
         for (let i = 0; i < 16; i += 4) {
-          piano(t + i * s16, chord.tones[OST[i % 16]] + 24, s16 * 2.4, v * 0.34, -0.20);
+          piano(t + i * s16, chord.tones[OST[i % 16]] + 24, s16 * 2.4, v * 0.32, -0.20);
         }
       }
     }
 
-    /* 低音钢琴：每小节第一拍点一下根音，给固定音型一个"地基" */
+    /* 低音钢琴：每两小节点一次根音，给固定音型一个"地基" */
     if (!inA && bar % 2 === 0) {
       piano(t, chord.bass + 12, BEAT * 3.2, v * 0.62, -0.24);
     }
 
-    /* 主旋律：第 8 小节进入，四个八小节乐句正好铺到第 39 小节 */
+    /* 主旋律：第 8 小节进入，四个八小节乐句铺到第 39 小节 */
     if (bar >= MEL_START && bar < MEL_END) {
       const beatsIn = (((index - MEL_START) * 4) % MEL_BEATS + MEL_BEATS) % MEL_BEATS;
       const octUp = inD ? 12 : 0;
@@ -473,10 +634,13 @@ export function createSynth(ctx, opts = {}) {
         const at = t + local * BEAT;
         const dur = BEAT * e.d * 1.08;
         piano(at, e.m + octUp, dur, v * 0.98, 0);
-        /* 高潮段让管风琴把旋律也吹一遍，音色一下子"变宽" */
-        if (inD && e.d >= 2) organ(at, [e.m + 12], dur * 0.96, v * 0.42);
-        /* 乐句尾音加一个高八度的弱奏，像远处有人应了一声 */
-        if (e.d >= 3) piano(at + 0.02, e.m + 24, dur * 0.8, v * 0.22, 0.26);
+        /* 高潮段：低八度加一层，"重量"来自这里；管风琴再吹一遍让音色变宽 */
+        if (inD) {
+          piano(at, e.m - 12, dur * 1.02, v * 0.40, -0.14);
+          if (e.d >= 2) organ(at, [e.m + 12], dur * 0.96, v * 0.40);
+        }
+        /* 乐句尾音加一个高八度弱奏，像远处有人应了一声 */
+        if (e.d >= 3 && !light) piano(at + 0.02, e.m + 24, dur * 0.8, v * 0.20, 0.26);
       }
     }
 
@@ -484,22 +648,43 @@ export function createSynth(ctx, opts = {}) {
     if (inC && bar % 2 === 0) timpani(t, chord.bass + 12, v * 0.55);
     if (inD) {
       timpani(t, chord.bass + 12, v * 0.60);
-      timpani(t + BEAT * 2, chord.bass + 12, v * 0.45);
+      if (!gap) timpani(t + BEAT * 2, chord.bass + 12, v * 0.45);
     }
 
-    /* 段落转折点：第 24 小节砸大锣，第 22、30 小节起涨潮 */
-    if (bar === 24) tam(t, chord.bass + 24, v);
+    /* 第 23 小节：撤掉音型，用定音鼓滚奏把两拍空白填满，
+       然后第 24 小节整组砸下来——"震撼"主要靠这一下前后对比。 */
+    if (gap) {
+      for (let i = 0; i < 12; i++) {
+        timpani(t + BEAT * 2 + i * (BEAT * 2 / 12), chord.bass + 12, 0.16 + i * 0.05);
+      }
+    }
+
+    /* 高点：大锣 + 低音簇 + 下潜，三个不同频段同时落 */
+    if (bar === 24) {
+      tam(t, chord.bass + 24, v);
+      piano(t, chord.bass + 12, BEAT * 3, v * 0.95, -0.20);
+      piano(t, chord.bass + 19, BEAT * 3, v * 0.58, 0.16);
+      subDrop(t, 68, 34, 1.7, 0.30);
+    }
     if (bar === 22) riser(t, BAR * 2, 0.9);
-    if (bar === 30) riser(t, BAR * 2, 0.55);
+    if (bar === 30) riser(t, BAR * 2, 0.5);
 
     /* 退潮段：旋律交给钢琴独奏，配器一层层撤掉，只剩混响在响 */
     if (bar >= 36 && bar % 2 === 0) {
       piano(t + BEAT * 2, (chord.tones[1] + 12), BEAT * 1.6, v * 0.5, 0.08);
     }
+    /* 最后一小节：低音 A 钉住，循环回 Am 时是"落回"而不是"跳回" */
+    if (bar === 39) {
+      piano(t + BEAT * 2, 45, BEAT * 2.2, 0.34, -0.18);
+    }
   }
 
   return {
     master, scheduleBar, bars: BARS, barSeconds: BAR,
+    /* 单音试听：验证音色、测分音衰减都靠它 */
+    playNote(midi, vel = 0.8, dur = 2, at = ctx.currentTime, pan = 0) {
+      piano(at, midi, dur, vel, pan);
+    },
     setVolume(v) {
       const now = ctx.currentTime;
       master.gain.cancelScheduledValues(now);
@@ -644,16 +829,27 @@ export function createMusic({ volume = 0.5 } = {}) {
   }
 
   async function toggle() {
-    if (!started) { await start(); return started; }
+    if (!started) { await start(); return started && !muted; }
+
+    /* 顺序很重要：先看"是不是被用户关掉了"，再看"是不是被浏览器挂起了"。
+       自动播放被拦时 ctx 处于 suspended，此时第一次点击应该是"开始播放"；
+       旧逻辑只看 started，会把这一次点击当成"关掉"，用户要点两下才有声音。 */
     if (muted) {
       muted = false;
       if (audioEl) { audioEl.volume = Math.min(1, volume); audioEl.play().catch(() => {}); }
       if (synth) synth.setVolume(volume);
       emit();
-    } else {
-      stop();
+      return true;
     }
-    return started && !muted;
+
+    if (ctx && ctx.state !== 'running') {
+      try { await ctx.resume(); } catch {}
+      emit();
+      return ctx.state === 'running';
+    }
+
+    stop();
+    return false;
   }
 
   function armUnlock(onReady) {

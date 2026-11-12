@@ -75,7 +75,8 @@ main 重新渲染（墙 / 标记 / 统计 / 手记）
 ```
 boot()
  ├─ loadAlbums()       信封优先；裸数组自动升级为 v5；坏 JSON → {corrupted:true}
- ├─ allPhotos()        逐条过契约；坏记录丢弃并计数
+ ├─ allPhotos()        逐条过契约；默认只返回元数据（blob 留在库里）
+ ├─ getPhotoBlob(id)   单张取原图：大图 / 导出 / 上传三处才调用
  ├─ probeGuestData()   地标 + 照片都算"访客作品"
  ├─ 派生视图          renderWall / buildMarkers / syncStats
  └─ atlasData.health() 控制台体检（不阻塞）
@@ -89,7 +90,7 @@ schedulePush（编辑后 1.2s 防抖）
 syncNow
    ├─ 未登录 / 域名未绑定 / 作用域不符 / 离线 → 直接返回
    ├─ syncPull（首次或强制）
-   │    ├─ pullAll() → 行 → model.albumFromRow / photoFromRow
+   │    ├─ pullAll() → 分页 500/页（按 local_id 排序）→ albumFromRow / photoFromRow
    │    ├─ mergeCollections(本地 + 本地墓碑, 云端)
    │    ├─ 云端墓碑 → 本地删数据 + 落本地墓碑（pushed=true）
    │    ├─ 云端"活着"但本地墓碑 → 挡住 + 墓碑重新排队（pushed=false）
@@ -214,6 +215,8 @@ syncNow
 | 本地 JSON 损坏 | `JSON.parse` 失败 | 返回 `{corrupted:true}`，页面不白屏，体检报 `store_corrupt` |
 | 离线 | `navigator.onLine === false` | 同步直接返回；`online` 事件补推 |
 | OAuth 失败 / 过期 | `pullAll` 抛错 | 指数退避；状态条显示失败原因；不阻塞本地编辑 |
+| 请求挂起 | `guard()` 25~60 s 超时 | `running` 复位，进入退避重试，不会永久卡住同步 |
+| 记录超过 1000 条 | `fetchAll` 分页 | 每页 500、按 `local_id` 排序，不漏行 |
 | 原图上传失败 | `uploadPhotoBlob` 抛错 | 单张 `upFail+1`，累计 3 次跳过，不阻塞其他照片 |
 | 云端行找不到所属相册 | `albumIds` 检查 | 跳过，不生成"幽灵卡片" |
 | 删除相册 | — | 先删照片库（按索引游标），再删相册，最后落墓碑 |
@@ -256,6 +259,20 @@ syncNow
 SDK 缺失 / 被拦截 → `reason='sdk-missing'`，云同步条隐藏，其余功能不受影响。
 
 ---
+
+## 7·补 照片的内存契约
+
+照片是本项目唯一的大对象，规则只有一条：**内存里只保留元数据，二进制按需取。**
+
+| 场景 | 取什么 | 为什么 |
+| --- | --- | --- |
+| 启动 / 相册网格 | `allPhotos()`（无 blob，带 `hasBlob`） | 网格最大显示 330 px，640 px 缩略图足够；全量 blob + `createObjectURL` 会让解码位图随张数线性增长（500 张 ≈ 2 GB） |
+| 大图 | `ensureBlob(photo)` | 本地 IDB → 云端下载（落库后释放），失败则继续显示缩略图 |
+| 导出 | `makeBackup({ loadBlob })` | 一张一张取，用完立刻 `p.blob = null` |
+| 上传 | `ensureBlob(photo)` 后再传 | 上传成功同样释放 |
+
+配套的硬约束：**`putPhoto()` 在没收到 blob 时必须先把库里的原图读出来再写回**，
+否则一次普通的元数据更新就会把原图字段写成空——这是本轮修掉的真实缺陷。
 
 ## 8. 验证方式与结果
 

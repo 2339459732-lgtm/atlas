@@ -58,18 +58,30 @@ async function deriveKey(passphrase, salt) {
 }
 
 /* 生成备份文件内容（字符串） */
-export async function makeBackup({ site, landmarks, photos, passphrase }) {
+/**
+ * 生成备份。
+ *
+ * `loadBlob` 用于按需取原图：页面启动时只持有照片元数据，
+ * 这里一张一张取、用完就放，不会把所有原图同时读进内存。
+ */
+export async function makeBackup({ site, landmarks, photos, passphrase, loadBlob }) {
   if (!crypto?.subtle) throw new Error('当前环境不支持加密（需要 https）');
   if (!passphrase || passphrase.length < 6) throw new Error('备份口令至少 6 位');
 
   const shots = [];
   for (const p of photos) {
-    const buf = p.blob ? new Uint8Array(await p.blob.arrayBuffer()) : null;
+    let blob = p.blob;
+    if (!blob && typeof loadBlob === 'function') {
+      try { blob = await loadBlob(p); } catch { blob = null; }
+    }
+    const buf = blob ? new Uint8Array(await blob.arrayBuffer()) : null;
     shots.push({
       id: p.id, landmarkId: p.landmarkId, name: p.name,
       w: p.w, h: p.h, t: p.t, exif: p.exif || null,
       thumb: p.thumb || '', data: buf ? bytesToB64(buf) : ''
     });
+    /* 立刻放掉：几十张原图同时留在内存里，移动端会被系统回收 */
+    if (p.blob) p.blob = null;
   }
 
   const payload = { app: 'atlas', v: 1, createdAt: Date.now(), site, landmarks, photos: shots };

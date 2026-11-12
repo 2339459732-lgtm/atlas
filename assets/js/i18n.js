@@ -106,6 +106,7 @@ export const DICT = {
   'menu.new': ['新建地标', 'New landmark'],
   'menu.settings': ['站点设置', 'Site settings'],
   'menu.export': ['导出作品集', 'Export portfolio'],
+  'menu.theme': ['切换主题', 'Switch theme'],
 
   /* 开篇 */
   'hero.kicker': ['私人地理志', 'PRIVATE ATLAS'],

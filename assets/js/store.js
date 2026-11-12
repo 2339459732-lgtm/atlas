@@ -358,7 +358,15 @@ function openDB() {
   return dbCache.p;
 }
 
-export async function allPhotos() {
+/**
+ * 列出照片。默认只返回元数据。
+ *
+ * 为什么不连 blob 一起返回：Blob 是磁盘句柄，几百张一起捧着不会立刻爆，
+ * 但一旦被 `URL.createObjectURL` 用在网格里，浏览器会为每张图保留解码后的
+ * 位图（1280×800 ≈ 4 MB），500 张就是 2 GB —— 页面会被系统直接杀掉。
+ * 所以启动只读元数据，原图按需（大图 / 导出 / 上传）单独取。
+ */
+export async function allPhotos({ blobs = false } = {}) {
   const d = await openDB();
   const rows = await new Promise((res, rej) => {
     const q = d.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).getAll();
@@ -371,23 +379,50 @@ export async function allPhotos() {
   for (const row of rows) {
     const p = normalizePhoto(row);
     if (!p) { dropped++; continue; }
-    /* blob 是二进制，不参与校验，但必须真的是 Blob 才带上 */
-    p.blob = row.blob instanceof Blob ? row.blob : null;
+    p.hasBlob = row.blob instanceof Blob;
+    p.blob = blobs && p.hasBlob ? row.blob : null;
     out.push(p);
   }
   if (dropped) console.warn('[store] 丢弃无法识别的照片记录', dropped);
   return out;
 }
 
+/** 按 id 取原图。找不到或不是 Blob 时返回 null。 */
+export async function getPhotoBlob(id) {
+  if (!isId(id)) return null;
+  const d = await openDB();
+  const row = await new Promise((res, rej) => {
+    const q = d.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).get(id);
+    q.onsuccess = () => res(q.result || null);
+    q.onerror = () => rej(q.error);
+  });
+  return row && row.blob instanceof Blob ? row.blob : null;
+}
+
+/**
+ * 写一条照片记录。
+ *
+ * 关键细节：调用方现在只持有元数据（没有 blob），如果直接 put 整条记录，
+ * `blob` 字段会被写成 undefined —— 下一次打开就"原图丢了"。
+ * 所以没带 blob 时先把库里那条读出来，把原图接回去。
+ */
 export async function putPhoto(rec) {
   const p = normalizePhoto(rec);
   if (!p) throw new Error('bad_photo');
-  p.blob = rec?.blob instanceof Blob ? rec.blob : null;
+  const incoming = rec?.blob instanceof Blob ? rec.blob : null;
 
   const d = await openDB();
   await new Promise((res, rej) => {
     const t = d.transaction(DB_STORE, 'readwrite');
-    t.objectStore(DB_STORE).put(p);
+    const st = t.objectStore(DB_STORE);
+    const get = st.get(p.id);
+    get.onsuccess = () => {
+      const old = get.result;
+      p.blob = incoming || (old && old.blob instanceof Blob ? old.blob : null);
+      p.hasBlob = !!p.blob;
+      st.put(p);
+    };
+    get.onerror = () => rej(get.error);
     t.oncomplete = () => res(true);
     t.onerror = () => rej(t.error || new Error('idb_put_failed'));
   });
@@ -473,7 +508,7 @@ export async function health({ albums = [], photos = [] } = {}) {
     photoIds.add(p.id);
     if (!albumIds.has(p.landmarkId)) orphans++;
     if (!(p.w > 0 && p.h > 0)) badSize++;
-    if (!p.blob && !p.remote) noSource++;
+    if (!p.hasBlob && !p.blob && !p.remote) noSource++;
   }
   if (orphans) issues.push({ code: 'orphan_photo', level: 'warn', n: orphans });
   if (badSize) issues.push({ code: 'bad_size', level: 'error', n: badSize });
