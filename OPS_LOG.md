@@ -651,3 +651,35 @@ ALTER TABLE atlas_photos ADD COLUMN rev BIGINT NOT NULL DEFAULT 0,
   debug=1 只读句柄常开（供体检）。
 - 注入 CSS：creatorpanel 品牌金描边/圆角、sp-panel 描边收拢——只调色排版。
 - 验收：面板内容/描边/圆角命中；复制反馈命中；旧署名 0 残留；回归 9 例全过。
+
+## 19 地球背景专项：真实星空与 4K 银河（v2.6.3）
+
+### 19.1 银河贴图重建（ref/build-sky.py）
+
+- 旧 4K 91KB → 从 8192×4096 ESO 母版 Lanczos 重建：4K 1.4MB / 2K 115KB / 1K 39KB。
+- 处理链：Lanczos → 高斯（1K 1.2 / 2K 2.2 / 4K 0.8）→ UnsharpMask 大半径低强度
+  （threshold=2，只找回尘埃带边缘，不放大噪点）→ JPEG 4:4:4（防色度渗出）。
+
+### 19.2 着色器（FS_SKY）
+
+- 尘埃/星云质感：两组 3D 值噪声（240/64 周）锚定天球方向（无接缝），
+  band=luma×4 掩码只在银道亮处浮现；暖调 mix((1.10,1.02,0.92), warm×band)。
+- 抖动改自适应：暗处 1.5×、亮处 0.3×——专打暗空 8bit 色带。
+- 亮星辉光（FS_STAR vGlow）：<2 等叠更宽光晕，与暗星拉开层次。
+
+### 19.3 星点分布（buildStars 暗星）
+
+- 银道聚集：62% 落 |银纬|≤18°；星等幂律 mag=6.5+2.5u²；B−V 偏斜 0.35–1.45。
+- 星座连线 F05 从注册表删除（渲染代码保留休眠）；旧 URL 参数被注册表过滤。
+
+### 19.4 配置
+
+- APP.runtime.sky：tilt/spin/gain/dust/warm 五个参数，earth.js 读配置，
+  主题表只覆盖 gain。
+
+### 19.5 验收
+
+- 面板无 F05；图例「星表 · GAIA」；0 报错。
+- 截图数值分析（2160×1350 @1.5dpr）：银道带区 std 80 vs 远空 std 6.7；
+  星色蓝 10% / 白 70% / 橙 20%；远空角无灰斑。
+- 回归：cloud 六例 + solar 三例 + polish 四例全 PASS。

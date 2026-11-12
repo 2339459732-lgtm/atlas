@@ -78,7 +78,16 @@ export const APP = {
     errToastThrottleMs: 5000,
 
     /* 错误环形缓冲条数（控制台 atlasErrors() 可读） */
-    errRingSize: 12
+    errRingSize: 12,
+
+    /* 星空/银河渲染参数（earth.js 读取；主题表只覆盖 gain） */
+    sky: {
+      tilt: 0.33,       /* 银道面倾角（弧度）：银河穿过画面的角度 */
+      spin: 0,          /* 银道经度旋转（弧度） */
+      gain: 5.1,        /* 银河亮度倍率（宣纸主题覆盖为 0） */
+      dust: 0.22,       /* 尘埃/星云纹理强度（0 关闭，锚定天球方向） */
+      warm: 0.35        /* 银道暖调强度（0–1，核球偏金） */
+    }
   }
 };
 

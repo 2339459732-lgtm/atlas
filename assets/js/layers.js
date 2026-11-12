@@ -36,7 +36,7 @@ export const GROUPS = [
   },
   {
     id: 'sky', no: '03', zh: '深空', en: 'Deep sky',
-    descZh: '真实星表、星座、银河与流星', descEn: 'Real stars, constellations, galaxy, meteors'
+    descZh: '真实星表、银河与偶发流星', descEn: 'Real stars, the Milky Way, meteors'
   },
   {
     id: 'base', no: '04', zh: '基底', en: 'Base',
@@ -139,8 +139,8 @@ export const LAYERS = [
     group: 'sky',
     title: { zh: '星表', en: 'Star catalogue' },
     summary: {
-      zh: '5044 颗真实亮星（至 6 等，含 B−V 色指数）打底，程序暗星补密；星座真的会成形。',
-      en: '5,044 real bright stars to magnitude 6, with B−V colour, plus procedural dim stars — real constellations take shape.'
+      zh: '5044 颗真实亮星（至 6 等，含 B−V 色指数）打底，程序暗星按银道聚集补密；夜空有真实的亮度与色温层次。',
+      en: '5,044 real bright stars to magnitude 6, with B−V colour, plus galactic-band dim stars — real brightness and colour depth.'
     },
     provenance: 'obs',
     sources: [S('NASA/GSFC SVS 4851 Deep Star Maps 2020 · Gaia DR2', 'https://svs.gsfc.nasa.gov/4851/', '公有领域 / CC BY-SA 3.0 IGO'),
@@ -152,22 +152,6 @@ export const LAYERS = [
     apply(on, ctx) { ctx.earth.setFlags({ stars: on }); }
   },
 
-  {
-    id: 'F05.constellations',
-    group: 'sky',
-    title: { zh: '星座连线', en: 'Constellation figures' },
-    summary: {
-      zh: '88 个星座的传统连线，随天球一起转；开关星表时它也一并隐去。',
-      en: 'The traditional line figures of all 88 constellations, fixed to the celestial sphere.'
-    },
-    provenance: 'obs',
-    sources: [S('星座连线 · Deep Star Maps 2020 配套目录', 'https://svs.gsfc.nasa.gov/4851/', '公有领域')],
-    defaultOn: false,
-    cost: { vramMB: 0, ms: 0.1 },
-    params: { zh: ['88 星座 · 743 线段', '银道坐标系', '淡蓝 13% 透明度'], en: ['88 figures · 743 segments', 'Galactic frame', 'Pale blue, 13% alpha'] },
-    legend: { zh: '星座连线 · 88', en: 'Constellations · 88' },
-    apply(on, ctx) { ctx.earth.setFlags({ constellations: on }); }
-  },
 
   {
     id: 'L07.milkyway',

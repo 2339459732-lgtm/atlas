@@ -31,6 +31,7 @@ uniform float uSkyTilt;
 uniform float uSkySpin;
 varying float vA;
 varying vec3 vC;
+varying float vGlow;
 
 /* B−V → 黑体温度（Ballesteros 2012）→ RGB（Tanner Helland 拟合） */
 vec3 bvToRgb(float bv) {
@@ -79,21 +80,26 @@ void main() {
   float tw = 0.96 + 0.04 * sin(uTime * 0.85 + seed * 6.283);
   vA = uStars * aPack.y * boost * tw;
   vC = bvToRgb(aPack.z);
+  /* 亮星（约 2 等以内）带一圈更宽的辉光，与暗星的紧凑光斑拉开层次 */
+  vGlow = smoothstep(0.42, 0.6, aPack.y);
 }`;
 
 export const FS_STAR = `
 precision mediump float;
 varying float vA;
 varying vec3 vC;
+varying float vGlow;
 void main() {
   vec2 d = gl_PointCoord - 0.5;
   float r = length(d) * 2.0;
   if (r > 1.0) discard;
 
-  /* 高斯核 + 12% 的宽晕。晕再大就会在暗底上摊成灰斑 */
+  /* 高斯核 + 12% 的宽晕；2 等以内的亮星再叠一圈更宽的辉光。
+     晕再大就会在暗底上摊成灰斑，所以辉光只给最亮的一批 */
   float core = exp(-r * r * 18.0);
   float halo = exp(-r * r * 3.8) * 0.12;
-  float a = (core + halo) * vA;
+  float wide = exp(-r * r * 1.1) * 0.16 * vGlow;
+  float a = (core + halo + wide) * vA;
 
   gl_FragColor = vec4(vC * a, a);
 }`;
@@ -164,6 +170,8 @@ uniform float uSkyGain;
 uniform float uSkyTilt;
 uniform float uSkySpin;
 uniform float uSkyBias;
+uniform float uSkyDust;
+uniform float uSkyWarm;
 
 varying vec2 vP;
 
@@ -171,6 +179,24 @@ float hash(vec2 p) {
   p = fract(p * vec2(123.34, 456.21));
   p += dot(p, p + 34.56);
   return fract(p.x * p.y);
+}
+float hash(vec3 p) {
+  p = fract(p * vec3(443.897, 441.423, 437.195));
+  p += dot(p, p.yzx + 19.19);
+  return fract((p.x + p.y) * p.z);
+}
+/* 3D 值噪声：锚定天球方向——随相机旋转稳定、经线处无接缝 */
+float vnoise3(vec3 p) {
+  vec3 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float n000 = hash(i), n100 = hash(i + vec3(1.0, 0.0, 0.0));
+  float n010 = hash(i + vec3(0.0, 1.0, 0.0)), n110 = hash(i + vec3(1.0, 1.0, 0.0));
+  float n001 = hash(i + vec3(0.0, 0.0, 1.0)), n101 = hash(i + vec3(1.0, 0.0, 1.0));
+  float n011 = hash(i + vec3(0.0, 1.0, 1.0)), n111 = hash(i + vec3(1.0, 1.0, 1.0));
+  return mix(
+    mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),
+    mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y),
+    f.z);
 }
 
 vec2 dirToSky(vec3 d) {
@@ -204,7 +230,16 @@ void main() {
     sky = max(sky - 0.006, 0.0);
     /* 全景本身偏蓝紫；往中性拉 45%，再补一点暖，接近肉眼/长曝光的银道 */
     float luma = dot(sky, vec3(0.2126, 0.7152, 0.0722));
-    sky = mix(vec3(luma), sky, 0.55) * vec3(1.04, 1.00, 0.96);
+    sky = mix(vec3(luma), sky, 0.55);
+
+    /* 尘埃与星云质感：两组值噪声锚定天球方向（240/64 周），
+       只在银道亮处浮现——暗空保持干净，不引入可见噪点 */
+    float dust = vnoise3(dir * 240.0) * 0.62 + vnoise3(dir * 64.0) * 0.38;
+    float band = clamp(luma * 4.0, 0.0, 1.0);
+    sky += sky * (dust - 0.5) * uSkyDust * band;
+
+    /* 暖调：银道偏暖、核球偏金，与冷色天顶拉开纵深 */
+    sky *= mix(vec3(1.0), vec3(1.10, 1.02, 0.92), uSkyWarm * band);
     col += sky * uSkyGain;
   }
 
@@ -212,8 +247,9 @@ void main() {
   float dd = distance(vP, vec2(0.5)) / 0.82;
   col *= pow(clamp(1.0 - dd * dd * 0.24, 0.0, 1.0), 0.9);
 
-  /* 颗粒只为打散 8bit 渐变，幅度约 3 个色阶 */
-  col += (hash(vP * 2048.0) - 0.5) * uGrain;
+  /* 抖动颗粒：暗处重、亮处轻，专打 8bit 渐变在暗空里的色带 */
+  float lcol = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  col += (hash(vP * 2048.0) - 0.5) * uGrain * (1.5 - 1.2 * clamp(lcol, 0.0, 1.0));
   gl_FragColor = vec4(max(col, 0.0), 1.0);
 }`;
 

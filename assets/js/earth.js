@@ -8,8 +8,12 @@ import {
   VS_QUAD, FS_SKY, VS_STAR, FS_STAR, VS_METEOR, FS_METEOR, VS_LINE, FS_LINE,
   METEOR_SPEC
 } from './skyfield.js';
+import { APP } from './config.js';
 
 const DEG = Math.PI / 180;
+/* 天空可调参数：config.js 的 APP.runtime.sky 是唯一来源；
+   themeState.sky（主题表）只覆盖增益，宣纸主题把整个银河关掉。 */
+const SKY_CFG = APP.runtime.sky || {};
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 /* 缩放范围：0.5 贴近地表，1.9 退到远轨，给足推拉空间 */
 const MIN_DIST = 0.50;
@@ -520,21 +524,32 @@ export function createEarth(canvas, opts = {}) {
       }
     }
 
-    /* 暗星（6.5–9 等）：均匀球面，只提供"密" */
+    /* 暗星（6.5–9 等）：真实感的三条分布——
+       ① 银道聚集：约六成落在 |银纬| ≤ 18° 的银道带内，其余均匀全天，
+          夜空会自然呈现"银河两侧星密、两极稀疏"的层次；
+       ② 星等幂律：N(m) 向 6.5 等方向更密（越暗的越少），
+          亮度沿用真实亮星同一条曲线再接 0.45 倍，衔接无跳变；
+       ③ 色温分布：B−V 向 0.6–1.2（G/K 矮星）偏斜，混少量蓝白与红。 */
     const rnd = mulberry32(20261112);
     while (i < count) {
-      const z = rnd() * 2 - 1;
+      const inBand = rnd() < 0.62;
+      const lat = inBand ? (rnd() * 2 - 1) * 0.315 : Math.asin(rnd() * 2 - 1);
+      const z = Math.sin(lat);
       const phi = rnd() * Math.PI * 2;
       const r = Math.sqrt(Math.max(0, 1 - z * z));
       dir[i * 3] = r * Math.cos(phi);
       dir[i * 3 + 1] = z;
       dir[i * 3 + 2] = r * Math.sin(phi);
-      const mag = 6.5 + rnd() * 2.5;
+      /* 幂律：u^2 让 6.5 等附近更密，尾部 9 等稀疏 */
+      const u = rnd();
+      const mag = 6.5 + 2.5 * u * u;
       pack[i * 4] = 0.5 + rnd() * 0.5;
       /* 与真实亮星同一条星等曲线，再压一半：暗星接在 6.5 等的
          亮度下限之下，不会出现"6.5 等的程序星比 6 等的真星还亮"的跳变 */
       pack[i * 4 + 1] = magBright(mag) * 0.45;
-      pack[i * 4 + 2] = 0.25 + rnd() * 1.4;
+      /* B−V 向暖星偏斜：0.35 + u^2 × 1.1（0.35–1.45），
+         色温自然过渡，不会出现等距色阶的"彩虹感" */
+      pack[i * 4 + 2] = 0.35 + Math.pow(rnd(), 2) * 1.1;
       pack[i * 4 + 3] = rnd();
       i++;
     }
@@ -1041,9 +1056,11 @@ export function createEarth(canvas, opts = {}) {
     g.uniform1f(progBg.u.uTanHalf, Math.tan(15 * DEG));
     g.uniform1f(progBg.u.uAspect, aspect);
     g.uniform1f(progBg.u.uSkyGain, skyGain);
-    g.uniform1f(progBg.u.uSkyTilt, 0.33);
-    g.uniform1f(progBg.u.uSkySpin, 0.0);
+    g.uniform1f(progBg.u.uSkyTilt, SKY_CFG.tilt ?? 0.33);
+    g.uniform1f(progBg.u.uSkySpin, SKY_CFG.spin ?? 0);
     g.uniform1f(progBg.u.uSkyBias, 0.0);
+    g.uniform1f(progBg.u.uSkyDust, SKY_CFG.dust ?? 0.22);
+    g.uniform1f(progBg.u.uSkyWarm, SKY_CFG.warm ?? 0.35);
     g.activeTexture(g.TEXTURE0 + 3);
     g.bindTexture(g.TEXTURE_2D, textures.sky || null);
     g.uniform1i(progBg.u.uSky, 3);
@@ -1062,8 +1079,8 @@ export function createEarth(canvas, opts = {}) {
       const light = document.documentElement.dataset.theme === 'ivory';
       g.uniform3fv(progLine.u.uColor, light ? [0.16, 0.20, 0.30] : [0.62, 0.72, 0.92]);
       g.uniform1f(progLine.u.uAlpha, light ? 0.20 : 0.13);
-      g.uniform1f(progLine.u.uSkyTilt, 0.33);
-      g.uniform1f(progLine.u.uSkySpin, 0.0);
+      g.uniform1f(progLine.u.uSkyTilt, SKY_CFG.tilt ?? 0.33);
+      g.uniform1f(progLine.u.uSkySpin, SKY_CFG.spin ?? 0);
       g.drawArrays(g.LINES, 0, figureN);
     }
 
@@ -1084,8 +1101,8 @@ export function createEarth(canvas, opts = {}) {
       g.uniform1f(progStar.u.uDpr, state.dpr);
       g.uniform1f(progStar.u.uTime, t);
       g.uniform1f(progStar.u.uStars, themeState.stars * (state.flags.stars ? 1 : 0));
-      g.uniform1f(progStar.u.uSkyTilt, 0.33);
-      g.uniform1f(progStar.u.uSkySpin, 0.0);
+      g.uniform1f(progStar.u.uSkyTilt, SKY_CFG.tilt ?? 0.33);
+      g.uniform1f(progStar.u.uSkySpin, SKY_CFG.spin ?? 0);
       g.drawArrays(g.POINTS, 0, starN);
     }
 
