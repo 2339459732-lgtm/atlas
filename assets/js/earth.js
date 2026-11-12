@@ -502,15 +502,16 @@ export function createEarth(canvas, opts = {}) {
     night: 'earth-night-1k.jpg',
     clouds: 'earth-clouds-1k.jpg',
     spec: 'earth-specular-1k.jpg',
-    normal: 'earth-normal.jpg'
+    normal: 'earth-normal.jpg',
+    sky: 'sky-milky-1k.jpg'
   };
   /* 画质档位：1K 极速 / 2K 标准 / 4K 精细（4K 换了 3840×1920 的白昼图）
      夜面统一来自 NASA Black Marble 8192×4096 母版，按档位降到 1024 / 2048 / 4096；
      云层来自 8192×4096 的白天云图，同样三档。 */
   const TIERS = {
-    '1k': { day: 'earth-day-1k.jpg', night: 'earth-night-1k.jpg', spec: 'earth-specular-1k.jpg', clouds: 'earth-clouds-1k.jpg' },
-    '2k': { day: 'earth-day.jpg', night: 'earth-night-2k.jpg', spec: 'earth-specular.jpg', clouds: 'earth-clouds-2k.jpg' },
-    '4k': { day: 'earth-day-4k.jpg', night: 'earth-night-4k.jpg', spec: 'earth-specular.jpg', clouds: 'earth-clouds-4k.jpg' }
+    '1k': { day: 'earth-day-1k.jpg', night: 'earth-night-1k.jpg', spec: 'earth-specular-1k.jpg', clouds: 'earth-clouds-1k.jpg', sky: 'sky-milky-1k.jpg' },
+    '2k': { day: 'earth-day.jpg', night: 'earth-night-2k.jpg', spec: 'earth-specular.jpg', clouds: 'earth-clouds-2k.jpg', sky: 'sky-milky-2k.jpg' },
+    '4k': { day: 'earth-day-4k.jpg', night: 'earth-night-4k.jpg', spec: 'earth-specular.jpg', clouds: 'earth-clouds-4k.jpg', sky: 'sky-milky-4k.jpg' }
   };
   let tier = '2k';
   const textures = {};
@@ -656,6 +657,7 @@ export function createEarth(canvas, opts = {}) {
       }
 
       /* 先铺占位：云层透明、法线平整、其余留黑，画面不会因为缺图而错乱 */
+      textures.sky = blank(0, 0, 0, 255);
       textures.night = blank(0, 0, 0, 255);
       textures.clouds = blank(0, 0, 0, 0);
       textures.spec = blank(0, 0, 0, 255);
@@ -677,7 +679,7 @@ export function createEarth(canvas, opts = {}) {
       progress?.(0.35);
 
       /* 低清全套并行补齐 */
-      const rest = ['night', 'clouds', 'spec', 'normal'];
+      const rest = ['sky', 'night', 'clouds', 'spec', 'normal'];
       let done = 0;
       await Promise.all(rest.map(async k => {
         try {
@@ -899,10 +901,33 @@ export function createEarth(canvas, opts = {}) {
     g.bindBuffer(g.ARRAY_BUFFER, buf.quad);
     g.enableVertexAttribArray(progBg.a.aP);
     g.vertexAttribPointer(progBg.a.aP, 2, g.FLOAT, false, 0, 0);
-    /* 天空只剩上下渐变 + 颗粒：没有任何随视角变化的结构 */
+    /* 银河：真实巡天全景。基向量用"地平不滚转"的那一组，
+       否则俯仰时银河会跟着画面一起歪。 */
+    const sr = [-fwd[2], 0, fwd[0]];
+    const srl = Math.hypot(sr[0], sr[1], sr[2]) || 1;
+    sr[0] /= srl; sr[1] /= srl; sr[2] /= srl;
+    const su = [
+      sr[1] * fwd[2] - sr[2] * fwd[1],
+      sr[2] * fwd[0] - sr[0] * fwd[2],
+      sr[0] * fwd[1] - sr[1] * fwd[0]
+    ];
+
+    const skyGain = (themeState.sky == null ? 5.1 : themeState.sky) * (themeState.stars > 0.01 ? 1 : 0);
     g.uniform3fv(progBg.u.uTop, themeState.spaceTop);
     g.uniform3fv(progBg.u.uBottom, themeState.spaceBottom);
     g.uniform1f(progBg.u.uGrain, themeState.grain);
+    g.uniform3fv(progBg.u.uRight, sr);
+    g.uniform3fv(progBg.u.uUp, su);
+    g.uniform3fv(progBg.u.uFwd, fwd);
+    g.uniform1f(progBg.u.uTanHalf, Math.tan(15 * DEG));
+    g.uniform1f(progBg.u.uAspect, aspect);
+    g.uniform1f(progBg.u.uSkyGain, skyGain);
+    g.uniform1f(progBg.u.uSkyTilt, 0.33);
+    g.uniform1f(progBg.u.uSkySpin, 0.0);
+    g.uniform1f(progBg.u.uSkyBias, 0.0);
+    g.activeTexture(g.TEXTURE0 + 3);
+    g.bindTexture(g.TEXTURE_2D, textures.sky || null);
+    g.uniform1i(progBg.u.uSky, 3);
     g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
 
     /* ── 星点：整张星表一次画完 ── */
@@ -1174,16 +1199,32 @@ export function createEarth(canvas, opts = {}) {
 
   /* 滚轮：只有落在地球圆面上才缩放，球体之外的留白照常滚动页面；
      缩放到达上下限后同样把滚动交还页面 */
+  /* 触到缩放极限时给一个很轻的反馈，代替"页面突然滚走" */
+  let limitTimer = 0;
+  function zoomLimit() {
+    canvas.classList.remove('is-limit');
+    void canvas.offsetWidth;
+    canvas.classList.add('is-limit');
+    clearTimeout(limitTimer);
+    limitTimer = setTimeout(() => canvas.classList.remove('is-limit'), 420);
+  }
+
   canvas.addEventListener('wheel', e => {
-    /* 球体在屏幕上的半径随缩放变化：只有指针落在球面上才缩放，留白处让给页面滚动 */
+    /* 球体在屏幕上的半径随缩放变化：只有指针落在球面上才接管滚轮，留白处让给页面滚动 */
     const r = 0.37 * Math.min(state.w, state.h) / clamp(state.distTo, 0.5, 1.9);
     const dx = e.offsetX - state.w / 2;
     const dy = e.offsetY - state.h / 2;
     if (Math.hypot(dx, dy) > r) return;
-    const step = e.deltaMode === 1 ? 0.06 : 0.09;
-    const next = clamp(state.distTo * (e.deltaY > 0 ? 1 + step : 1 - step), MIN_DIST, MAX_DIST);
-    if (Math.abs(next - state.distTo) < 0.0005) return;
+
+    /* 指针在球上一律拦下：到达极限时如果放行，滚轮会立刻变成页面滚动，
+       整块面板就会"上下位移"——这正是之前缩放时面板漂移的原因。 */
     e.preventDefault();
+    const step = e.ctrlKey ? 0.05 : (e.deltaMode === 1 ? 0.06 : 0.09);
+    const next = clamp(state.distTo * (e.deltaY > 0 ? 1 + step : 1 - step), MIN_DIST, MAX_DIST);
+    if (Math.abs(next - state.distTo) < 0.0005) {
+      if (Math.abs(e.deltaY) > 0.5) zoomLimit();
+      return;
+    }
     state.distTo = next;
     state.auto = false;
   }, { passive: false });

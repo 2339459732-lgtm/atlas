@@ -51,6 +51,7 @@
   --line-2: rgba(244, 241, 233, .18);
   --line-3: rgba(244, 241, 233, .34);
   --accent: #C9A96A;
+  --brand: #C9A96A;
   --accent-2: #E6CB94;
   --accent-ink: #0A0908;
   --wash: rgba(244, 241, 233, .045);
@@ -74,6 +75,7 @@
   --line-2: rgba(22, 20, 15, .22);
   --line-3: rgba(22, 20, 15, .4);
   --accent: #8A6A2F;
+  --brand: #8A6A2F;
   --accent-2: #A9863F;
   --accent-ink: #FBF9F3;
   --wash: rgba(22, 20, 15, .035);
@@ -97,6 +99,7 @@
   --line-2: rgba(233, 240, 247, .2);
   --line-3: rgba(233, 240, 247, .38);
   --accent: #8FB9DC;
+  --brand: #C9A96A;
   --accent-2: #BBD9F1;
   --accent-ink: #061018;
   --wash: rgba(233, 240, 247, .05);
@@ -203,7 +206,7 @@ kbd {
 }
 
 .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
-.brand__mark { width: 30px; height: 30px; color: var(--accent); flex: 0 0 auto; transition: transform 1.2s var(--e-out); }
+.brand__mark { width: 30px; height: 30px; color: var(--brand); flex: 0 0 auto; transition: transform 1.2s var(--e-out); }
 .brand:hover .brand__mark { transform: rotate(-18deg); }
 .brand__text { display: flex; align-items: baseline; gap: 9px; }
 .brand__word {
@@ -522,6 +525,13 @@ kbd {
   display: block; cursor: grab; touch-action: pan-y;
 }
 .planet__canvas.is-grab { cursor: grabbing; }
+/* 缩放到底：一圈几乎看不见的提示，比"页面突然滚动"更容易理解 */
+.planet__canvas.is-limit { animation: zoomLimit .42s var(--e-out); }
+@keyframes zoomLimit {
+  0% { filter: brightness(1); }
+  40% { filter: brightness(1.18); }
+  100% { filter: brightness(1); }
+}
 
 .planet__markers { position: absolute; inset: 0; pointer-events: none; }
 .marker {

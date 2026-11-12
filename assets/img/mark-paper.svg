@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <title>ATLAS 图册 · 标志</title>
+  <defs>
+    <clipPath id="sphere-clip"><circle cx="32" cy="33" r="20.5"/></clipPath>
+    <!-- 轨道：只保留球体之外的一段，读作"从球背后绕过去" -->
+    <mask id="orbit-mask">
+      <rect width="64" height="64" fill="#fff"/>
+      <circle cx="32" cy="33" r="20.5" fill="#000"/>
+    </mask>
+  </defs>
+
+  <g mask="url(#orbit-mask)">
+    <ellipse cx="32" cy="33" rx="26.4" ry="8" transform="rotate(-17 32 33)"
+             stroke="#D8B978" stroke-width="1" opacity=".58"/>
+  </g>
+
+  <!-- A：顶点是极点，两腿被球面裁切，横杆是赤道 -->
+  <g clip-path="url(#sphere-clip)">
+    <path d="M32 13L14.9 46.4M32 13L49.1 46.4" stroke="#F2EFE7" stroke-width="3.2"/>
+    <path d="M23.2 32.4H40.8" stroke="#F2EFE7" stroke-width="2.2"/>
+  </g>
+
+  <!-- 球体：顶部留 16° 缺口，极星落在这个缺口里 -->
+  <path d="M34.85 12.63A20.5 20.5 0 1 1 29.15 12.63" stroke="#F2EFE7" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- 极星 -->
+  <path d="M32 7.9C32.55 9.85 33.05 10.35 35 10.9C33.05 11.45 32.55 11.95 32 13.9C31.45 11.95 30.95 11.45 29 10.9C30.95 10.35 31.45 9.85 32 7.9Z" fill="#D8B978"/>
+</svg>

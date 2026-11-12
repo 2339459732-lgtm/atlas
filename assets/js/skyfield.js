@@ -105,6 +105,20 @@ precision highp float;
 uniform vec3 uTop;
 uniform vec3 uBottom;
 uniform float uGrain;
+
+/* 银河：真实巡天全景（等距圆柱投影），按视线方向采样。
+   天空不再是"画"出来的渐变，而是一张有真实尘埃带与核球的照片。 */
+uniform sampler2D uSky;
+uniform vec3 uRight;
+uniform vec3 uUp;
+uniform vec3 uFwd;
+uniform float uTanHalf;
+uniform float uAspect;
+uniform float uSkyGain;
+uniform float uSkyTilt;
+uniform float uSkySpin;
+uniform float uSkyBias;
+
 varying vec2 vP;
 
 float hash(vec2 p) {
@@ -113,8 +127,40 @@ float hash(vec2 p) {
   return fract(p.x * p.y);
 }
 
+vec2 dirToSky(vec3 d) {
+  /* 先倾斜银道面，再转经度，让银河以自然的角度穿过画面，
+     而不是永远水平地横在正中间 */
+  float ct = cos(uSkyTilt), st = sin(uSkyTilt);
+  d = vec3(d.x, d.y * ct - d.z * st, d.y * st + d.z * ct);
+  float cs = cos(uSkySpin), ss = sin(uSkySpin);
+  d = vec3(d.x * cs + d.z * ss, d.y, -d.x * ss + d.z * cs);
+
+  float lon = atan(d.x, d.z);
+  float lat = asin(clamp(d.y, -1.0, 1.0));
+  return vec2(lon / 6.28318530718 + 0.5, 0.5 - lat / 3.14159265359);
+}
+
 void main() {
   vec3 col = mix(uBottom, uTop, smoothstep(0.0, 1.0, vP.y));
+
+  if (uSkyGain > 0.001) {
+    vec2 ndc = vP * 2.0 - 1.0;
+    vec3 dir = normalize(uRight * (ndc.x * uTanHalf * uAspect)
+                       + uUp * (ndc.y * uTanHalf)
+                       + uFwd);
+    /* 用高 mip 采样：全景图里的星点在这个视场下会被放成一片灰斑，
+       把高频抹掉、只留下银道与尘埃带结构，清晰度交给星表去补。 */
+    vec3 sky = texture2D(uSky, dirToSky(dir), uSkyBias).rgb;
+
+    /* 压一下高光：银心再亮也不能变成一条白带 */
+    sky = sky / (1.0 + sky * 1.35);
+    /* 提一点尘埃带的对比，同时把底噪压掉，避免整片发灰 */
+    sky = max(sky - 0.006, 0.0);
+    /* 全景本身偏蓝紫；往中性拉 45%，再补一点暖，接近肉眼/长曝光的银道 */
+    float luma = dot(sky, vec3(0.2126, 0.7152, 0.0722));
+    sky = mix(vec3(luma), sky, 0.55) * vec3(1.04, 1.00, 0.96);
+    col += sky * uSkyGain;
+  }
 
   /* 很轻的暗角：镜头感，而不是把四角压死 */
   float dd = distance(vP, vec2(0.5)) / 0.82;

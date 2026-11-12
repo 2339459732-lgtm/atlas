@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <title>ATLAS 图册 · 小尺寸标志</title>
+  <defs><clipPath id="s-sphere"><circle cx="32" cy="33" r="20.5"/></clipPath></defs>
+  <g clip-path="url(#s-sphere)">
+    <path d="M32 13L15.6 46.4M32 13L48.4 46.4" stroke="#C9A96A" stroke-width="5"/>
+    <path d="M23.8 32.6H40.2" stroke="#C9A96A" stroke-width="3.4"/>
+  </g>
+  <path d="M35.2 12.4A20.5 20.5 0 1 1 28.8 12.4" stroke="#C9A96A" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="32" cy="10.6" r="3.2" fill="#C9A96A"/>
+</svg>

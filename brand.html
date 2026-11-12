@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ATLAS · 标志与视觉规范</title>
+<style>
+  :root {
+    --noir: #07070A;
+    --paper: #F3F0E8;
+    --ink: #12110F;
+    --gold: #C9A96A;
+    --gold-paper: #8A6A2F;
+    --line: rgba(242, 239, 231, .14);
+    --line-dark: rgba(18, 17, 15, .14);
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--noir); color: #E8E4D8;
+    font-family: "Archivo", "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 72px 32px 120px; }
+  .kicker {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .28em;
+    text-transform: uppercase; color: rgba(232, 228, 216, .45);
+  }
+  h1 { font-size: clamp(2rem, 4vw, 3rem); font-weight: 500; letter-spacing: .02em; margin: 12px 0 8px; }
+  .lede { max-width: 62ch; line-height: 1.9; color: rgba(232, 228, 216, .66); font-size: 14px; }
+  section { margin-top: 64px; border-top: 1px solid var(--line); padding-top: 32px; }
+  h2 { font-size: 13px; font-weight: 500; letter-spacing: .18em; text-transform: uppercase; color: rgba(232, 228, 216, .5); margin: 0 0 24px; }
+
+  /* 主组合 */
+  .lockup { display: flex; align-items: center; gap: 20px; }
+  .lockup img { width: 72px; height: 72px; }
+  .lockup .word { display: grid; gap: 4px; }
+  .lockup .word b { font-size: 26px; font-weight: 500; letter-spacing: .26em; }
+  .lockup .word span { font-family: var(--mono); font-size: 9px; letter-spacing: .34em; color: rgba(232, 228, 216, .45); text-transform: uppercase; }
+  .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .panel { border: 1px solid var(--line); padding: 40px; display: grid; place-items: center; min-height: 220px; }
+  .panel--paper { background: var(--paper); color: var(--ink); border-color: transparent; }
+
+  /* 尺寸 */
+  .sizes { display: flex; align-items: flex-end; gap: 44px; flex-wrap: wrap; }
+  .size { display: grid; justify-items: center; gap: 12px; }
+  .size img { display: block; }
+  .size em { font-family: var(--mono); font-style: normal; font-size: 9px; letter-spacing: .18em; color: rgba(232, 228, 216, .4); }
+
+  /* 色板 */
+  .chips { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+  .chip { border: 1px solid var(--line); }
+  .chip i { display: block; height: 72px; }
+  .chip p { margin: 0; padding: 10px 12px; font-family: var(--mono); font-size: 9px; letter-spacing: .1em; color: rgba(232, 228, 216, .55); }
+  .chip p b { display: block; font-weight: 400; color: #E8E4D8; margin-bottom: 3px; }
+
+  /* 网格与留白 */
+  .gridbox { position: relative; width: 260px; height: 260px; display: grid; place-items: center; border: 1px dashed var(--line); }
+  .gridbox::before, .gridbox::after { content: ""; position: absolute; background: var(--line); }
+  .gridbox::before { left: 0; right: 0; top: 50%; height: 1px; }
+  .gridbox::after { top: 0; bottom: 0; left: 50%; width: 1px; }
+  .gridbox img { width: 120px; height: 120px; }
+  .clear { position: absolute; inset: 32px; border: 1px dashed rgba(201, 169, 106, .5); }
+  .clear span { position: absolute; right: 6px; bottom: 4px; font-family: var(--mono); font-size: 8px; color: var(--gold); letter-spacing: .14em; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.7; }
+  th { font-family: var(--mono); font-size: 9px; letter-spacing: .16em; text-transform: uppercase; color: rgba(232, 228, 216, .4); font-weight: 400; }
+  td code { font-family: var(--mono); font-size: 11px; color: var(--gold); }
+  .note { font-size: 12.5px; line-height: 1.9; color: rgba(232, 228, 216, .55); }
+  .note b { color: #E8E4D8; font-weight: 500; }
+  @media (max-width: 760px) {
+    .duo, .chips { grid-template-columns: 1fr 1fr; }
+    .wrap { padding: 48px 20px 80px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="kicker">ATLAS · Identity v2 · 2026</p>
+  <h1>把字母写成一条经线</h1>
+  <p class="lede">
+    标志的核心没有变：一个球体、一条轨道、一个极星。升级只做一件事——让字母 A 成为球体本身：
+    顶点是极点，两腿落在球面上，横杆就是赤道。这样它既是字标，也是地图。
+  </p>
+
+  <section>
+    <h2>01 · 主标志</h2>
+    <div class="duo">
+      <div class="panel">
+        <div class="lockup">
+          <img src="assets/img/mark-gold.svg" alt="ATLAS 标志" />
+          <span class="word"><b>ATLAS</b><span>Private Cartography</span></span>
+        </div>
+      </div>
+      <div class="panel panel--paper">
+        <div class="lockup">
+          <img src="assets/img/mark.svg" alt="ATLAS 标志（深色）" />
+          <span class="word"><b>ATLAS</b><span style="color:rgba(18,17,15,.45)">Private Cartography</span></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>02 · 尺寸阶梯</h2>
+    <div class="sizes">
+      <span class="size"><img src="assets/img/mark-gold.svg" width="96" height="96" alt="" /><em>96</em></span>
+      <span class="size"><img src="assets/img/mark-gold.svg" width="64" height="64" alt="" /><em>64</em></span>
+      <span class="size"><img src="assets/img/mark-gold.svg" width="40" height="40" alt="" /><em>40</em></span>
+      <span class="size"><img src="assets/img/mark-small.svg" width="24" height="24" alt="" /><em>24 · 简版</em></span>
+      <span class="size"><img src="assets/img/mark-small.svg" width="16" height="16" alt="" /><em>16 · 简版</em></span>
+    </div>
+    <p class="note" style="margin-top:26px">
+      24 px 以下改用简版：去掉轨道、笔画加粗到 5.2、极星改为实心圆。
+      在这个尺寸上，细节不是"变细"，而是"变没"——所以要主动减，而不是等它糊。
+    </p>
+  </section>
+
+  <section>
+    <h2>03 · 单色与网格</h2>
+    <div class="duo">
+      <div class="panel panel--paper">
+        <img src="assets/img/mark-mono.svg" width="140" height="140" alt="单色标志" />
+      </div>
+      <div class="gridbox">
+        <div class="clear"><span>0.5×</span></div>
+        <img src="assets/img/mark-gold.svg" alt="网格与安全边距" />
+      </div>
+    </div>
+    <p class="note" style="margin-top:22px">
+      单色版把球、A、星、轨道统一成 <b>currentColor</b>，印刷、烫金、单色丝印都用它；
+      安全边距 = 标志高度的 0.5 倍，任何文字与边框不得进入。
+    </p>
+  </section>
+
+  <section>
+    <h2>04 · 色彩</h2>
+    <div class="chips">
+      <span class="chip"><i style="background:#07070A"></i><p><b>Ink Noir</b>#07070A</p></span>
+      <span class="chip"><i style="background:#F3F0E8"></i><p><b>Paper</b>#F3F0E8</p></span>
+      <span class="chip"><i style="background:#C9A96A"></i><p><b>Champagne</b>#C9A96A</p></span>
+      <span class="chip"><i style="background:#8A6A2F"></i><p><b>Champagne / Light</b>#8A6A2F</p></span>
+      <span class="chip"><i style="background:#9BA6B4"></i><p><b>Slate</b>#9BA6B4</p></span>
+    </div>
+    <p class="note" style="margin-top:22px">
+      金色只出现在两处：极星与轨道。比例控制在标志面积的 <b>8% 以内</b>——
+      它负责"贵金属"的那一下，不负责填满画面。浅色背景把金压深到 #8A6A2F，保证 4.5:1 对比。
+    </p>
+  </section>
+
+  <section>
+    <h2>05 · 场景适配</h2>
+    <table>
+      <tr><th>场景</th><th>用哪个文件</th><th>处理</th></tr>
+      <tr><td>深色界面 / 照片上</td><td><code>mark-paper.svg</code></td><td>纸白 + 香槟金；照片背景需加 20% 暗角或 40% 遮罩</td></tr>
+      <tr><td>浅色界面 / 印刷品</td><td><code>mark.svg</code></td><td>墨黑 + 香槟金；金色在铜版纸上建议专金 PANTONE 872 C</td></tr>
+      <tr><td>单色 / 烫印 / 丝印</td><td><code>mark-mono.svg</code></td><td>全部 currentColor，最小 8 mm</td></tr>
+      <tr><td>16–24 px / favicon</td><td><code>favicon.svg</code> · <code>mark-small.svg</code></td><td>去轨道、加粗笔画、星改实心圆</td></tr>
+      <tr><td>屏幕 Retina</td><td>SVG</td><td>矢量，1×/2×/3× 同一份；描边不随缩放变化</td></tr>
+      <tr><td>印刷 ≥ 20 mm</td><td>SVG → PDF</td><td>描边转曲；金色用专色，避免 CMYK 四色叠印发脏</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>06 · 不要这样做</h2>
+    <table>
+      <tr><th>禁止</th><th>原因</th></tr>
+      <tr><td>给球体加高光、渐变、投影</td><td>标志是"图纸"，不是插画；一加质感就变成 App 图标</td></tr>
+      <tr><td>把 A 换成别的字体写法</td><td>A 的两腿必须落在球面上，这是唯一的识别锚点</td></tr>
+      <tr><td>金色铺满或描边整圆</td><td>金色是标点，不是底色；铺满就失去"一点星光"的意思</td></tr>
+      <tr><td>在标志外加圆环、坐标刻度</td><td>已有轨道与赤道，再加就是装饰</td></tr>
+      <tr><td>拉伸、倾斜、改比例</td><td>只允许等比缩放；最小 16 px</td></tr>
+    </table>
+  </section>
+</div>
+</body>
+</html>
