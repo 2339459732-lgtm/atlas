@@ -16,6 +16,10 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const MIN_DIST = 0.50;
 const MAX_DIST = 1.90;
 
+/* 默认光源的世界方向：由旧公式在初始机位（yaw 0.30）处的取值归一化而来，
+   所以第一眼的明暗关系不变，但之后不再随镜头转动。 */
+const SUN_DIR = [-0.426, 0.386, 0.818];
+
 /* ── 极简矩阵工具（列主序） ── */
 function perspective(out, fovy, aspect, near, far) {
   const f = 1 / Math.tan(fovy / 2);
@@ -208,8 +212,11 @@ void main() {
 
   /* 晨昏线的暖色带：太阳刚沉下去时高层大气还亮着（瑞利散射的红端）。
      宽度只给 4° 左右——真实地影边缘非常窄，给宽了就变成一圈土黄色包边。 */
-  float twilight = exp(-pow(ndl / 0.070, 2.0));
-  nightCol += vec3(1.00, 0.40, 0.15) * twilight * 0.020;
+  float twilight = exp(-pow(ndl / 0.042, 2.0));
+  /* 亮度按"离太阳还有多远"衰减，再用一点沿经度的起伏打散，
+     免得放大之后变成一条干净的褐色斜带 */
+  float twVar = 0.72 + 0.28 * sin(vUV.x * 44.0 + ndl * 40.0);
+  nightCol += vec3(1.00, 0.46, 0.20) * twilight * 0.009 * twVar;
 
   /* 灯只在太阳真正落下之后才亮：用比 day 更窄的窗口，白昼半球不会残留灰纱 */
   float night = 1.0 - smoothstep(-0.10, 0.045, ndl);
@@ -862,7 +869,11 @@ export function createEarth(canvas, opts = {}) {
     mul(mvp, proj, view);
     mul(mvp, mvp, model);
 
-    /* 太阳：相对相机固定，保证受光面始终朝向观众 */
+    /* 太阳：固定在世界坐标里的一束平行光。
+       旧实现用 `state.yaw` 推导太阳方位（sunYaw = yaw - 0.78），等于让太阳跟着镜头转：
+       拖拽时受光面永远停在屏幕同一侧 —— 结果是永远看不到夜面，
+       海面高光也钉在屏幕上，看起来像"有个光点跟着鼠标跑"。
+       现在光源不随镜头动，转动的是地球本身，明暗界线会自然扫过球面。 */
     let sun;
     if (state.sunGeo) {
       /* 实时模式：太阳固定在世界坐标，直射点由真实时间算出来 */
@@ -870,9 +881,9 @@ export function createEarth(canvas, opts = {}) {
       const c = Math.cos(state.spin), sn = Math.sin(state.spin);
       sun = [c * p[0] + sn * p[2], p[1], -sn * p[0] + c * p[2]];
     } else {
-      /* 默认：光源跟随相机，保证转过来的那一面总是受光 */
-      const sunYaw = state.yaw - 0.78;
-      sun = [Math.sin(sunYaw) * 0.86, 0.36, Math.cos(sunYaw) * 0.86];
+      /* 默认方位沿用初始机位下的观感（yaw 0.30 时与原公式等价），
+         之后不再随 yaw 变化 */
+      sun = [SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]];
     }
     const sl = Math.hypot(sun[0], sun[1], sun[2]) || 1;
     sun[0] /= sl; sun[1] /= sl; sun[2] /= sl;
