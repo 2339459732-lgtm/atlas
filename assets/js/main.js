@@ -2834,6 +2834,9 @@ function syncSummary() {
 function renderCloud() {
   const box = $('#acct-cloud');
   if (!box) return;
+  /* 默认不展示跨设备同步入口：账号与作品只在本机，
+     换设备用加密备份迁移（见 config.features.cloudSync） */
+  if (!APP.features.cloudSync) { box.hidden = true; return; }
   /* 没绑云服务的域名（GitHub Pages / 本地预览）直接不显示这块：
      访客看到一个"用不了"的按钮只会困惑，能力说明写进文档即可。 */
   if (!cloudAvailable()) {
@@ -2871,6 +2874,7 @@ function renderCloud() {
 }
 
 function schedulePush(delay = 1200) {
+  if (!APP.features.cloudSync) return;
   if (!cloudUser() || !cloudAvailable() || !scopeBound()) return;
   clearTimeout(syncTimer);
   syncTimer = setTimeout(() => {
@@ -3152,6 +3156,7 @@ function isEditing() {
 }
 
 async function syncNow(reason = 'auto') {
+  if (!APP.features.cloudSync) return;
   if (running || !cloudUser() || !cloudAvailable() || !scopeBound()) return;
   if (navigator.onLine === false) { renderCloud(); return; }
 
@@ -3205,7 +3210,24 @@ async function syncNow(reason = 'auto') {
    各自调用 ensureBlob 单张取。旧实现在打开相册时会排队下载全部原图，
    几十张就把移动端的内存和流量吃光。 */
 
-function initCloudSync() {
+/* 云同步默认关闭：连 SDK 都不加载——少一个第三方请求，也少一条外部依赖。
+   真要开启时（config.features.cloudSync = true）再按需注入，不需要改 HTML。 */
+const CLOUD_SDK = 'https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js';
+function loadCloudSdk() {
+  if (window.WorkBuddyCloud) return Promise.resolve(true);
+  return new Promise(res => {
+    const s = document.createElement('script');
+    s.src = CLOUD_SDK;
+    s.async = true;
+    s.onload = () => res(!!window.WorkBuddyCloud);
+    s.onerror = () => res(false);
+    document.head.appendChild(s);
+  });
+}
+
+async function initCloudSync() {
+  if (!APP.features.cloudSync) return;
+  await loadCloudSdk();
   initCloud().then(ok => {
     if (ok && cloudUser()) {
       const u = currentUser();

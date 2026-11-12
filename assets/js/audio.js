@@ -14,50 +14,51 @@
    回到第 0 小节的 Am 时是一个正格终止，听感上是"落回去"而不是"跳回去"。
    ══════════════════════════════════════════════════════════════════ */
 
-const BPM = 92;
+const BPM = 76;
 const BEAT = 60 / BPM;
 const BAR = BEAT * 4;
 const BARS = 40;
 
-/* 四小节循环。bass 是低音区根音，tones 是四五声部的和声骨架，
-   color 是这一段允许出现的色彩音（九音/十一音），用来做"悬而未决"的张力 */
+/* ══════════════════════════════════════════════════════════════════
+   作曲方案：《ORBIT》——五个空间层，一条动机
+
+   不是"堆配器"，而是先把声音分成五个互不抢频段的层，每层只在
+   该出现的时候出现：
+
+     ① 次低音层  32–65 Hz   持续音，负责"体积"
+     ② 低音层    65–200 Hz  大提琴/低音钢琴，负责"重量"
+     ③ 和声层    200–2 kHz  管风琴 + 弦乐，负责"空间"
+     ④ 姿态层    动机本身    钢琴，负责"人"
+     ⑤ 空气层    4 kHz 以上  气声、微光、混响尾，负责"高维"
+
+   和声：A 小调（爱奥利亚，加 9 音），每和弦两小节，八小节一轮：
+     Am9 → Fmaj7 → Cmaj7 → Gsus4
+   慢和声 + 单一动机，是"不杂乱"的根本；配器只做加减，不做叠加。
+
+   动机：A–C–E–F–E（8 拍）。全曲只有这一条，用四种变形：
+     呈示（原型）→ 倒影（低音）→ 增值（高潮，时值×1.6）→ 碎片（首尾）
+   ══════════════════════════════════════════════════════════════════ */
+
 const CHORDS = [
-  { name: 'Am', root: 45, bass: 33, tones: [57, 60, 64, 69], color: 71 }, /* A C E A  +B */
-  { name: 'F',  root: 41, bass: 29, tones: [53, 57, 60, 65], color: 67 }, /* F A C F  +G */
-  { name: 'C',  root: 48, bass: 36, tones: [55, 60, 64, 67], color: 62 }, /* G C E G  +D */
-  { name: 'G',  root: 43, bass: 31, tones: [55, 59, 62, 67], color: 69 }  /* G B D G  +A */
+  { name: 'Am9',   root: 45, bass: 33, tones: [57, 60, 64, 71] },
+  { name: 'Fmaj7', root: 41, bass: 29, tones: [53, 57, 60, 64] },
+  { name: 'Cmaj7', root: 48, bass: 36, tones: [55, 60, 64, 71] },
+  { name: 'Gsus4', root: 43, bass: 31, tones: [55, 60, 62, 67] }
 ];
 
-/* 十六分音符固定音型：和弦音的上下行折返，最高音落在每拍的第一格 */
-const OST = [0, 1, 2, 3, 2, 1, 0, 1, 0, 1, 2, 3, 3, 2, 1, 2];
+/* 动机：8 拍。落音 E 不解决，把耳朵交给下一句 */
+const MOTIF = [[69, 2], [72, 1], [76, 1], [77, 1.5], [76, 2.5]];
+/* 倒影：同一条线从上往下走，用于低音区回答 */
+const MOTIF_INV = [[76, 2], [72, 1], [69, 1], [67, 1.5], [69, 2.5]];
 
-/* 主旋律：八小节一句（32 拍），A 自然小调。
-   第 4、8 小节都落在 G 和弦上，末音 F5 是 G 的七音，故意不解决——
-   它把耳朵推向下一句的 E5，正好也是循环回 Am 时的落点。 */
-const MELODY = [
-  [76, 3], [74, 1],
-  [72, 3], [69, 1],
-  [72, 1], [74, 1], [76, 2],
-  [79, 4],
-  [76, 2], [74, 1], [72, 1],
-  [69, 2], [72, 1], [74, 1],
-  [76, 2], [79, 2],
-  [77, 4]
-];
-
-const MEL_EVENTS = (() => {
-  let b = 0;
-  return MELODY.map(([m, d]) => { const e = { b, m, d }; b += d; return e; });
-})();
-const MEL_BEATS = MELODY.reduce((n, [, d]) => n + d, 0);   /* 32 拍 = 8 小节 */
-const MEL_START = 8;                                        /* 第 8 小节进入 */
-const MEL_END = 40;                                         /* 第 39 小节收尾 */
-
-/* 力度曲线：整曲唯一的"情绪"，其余配器都按它取值 */
+/* 力度曲线：整曲唯一的"情绪"。
+   第 23 小节故意掉到 0.22，是为了让第 24 小节的 0.86 真的像"砸下来"。 */
 const ARC = [
-  [0, 0.26], [7, 0.40], [8, 0.44], [15, 0.64],
-  [16, 0.68], [23, 0.86], [24, 0.90], [28, 1.00],
-  [31, 0.95], [32, 0.70], [39, 0.28]
+  [0, 0.14], [6, 0.26], [7, 0.28],
+  [8, 0.32], [15, 0.50],
+  [16, 0.54], [22, 0.62], [23, 0.22],
+  [24, 0.86], [26, 0.96], [29, 1.00], [31, 0.80],
+  [32, 0.46], [36, 0.30], [39, 0.16]
 ];
 function arcAt(bar) {
   for (let i = 1; i < ARC.length; i++) {
@@ -80,7 +81,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
    ────────────────────────────────────────────────────────────── */
 export function createSynth(ctx, opts = {}) {
   const light = opts.light ?? false;
-  const wetAmount = opts.wet ?? 0.30;
+  const wetAmount = opts.wet ?? 0.34;
 
   /* ── 总线：低切 → 低频搁架 → 去浑浊 → 临场 → 空气 → 压缩 → 软削波 ── */
   const hp = ctx.createBiquadFilter();
@@ -113,9 +114,9 @@ export function createSynth(ctx, opts = {}) {
   const comp = ctx.createDynamicsCompressor();
   /* 阈值抬高、比例降低：引子要能"轻"下去，否则整首都在同一个响度上，
      高潮再叠乐器也不觉得大。真正的峰值交给末级限幅。 */
-  comp.threshold.value = -16;
+  comp.threshold.value = -14;
   comp.knee.value = 20;
-  comp.ratio.value = 2.2;
+  comp.ratio.value = 1.9;
   comp.attack.value = 0.02;
   comp.release.value = 0.28;
 
@@ -123,7 +124,7 @@ export function createSynth(ctx, opts = {}) {
      这里不用 WaveShaper 做软削波：它的输入一旦超过 ±1 就会被裁在曲线端点，
      高潮处会留下一声"咔"。峰值交给 compressor 收，宁可少 2 dB 也不要爆音。 */
   const makeup = ctx.createGain();
-  makeup.gain.value = 1.58;
+  makeup.gain.value = 1.42;
 
   /* 末级限幅：高潮段叠了铜管 + 低音簇 + 大锣，峰值很容易冲过 1。
      用高压缩比 + 快启动把尖顶收住（不用 WaveShaper：输入端一旦超过 ±1
@@ -138,10 +139,17 @@ export function createSynth(ctx, opts = {}) {
   const master = ctx.createGain();
   master.gain.value = 0;
 
-  const preDelay = ctx.createDelay(0.2);
-  preDelay.delayTime.value = 0.035;
+  /* 混响：6.2 s 的厅，55 ms 预延迟把直达声和尾音分开。
+     返回路上先砍掉 180 Hz 以下（低频进混响会糊成一团），
+     再压低 5.2 kHz 以上（"空气感"来自高频，但太多就像噪声）。 */
+  const preDelay = ctx.createDelay(0.3);
+  preDelay.delayTime.value = 0.052;
   const rev = ctx.createConvolver();
-  rev.buffer = impulse(ctx, 4.4, 2.1);
+  rev.buffer = impulse(ctx, 6.2, 2.4);
+  const revHP = ctx.createBiquadFilter();
+  revHP.type = 'highpass'; revHP.frequency.value = 180;
+  const revLP = ctx.createBiquadFilter();
+  revLP.type = 'lowpass'; revLP.frequency.value = 5200;
   const wet = ctx.createGain();
   wet.gain.value = opts.dry ? 0.0001 : wetAmount;
 
@@ -151,7 +159,7 @@ export function createSynth(ctx, opts = {}) {
 
   master.connect(preDelay);
   preDelay.connect(rev);
-  rev.connect(wet);
+  rev.connect(revHP); revHP.connect(revLP); revLP.connect(wet);
   wet.connect(comp);
 
   comp.connect(makeup);
@@ -547,136 +555,206 @@ export function createSynth(ctx, opts = {}) {
     o.start(t); o.stop(t + dur + 0.02);
   }
 
+  /* ── 空间层 ── */
+
+  /* 次低音：一个几乎听不见音高的"地基"。带 0.07 Hz 的呼吸，
+     比单纯加一个正弦低音更像"空间在起伏"。 */
+  function drone(t, midi, dur, gain) {
+    if (gain <= 0.003) return;
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = mtof(midi);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(gain, t + Math.min(1.9, dur * 0.26));
+    g.gain.setValueAtTime(gain, t + dur * 0.72);
+    g.gain.linearRampToValueAtTime(0.0001, t + dur);
+
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.07;
+    const la = ctx.createGain();
+    la.gain.value = gain * 0.28;
+    lfo.connect(la); la.connect(g.gain);
+
+    o.connect(g); g.connect(busLow);
+    o.start(t); o.stop(t + dur + 0.06);
+    lfo.start(t); lfo.stop(t + dur + 0.06);
+  }
+
+  /* 气声：一段循环噪声穿过带通，只在段落转折处缓慢涨落。
+     它是"高维感"的主要来源——不是加混响，而是给画面铺一层空气。 */
+  const airBuf = (() => {
+    const len = Math.floor(ctx.sampleRate * 2);
+    const b = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = b.getChannelData(ch);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    }
+    return b;
+  })();
+
+  function airBed(t, dur, gain, freq = 1500, q = 0.7) {
+    if (gain <= 0.0015) return;
+    const s = ctx.createBufferSource();
+    s.buffer = airBuf; s.loop = true;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(gain, t + dur * 0.45);
+    g.gain.linearRampToValueAtTime(0.0001, t + dur);
+    s.connect(bp); bp.connect(g); g.connect(busPad);
+    s.start(t); s.stop(t + dur + 0.06);
+  }
+
+  /* 微光：两个高八度的正弦叠在左右两侧，慢起慢收。
+     只在最高点出现，给"上方还有空间"的暗示。 */
+  function shimmer(t, notes, dur, gain) {
+    if (gain <= 0.002 || light) return;
+    notes.forEach((m, i) => {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = mtof(m);
+      o.detune.value = i % 2 ? 4 : -4;
+      const g = ctx.createGain();
+      const a = gain * 0.007;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(a, t + dur * 0.5);
+      g.gain.linearRampToValueAtTime(0.0001, t + dur);
+      const p = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+      if (p) { o.connect(g); g.connect(p); p.pan.value = i % 2 ? 0.72 : -0.72; p.connect(busPad); }
+      else { o.connect(g); g.connect(busPad); }
+      o.start(t); o.stop(t + dur + 0.05);
+    });
+  }
+
+  /* 动机的四种形态都从这里出：一条线、一个力度、一个八度位移 */
+  function motif(t, notes, gain, oct = 0, stretch = 1) {
+    let b = 0;
+    for (const [m, d] of notes) {
+      piano(t + b * BEAT, m + oct, BEAT * d * stretch * 1.05, gain, 0);
+      b += d;
+    }
+  }
+
   /* ── 编曲 ──
-     一条力度曲线管全曲，配器按段进、按段撤；
-     高潮不是"更响"，而是层数更多、频带更宽、留白更狠。 */
+     每一层只做一件事。全曲没有十六分音型——上一版"杂乱"的主因就是
+     那条从头到尾不停的固定音型，它把所有留白都填满了。 */
   function scheduleBar(index, t) {
     const bar = ((index % BARS) + BARS) % BARS;
-    const chord = CHORDS[bar % 4];
+    const chord = CHORDS[Math.floor(bar / 2) % 4];
     const v = arcAt(bar);
-    const s16 = BAR / 16;
+    const two = bar % 2 === 0;
 
-    const inA = bar < 8;
+    /* 第 22 小节不再铺底：让前一组的余韵自己散掉，
+       第 23 小节只剩滚奏与一个音——这是"砸下来"之前必须有的洞。 */
+    const hole = bar === 22;
+
     const inB = bar >= 8 && bar < 16;
     const inC = bar >= 16 && bar < 24;
     const inD = bar >= 24 && bar < 32;
     const inE = bar >= 32;
-    const gap = bar === 23;          /* 大锣前的两拍空白 */
 
-    /* 低音：长音铺底，第 3 拍补五度；时值交叠到下一小节，循环点不掉进静音 */
-    sub(t, chord.bass, BAR * 1.30, 0.22 + v * 0.95);
-    if (!inA) sub(t, chord.bass + 19, BEAT * 1.6, 0.10 + v * 0.18);
+    /* ── ① 次低音 + ② 低音：每两小节一次，时值交叠到下一小节 ── */
+    if (two && !hole) {
+      drone(t, chord.bass, BAR * 2.2, 0.032 + v * 0.048);
+      sub(t, chord.bass, BAR * 2.15, 0.11 + v * 0.36);
+    }
 
-    /* 管风琴：两小节一次换和声，比小节线稍早一点起音，像"呼吸" */
-    if (bar % 2 === 0) {
+    /* ── ③ 和声层：管风琴 8'+4'。慢起音、跨小节，声音才"立"得住 ── */
+    if (two && !hole) {
       const voicing = chord.tones.map(m => m + 12);
-      voicing.push(chord.root + 24);
-      organ(t, voicing, BAR * 2 + 0.55, Math.pow(clamp(v * 1.06, 0, 1), 1.35));
+      organ(t, voicing, BAR * 2.25, Math.pow(clamp(v * 1.1, 0, 1), 1.35) * 0.62);
     }
 
-    /* 弦乐：第 6 小节就悄悄进来（引子末尾的一点空气），
-       之后随力度曲线逐步打开低通；高潮段再叠一层低八度的"大提琴" */
-    if ((inA && bar >= 6) || inB || inC || inD || (inE && bar < 36)) {
-      const open = clamp((v - 0.36) / 0.6, 0.08, 1);
-      strings(t, [chord.root + 24, chord.tones[1] + 12, chord.tones[2] + 12],
-        BAR * (inD ? 1.32 : 1.1),
-        clamp(v * (inA ? 0.55 : 1.1), 0, 1), open);
+    /* 弦乐：第 8 小节进，先只有一层；第 16 小节再叠高一层 */
+    if (bar >= 8 && bar < 38) {
+      const open = clamp((v - 0.30) / 0.65, 0.10, 1);
+      if (two && !hole) {
+        strings(t, [chord.root + 12, chord.tones[1]], BAR * 2.2, clamp(v * 0.72, 0, 1), open);
+      }
+      if (bar >= 16 && two && !hole) {
+        strings(t, [chord.root + 24, chord.tones[2] + 12], BAR * 2.2, clamp(v * 0.55, 0, 1), open);
+      }
     }
-    if (inD || (inC && bar >= 20)) {
-      strings(t, [chord.root, chord.tones[0]], BAR * 1.25, 0.42 + v * 0.22, 0.16);
-    }
-    /* 退潮的最后两小节：弦乐不断，直接把 G 拖过循环点接住下一个 Am */
+    /* 第 38 小节把 G 拖过循环点，接住下一个 Am */
     if (bar === 38) {
-      strings(t, [chord.root + 24, chord.tones[2] + 12, chord.tones[3] + 12], BAR * 2.4, 0.30, 0.25);
+      strings(t, [chord.root + 24, chord.tones[2] + 12, chord.tones[3] + 12], BAR * 2.3, 0.26, 0.22);
     }
 
-    /* 铜管：第 26 小节进、第 31 小节撤，正好卡在最高点上 */
-    if (bar >= 26 && bar <= 31) {
-      const atk = bar === 26 ? BEAT * 2 : 0;
-      brass(t + atk, [chord.root + 12, chord.tones[2] + 12, chord.root + 24],
-        BAR * (bar === 31 ? 0.92 : 1.05) - atk,
-        clamp((v - 0.35) * 1.5, 0, 1), clamp(v, 0, 1));
+    /* 循环的第一拍给一个低音锚点：否则第 39 小节的余韵散掉后，
+       回到开头会像"断了"而不是"重新开始" */
+    if (bar === 0) piano(t, 45, BEAT * 4, 0.22, -0.10);
+
+    /* ── ④ 姿态层：动机 ── */
+    if (bar === 2) {
+      /* 引子：只有头两个音，像远处有人先哼了一句 */
+      piano(t + BEAT * 2, MOTIF[0][0], BEAT * 6, v * 0.55, 0.1);
+      piano(t + BEAT * 4, MOTIF[1][0], BEAT * 4, v * 0.40, 0.1);
+      airBed(t, BAR, 0.010 + v * 0.010, 1800, 0.6);
+    }
+    if (bar === 8) motif(t, MOTIF, v * 0.85);
+    if (bar === 12) motif(t + BEAT * 2, MOTIF, v * 0.72, 12, 0.9);
+    if (bar === 16) {
+      /* 倒影交给低音区，钢琴在高处留一个点 */
+      motif(t, MOTIF_INV, v * 0.55, -12);
+      piano(t, MOTIF[0][0] + 12, BEAT * 4, v * 0.42, 0.16);
+    }
+    if (bar === 20) motif(t, MOTIF, v * 0.70, 0, 1.0);
+    if (bar === 23) {
+      /* 大锣前只剩一个音，然后是两拍空白 */
+      piano(t, MOTIF[0][0], BEAT * 3.2, v * 0.62, 0);
+    }
+    if (bar === 24) {
+      /* 增值：时值 ×1.6，低八度加一层，管风琴跟着吹——全曲最宽的一刻 */
+      motif(t, MOTIF, v * 0.95, 0, 1.6);
+      motif(t, MOTIF, v * 0.42, -12, 1.6);
+      organ(t, MOTIF.map(([m]) => m + 12), BAR * 2.4, 0.55);
+    }
+    if (bar === 28) motif(t, MOTIF, v * 0.80, 0, 1.1);
+    if (bar === 32) motif(t, MOTIF, v * 0.58);
+    if (bar === 36) {
+      /* 退潮：只剩动机的尾巴 */
+      piano(t + BEAT * 2, MOTIF[4][0], BEAT * 4, v * 0.42, 0.06);
+    }
+    if (bar === 39) {
+      /* 最后一音：A，拖过循环点 */
+      piano(t + BEAT * 1.5, 45, BEAT * 5.5, 0.30, -0.12);
     }
 
-    /* 固定音型：建立段八分，推进/高潮十六分，退潮回到八分 */
-    const step = (inB || inE) ? 2 : 1;
-    const ostOn = !inA && bar < 36;
-    if (ostOn) {
-      const stopAt = gap ? 8 : 16;
-      for (let i = 0; i < stopAt; i += step) {
-        const idx = OST[i % 16];
-        const midi = chord.tones[idx] + 12;
-        const accent = i % 4 === 0 ? 1 : 0.62;
-        const lift = 0.86 + 0.14 * (i / 15);
-        piano(t + i * s16 + rand(-0.006, 0.006), midi, s16 * (inD ? 4.2 : 5.4),
-          v * accent * lift * rand(0.9, 1.08), 0.14);
+    /* 心跳：只在推进段，每小节第一拍一下低音钢琴 */
+    if (inC && bar < 23) piano(t, chord.bass + 12, BEAT * 2.2, v * 0.52, -0.20);
+
+    /* ── ⑤ 空气层：只在三个转折处 ── */
+    if (bar === 0) airBed(t, BAR * 2, 0.008, 1200, 0.5);
+    if (bar >= 21 && bar < 24) airBed(t, BAR, 0.012 + (bar - 21) * 0.004, 2200, 0.8);
+    if (bar >= 33 && bar % 2 === 0) airBed(t, BAR * 2, 0.009, 1600, 0.6);
+    if (bar >= 26 && bar <= 30 && two) {
+      shimmer(t, [81, 88, 91], BAR * 2.1, v * 0.9);
+    }
+
+    /* 铜管：只在最高点的五小节，长音，不做节奏 */
+    if (bar >= 26 && bar <= 30 && two) {
+      brass(t, [chord.root + 12, chord.tones[2] + 12], BAR * 2.1, clamp((v - 0.55) * 2.2, 0, 1), 0.8);
+    }
+
+    /* 打击：只出现在结构点上 */
+    if (bar === 23) {
+      /* 八击滚奏，把空白填满，然后第 24 小节砸下来 */
+      for (let i = 0; i < 8; i++) {
+        timpani(t + BEAT * 2 + i * (BEAT * 2 / 8), chord.bass + 12, 0.14 + i * 0.055);
       }
-      /* 高潮段：每拍叠一个高八度，厚度靠层数而不是音量 */
-      if (inD) {
-        for (let i = 0; i < 16; i += 4) {
-          piano(t + i * s16, chord.tones[OST[i % 16]] + 24, s16 * 2.4, v * 0.32, -0.20);
-        }
-      }
+      riser(t, BAR * 2, 0.55);
     }
-
-    /* 低音钢琴：每两小节点一次根音，给固定音型一个"地基" */
-    if (!inA && bar % 2 === 0) {
-      piano(t, chord.bass + 12, BEAT * 3.2, v * 0.62, -0.24);
-    }
-
-    /* 主旋律：第 8 小节进入，四个八小节乐句铺到第 39 小节 */
-    if (bar >= MEL_START && bar < MEL_END) {
-      const beatsIn = (((index - MEL_START) * 4) % MEL_BEATS + MEL_BEATS) % MEL_BEATS;
-      const octUp = inD ? 12 : 0;
-      for (const e of MEL_EVENTS) {
-        const local = e.b - beatsIn;
-        if (local < 0 || local >= 4) continue;
-        const at = t + local * BEAT;
-        const dur = BEAT * e.d * 1.08;
-        piano(at, e.m + octUp, dur, v * 0.98, 0);
-        /* 高潮段：低八度加一层，"重量"来自这里；管风琴再吹一遍让音色变宽 */
-        if (inD) {
-          piano(at, e.m - 12, dur * 1.02, v * 0.40, -0.14);
-          if (e.d >= 2) organ(at, [e.m + 12], dur * 0.96, v * 0.40);
-        }
-        /* 乐句尾音加一个高八度弱奏，像远处有人应了一声 */
-        if (e.d >= 3 && !light) piano(at + 0.02, e.m + 24, dur * 0.8, v * 0.20, 0.26);
-      }
-    }
-
-    /* 定音鼓：推进段每两小节一次，高潮段每小节两次 */
-    if (inC && bar % 2 === 0) timpani(t, chord.bass + 12, v * 0.55);
-    if (inD) {
-      timpani(t, chord.bass + 12, v * 0.60);
-      if (!gap) timpani(t + BEAT * 2, chord.bass + 12, v * 0.45);
-    }
-
-    /* 第 23 小节：撤掉音型，用定音鼓滚奏把两拍空白填满，
-       然后第 24 小节整组砸下来——"震撼"主要靠这一下前后对比。 */
-    if (gap) {
-      for (let i = 0; i < 12; i++) {
-        timpani(t + BEAT * 2 + i * (BEAT * 2 / 12), chord.bass + 12, 0.16 + i * 0.05);
-      }
-    }
-
-    /* 高点：大锣 + 低音簇 + 下潜，三个不同频段同时落 */
     if (bar === 24) {
       tam(t, chord.bass + 24, v);
-      piano(t, chord.bass + 12, BEAT * 3, v * 0.95, -0.20);
-      piano(t, chord.bass + 19, BEAT * 3, v * 0.58, 0.16);
-      subDrop(t, 68, 34, 1.7, 0.30);
+      timpani(t, chord.bass + 12, v * 0.55);
+      subDrop(t, 70, 33, 2.0, 0.26);
     }
-    if (bar === 22) riser(t, BAR * 2, 0.9);
-    if (bar === 30) riser(t, BAR * 2, 0.5);
-
-    /* 退潮段：旋律交给钢琴独奏，配器一层层撤掉，只剩混响在响 */
-    if (bar >= 36 && bar % 2 === 0) {
-      piano(t + BEAT * 2, (chord.tones[1] + 12), BEAT * 1.6, v * 0.5, 0.08);
+    if (bar === 24 || bar === 28) {
+      strings(t, [chord.root, chord.root + 7], BAR * 2.2, 0.42, 0.18);
     }
-    /* 最后一小节：低音 A 钉住，循环回 Am 时是"落回"而不是"跳回" */
-    if (bar === 39) {
-      piano(t + BEAT * 2, 45, BEAT * 2.2, 0.34, -0.18);
-    }
+    if (bar === 31) timpani(t, chord.bass + 12, v * 0.40);
   }
 
   return {
@@ -760,7 +838,10 @@ export function createMusic({ volume = 0.5 } = {}) {
       nextTime += skip * BAR;
       if (nextTime < now + 0.05) nextTime = now + 0.05;
     }
-    while (nextTime < now + 2.8) {
+    /* 预排至少一小节多一点：76 BPM 下一小节 3.16s，
+       2.8s 的旧值会在降频标签页里断掉半拍 */
+    const lookahead = Math.max(3.4, BAR * 1.4);
+    while (nextTime < now + lookahead) {
       synth.scheduleBar(bar, nextTime);
       bar += 1;
       nextTime += BAR;

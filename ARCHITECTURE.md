@@ -1,7 +1,8 @@
 # ATLAS 图册 — 架构说明
 
 > 一个可离线运行的私人地理相册：WebGL 实体地球 + 册集面板 + 加密保险库。
-> 默认全部数据留在浏览器本机；可选接入 WorkBuddy 云服务，用同一账号跨设备同步。
+> 默认全部数据留在浏览器本机，账号即 ATLAS 本机账号；换设备用加密备份迁移。
+> 云同步引擎与数据表保留，但界面入口默认关闭（`config.features.cloudSync`）。
 > 数据层的完整契约、合并规则与验证方式见 **`DATA_ARCHITECTURE.md`**；
 > 账号、跨设备同步与密码/恢复码流程见 **`ACCOUNT_SYNC.md`**。
 
@@ -118,7 +119,7 @@
 换设备或清缓存后，用同一文件与口令即可完整恢复；口令遗失不可解密。
 
 ### 云同步（可选）
-登录 WorkBuddy 账号后，相册、手记、照片元数据与缩略图自动上云，原图按需下载。
+（引擎保留，默认关闭）登录后，相册、手记、照片元数据与缩略图自动上云，原图按需下载。
 合并规则、墓碑、作用域与验证方式见 `DATA_ARCHITECTURE.md`；未登录或域名未绑定时完全走本地路径。
 注意：备份是"整包快照"，云同步是"逐条合并"，两者互补，不互相替代。
 
@@ -177,7 +178,7 @@ main.js（应用编排，唯一修改 state 的地方）
 - 无框架、无构建步骤：原生 ES Modules，GitHub Pages 直接托管。
 - 3D：手写 WebGL1/2 兼容着色器（GLSL ES 1.00），不引入引擎。
 - 加密：Web Crypto（PBKDF2 + AES-GCM），压缩用 CompressionStream。
-- 云（可选）：WorkBuddy Cloud SDK（OAuth + Postgres 行级安全 + 对象存储），不引入自建服务端。
+- 云（可选、默认关闭）：Cloud SDK（OAuth + Postgres 行级安全 + 对象存储），不引入自建服务端。
 - 地理：维基百科坐标 API + OpenStreetMap Nominatim（均为公开数据，需注明来源）。
 - 字体：Archivo Variable（自托管 woff2）＋ 系统宋体。
 

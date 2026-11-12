@@ -30,7 +30,11 @@ export const APP = {
   features: {
     /* 入口门禁：关闭时 initGate 直接隐藏，代码路径保留 */
     gate: false,
-    music: true
+    music: true,
+    /* 跨设备云同步的界面入口。
+       关掉时账号面板只呈现 ATLAS 本机账号（注册/登录/改密/恢复码），
+       作品只存本机，换设备走加密备份；引擎与数据表保留，打开即恢复。 */
+    cloudSync: false
   },
 
   limits: {
