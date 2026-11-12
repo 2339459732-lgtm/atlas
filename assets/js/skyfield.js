@@ -14,15 +14,6 @@
    可枚举、可复现；不含银河密度场，也没有十字星芒。
    ══════════════════════════════════════════════════════════════════ */
 
-/* 色温配色：蓝白 → 正白 → 暖白 → 橙。索引即 aPack.z */
-export const PALETTE = [
-  [0.62, 0.76, 1.00],   /* 0 O/B 蓝白 */
-  [0.78, 0.87, 1.00],   /* 1 A 白蓝   */
-  [0.96, 0.97, 1.00],   /* 2 F 正白   */
-  [1.00, 0.97, 0.90],   /* 3 G 暖白   */
-  [1.00, 0.90, 0.72],   /* 4 K 浅橙   */
-  [1.00, 0.78, 0.58]    /* 5 M 橙     */
-];
 
 /* ── 星点 ──────────────────────────────────────────────────────────
    点扩散函数：锐核 + 很淡的晕。没有星芒、没有光晕环——
@@ -35,20 +26,38 @@ uniform mat4 uView;
 uniform float uDpr;
 uniform float uTime;
 uniform float uStars;
+/* 与银河全景同参数的银道倾角/自转：星点与银道保持真实相对姿态 */
+uniform float uSkyTilt;
+uniform float uSkySpin;
 varying float vA;
 varying vec3 vC;
 
-vec3 palette(float i) {
-  if (i < 0.5) return vec3(0.62, 0.76, 1.00);
-  if (i < 1.5) return vec3(0.78, 0.87, 1.00);
-  if (i < 2.5) return vec3(0.96, 0.97, 1.00);
-  if (i < 3.5) return vec3(1.00, 0.97, 0.90);
-  if (i < 4.5) return vec3(1.00, 0.90, 0.72);
-  return vec3(1.00, 0.78, 0.58);
+/* B−V → 黑体温度（Ballesteros 2012）→ RGB（Tanner Helland 拟合） */
+vec3 bvToRgb(float bv) {
+  float t = 4600.0 * (1.0 / (0.92 * bv + 1.7) + 1.0 / (0.92 * bv + 0.62));
+  vec3 c;
+  if (t <= 6600.0) {
+    float g = (99.4708 * log(t / 100.0) - 161.1196) / 255.0;
+    float b = (138.5177 * log(t / 100.0) - 305.0448) / 255.0;
+    c = vec3(1.0, clamp(g, 0.0, 1.0), clamp(b, 0.0, 1.0));
+  } else {
+    c = vec3(
+      clamp(329.6987 * pow(t / 100.0 - 60.0, -0.1332) / 255.0, 0.0, 1.0),
+      clamp(288.1222 * pow(t / 100.0 - 60.0, -0.0755) / 255.0, 0.0, 1.0),
+      1.0
+    );
+  }
+  return c;
 }
 
 void main() {
-  vec3 p = (uView * vec4(aDir, 0.0)).xyz;
+  /* 星表方向与银河采样同一套倾斜/自转 */
+  float ct = cos(uSkyTilt), st = sin(uSkyTilt);
+  vec3 d = vec3(aDir.x, aDir.y * ct - aDir.z * st, aDir.y * st + aDir.z * ct);
+  float cs = cos(uSkySpin), ss = sin(uSkySpin);
+  d = vec3(d.x * cs + d.z * ss, d.y, -d.x * ss + d.z * cs);
+
+  vec3 p = (uView * vec4(d, 0.0)).xyz;
   vec4 clip = uProj * vec4(p, 1.0);
   gl_Position = vec4(clip.xy, 0.9999 * clip.w, clip.w);
 
@@ -69,7 +78,7 @@ void main() {
   /* 闪烁只给亮星，幅度极小（大气 scintillation，不是装饰） */
   float tw = 0.96 + 0.04 * sin(uTime * 0.85 + seed * 6.283);
   vA = uStars * aPack.y * boost * tw;
-  vC = palette(aPack.z);
+  vC = bvToRgb(aPack.z);
 }`;
 
 export const FS_STAR = `
@@ -87,6 +96,43 @@ void main() {
   float a = (core + halo) * vA;
 
   gl_FragColor = vec4(vC * a, a);
+}`;
+
+/* ── 星座连线 ──────────────────────────────────────────────────────
+   顶点是单位方向（银道坐标），只有颜色与整体透明度两个 uniform。
+   方向在相机背后的顶点被钳到近平面之外，线段自然在屏幕边缘裁切。 */
+export const VS_LINE = `
+attribute vec3 aDir;
+uniform mat4 uProj;
+uniform mat4 uView;
+uniform float uAlpha;
+uniform float uSkyTilt;
+uniform float uSkySpin;
+varying float vA;
+void main() {
+  float ct = cos(uSkyTilt), st = sin(uSkyTilt);
+  vec3 d = vec3(aDir.x, aDir.y * ct - aDir.z * st, aDir.y * st + aDir.z * ct);
+  float cs = cos(uSkySpin), ss = sin(uSkySpin);
+  d = vec3(d.x * cs + d.z * ss, d.y, -d.x * ss + d.z * cs);
+  vec3 p = (uView * vec4(d, 0.0)).xyz;
+  vA = uAlpha;
+  /* 顶点在相机背后（或几乎平行视线）：丢出裁剪区。
+     线段另一端照常投影，线条在屏幕边缘被干净地截断，
+     不会出现跨越整个画面的长弦。 */
+  if (p.z > -0.01) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    return;
+  }
+  vec4 clip = uProj * vec4(p, 1.0);
+  gl_Position = vec4(clip.xy, 0.9998 * clip.w, clip.w);
+}`;
+
+export const FS_LINE = `
+precision mediump float;
+uniform vec3 uColor;
+varying float vA;
+void main() {
+  gl_FragColor = vec4(uColor, vA);
 }`;
 
 /* ── 天空底色 ──────────────────────────────────────────────────────

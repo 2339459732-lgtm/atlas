@@ -36,7 +36,7 @@ export const GROUPS = [
   },
   {
     id: 'sky', no: '03', zh: '深空', en: 'Deep sky',
-    descZh: '星表、银河与偶发流星', descEn: 'Catalogue, galaxy, meteors'
+    descZh: '真实星表、星座、银河与流星', descEn: 'Real stars, constellations, galaxy, meteors'
   },
   {
     id: 'base', no: '04', zh: '基底', en: 'Base',
@@ -139,16 +139,34 @@ export const LAYERS = [
     group: 'sky',
     title: { zh: '星表', en: 'Star catalogue' },
     summary: {
-      zh: '按固定种子生成的 6.8 万至 23 万颗星，含色温与亮度分级；宣纸主题下自动归零。',
-      en: '68k–230k seeded stars with colour temperature and magnitude classes. Silenced by the paper theme.'
+      zh: '5044 颗真实亮星（至 6 等，含 B−V 色指数）打底，程序暗星补密；星座真的会成形。',
+      en: '5,044 real bright stars to magnitude 6, with B−V colour, plus procedural dim stars — real constellations take shape.'
     },
-    provenance: 'der',
-    sources: [S('程序化星表 · skyfield.js', '', '本机生成')],
+    provenance: 'obs',
+    sources: [S('NASA/GSFC SVS 4851 Deep Star Maps 2020 · Gaia DR2', 'https://svs.gsfc.nasa.gov/4851/', '公有领域 / CC BY-SA 3.0 IGO'),
+              S('暗星为程序补充 · 见 SKY_SPEC.md', 'https://github.com/2339459732-lgtm/atlas/blob/main/SKY_SPEC.md', '本仓库')],
     defaultOn: true,
     cost: { vramMB: 11, ms: 0.9 },
-    params: { zh: ['固定种子 20261112', '随画质分档', '宣纸主题为 0'], en: ['Seed 20261112', 'Scales with quality tier', 'Zero on paper theme'] },
-    legend: { zh: '星表', en: 'Star catalogue' },
+    params: { zh: ['Gaia DR2 银道坐标', 'B−V 直接换算色温', '暗星 6.5–9 等补密', '宣纸主题为 0'], en: ['Gaia DR2 galactic coords', 'Colour from B−V', 'Dim stars 6.5–9 mag', 'Zero on paper theme'] },
+    legend: { zh: '星表 · Gaia', en: 'Stars · Gaia' },
     apply(on, ctx) { ctx.earth.setFlags({ stars: on }); }
+  },
+
+  {
+    id: 'F05.constellations',
+    group: 'sky',
+    title: { zh: '星座连线', en: 'Constellation figures' },
+    summary: {
+      zh: '88 个星座的传统连线，随天球一起转；开关星表时它也一并隐去。',
+      en: 'The traditional line figures of all 88 constellations, fixed to the celestial sphere.'
+    },
+    provenance: 'obs',
+    sources: [S('星座连线 · Deep Star Maps 2020 配套目录', 'https://svs.gsfc.nasa.gov/4851/', '公有领域')],
+    defaultOn: false,
+    cost: { vramMB: 0, ms: 0.1 },
+    params: { zh: ['88 星座 · 743 线段', '银道坐标系', '淡蓝 13% 透明度'], en: ['88 figures · 743 segments', 'Galactic frame', 'Pale blue, 13% alpha'] },
+    legend: { zh: '星座连线 · 88', en: 'Constellations · 88' },
+    apply(on, ctx) { ctx.earth.setFlags({ constellations: on }); }
   },
 
   {

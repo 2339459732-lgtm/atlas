@@ -438,3 +438,37 @@ ALTER TABLE atlas_photos ADD COLUMN rev BIGINT NOT NULL DEFAULT 0,
   `?layers=F08.nomenclature` 自动补 F01；关 F01 级联关 F02/F08；刷新恢复；分享去噪。
 - `reserve=336` 时球心 x≈306，面板左缘 592，球右缘 573，不重叠；控制台 0 error。
 - 文档：`LAYER_SYSTEM.md`（拆解 + 契约 + 扩展 + 验收）。
+
+## 13 背景细节：从程序星空到真实天球
+
+参考站背景拆解：NASA/GSFC SVS 4851「Deep Star Maps 2020」64k EXR →
+1024px 瓦片金字塔（16×8 / 32×16 / 64×32，按视场选级）+ tone 曲线
+（black .003 / white .25 / gamma .38）+ 目录（5044 亮星 [ra,dec,mag,B−V]、
+88 星座线、11 featured 天体、observations 用户观测）。
+其"深空探索"模式还有 J2000 读出、星等 LOD（起手 6.2 等）、
+图层 [连线/描绘/名称/深空天体/照片] 与搜索。
+
+### 13.1 落地（只搬数据，不搬瓦片）
+
+- `ref/sky-catalog.json` → `ref/build-skycat.py` → `assets/data/skycat.js`
+  （145KB，生成文件）：5044 亮星 + 88 星座 743 线段。
+- 坐标：J2000 赤道 → 银道，Hipparcos 旋转矩阵；脚本内置 5 颗恒星校验
+  （天狼/织女/北极星/大角/南门二），误差 <0.1°。
+- 色温：B−V → 黑体温度（Ballesteros）→ RGB（Tanner Helland），着色器内换算；
+  aPack.z 由"6 档色温索引"改为直接传 B−V。
+- 星等映射：`size = 1 + (3.2 − mag)×0.85`，`bright = 10^(−0.4 mag / 2.4)`，
+  指数压到 1/2.4（屏幕吃不下 5 个星等的全动态范围）。
+- 暗星 6.5–9 等仍程序生成补密；目录异步 import，失败回退纯程序星表，
+  晚到时原地换缓冲。
+- 新增图层 `F05.constellations`（88 星座连线，1486 顶点，独立线着色器，
+  淡蓝 13% 透明度；顶点在相机背后时整段干净截断）。
+- **对齐**：星点/星座线/银河共用银道坐标系，且与银河同参做 tilt(0.33)/spin(0)
+  变换——猎户座会出现在银道带应有的位置。
+
+### 13.2 验收
+
+- `skyCatReady=true`、starN=230000（含 5044 真实亮星）、figureN=1486。
+- 星座线开关像素 diff：4178 px 全在球盘外，线色 [64.6, 65.7, 71.7] 偏蓝 ✓。
+- 亮星色温：蓝/白/橙并存（真实 B−V 分布）；天狼星银道坐标
+  (227.23°, −8.89°) 与刊布值一致。
+- 控制台 0 error；`?layers=F05.constellations` 可分享。

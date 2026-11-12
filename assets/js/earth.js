@@ -5,8 +5,8 @@
    ══════════════════════════════════════════════════════════════════ */
 
 import {
-  VS_QUAD, FS_SKY, VS_STAR, FS_STAR, VS_METEOR, FS_METEOR,
-  METEOR_SPEC, catalog as skyCatalog
+  VS_QUAD, FS_SKY, VS_STAR, FS_STAR, VS_METEOR, FS_METEOR, VS_LINE, FS_LINE,
+  METEOR_SPEC
 } from './skyfield.js';
 
 const DEG = Math.PI / 180;
@@ -392,7 +392,7 @@ export function createEarth(canvas, opts = {}) {
     meteors: [], nextMeteor: 4.5, meteorIdx: 0,
     /* 图层开关：只控制"画不画"，不改主题参数。
        主题决定"长什么样"，图层决定"这一层在不在"——两者正交，切主题不会把图层重置。 */
-    flags: { clouds: true, atmo: true, stars: true, sky: true, meteors: true }
+    flags: { clouds: true, atmo: true, stars: true, sky: true, meteors: true, constellations: false }
   };
 
   /* ── 程序 ── */
@@ -424,7 +424,7 @@ export function createEarth(canvas, opts = {}) {
     return out;
   }
 
-  let progEarth, progCloud, progAtmo, progBg, progStar, progMeteor, progMote;
+  let progEarth, progCloud, progAtmo, progBg, progStar, progMeteor, progMote, progLine;
 
   const sphere = buildSphere(SEG, RINGS, 1);
   const cloudGeo = buildSphere(SEG, RINGS, 1.012);
@@ -452,19 +452,124 @@ export function createEarth(canvas, opts = {}) {
 
   const starCount = mobile ? 68000 : (lowEnd ? 140000 : 230000);
 
-  /* 星表：球面均匀分布，不再依赖银河坐标系 */
+  /* 星表：真实亮星（Gaia）打底，程序暗星补"密"；星座线共用同一银道坐标系 */
   let starBuf = null;
+  let figureBuf = null;
+  let figureN = 0;
   let meteorBuf = null;
   let starN = 0;
   let skyReady = false;
 
+  /* 真实星空目录：异步加载（145KB 源码），失败回退纯程序星表。
+     亮星 5044 颗来自 NASA/GSFC SVS 4851 · Gaia DR2（银道坐标、星等、B−V）。 */
+  let skyCat = null;
+  let skyCatPending = null;
+  function ensureSkyCatalog() {
+    if (skyCatPending) return;
+    skyCatPending = import('../data/skycat.js')
+      .then(m => {
+        skyCat = m;
+        /* 星表晚于首帧就绪：直接换掉缓冲，下一帧就是真实星空 */
+        if (skyReady && starBuf) { starBuf = buildStars(starCount); figureBuf = buildFigures(); }
+      })
+      .catch(err => { console.warn('[earth] 真实星表不可用，已回退程序星表', err && err.message); });
+  }
+
+  /* 小 PRNG：暗星确定性，与真实亮星不抢戏 */
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /* 银道坐标 → 世界方向：与银河全景采样同一套约定
+     （lon = atan(d.x, d.z)，lat = asin(d.y)） */
+  const galDir = (l, b, out, i) => {
+    const la = l * DEG, ba = b * DEG, cb = Math.cos(ba);
+    out[i] = cb * Math.sin(la);
+    out[i + 1] = Math.sin(ba);
+    out[i + 2] = cb * Math.cos(la);
+  };
+
+  /* 星等 → 屏幕尺寸/亮度。对数太陡，屏幕吃不下 5 个星等的动态范围，
+     所以把指数压到 1/2.4；0.05 的下限让最暗的星仍可辨认 */
+  const magSize = mag => clamp(1.0 + (3.2 - mag) * 0.85, 0.6, 6.0);
+  const magBright = mag => clamp(Math.pow(10, -0.4 * mag / 2.4), 0.05, 1.0);
+
+  function buildStars(count) {
+    const dir = new Float32Array(count * 3);
+    const pack = new Float32Array(count * 4);
+    let i = 0;
+
+    if (skyCat && skyCat.SKY_STARS) {
+      const stars = skyCat.SKY_STARS;
+      for (let k = 0; k < stars.length && i < count; k++) {
+        const st = stars[k];
+        galDir(st[0], st[1], dir, i * 3);
+        pack[i * 4] = magSize(st[2]);
+        pack[i * 4 + 1] = magBright(st[2]);
+        pack[i * 4 + 2] = st[3];                        /* B−V，着色器直接换色温 */
+        pack[i * 4 + 3] = (k + 1) * 0.6180339887 % 1;   /* 确定性闪烁种子 */
+        i++;
+      }
+    }
+
+    /* 暗星（6.5–9 等）：均匀球面，只提供"密" */
+    const rnd = mulberry32(20261112);
+    while (i < count) {
+      const z = rnd() * 2 - 1;
+      const phi = rnd() * Math.PI * 2;
+      const r = Math.sqrt(Math.max(0, 1 - z * z));
+      dir[i * 3] = r * Math.cos(phi);
+      dir[i * 3 + 1] = z;
+      dir[i * 3 + 2] = r * Math.sin(phi);
+      const mag = 6.5 + rnd() * 2.5;
+      pack[i * 4] = 0.5 + rnd() * 0.5;
+      /* 与真实亮星同一条星等曲线，再压一半：暗星接在 6.5 等的
+         亮度下限之下，不会出现"6.5 等的程序星比 6 等的真星还亮"的跳变 */
+      pack[i * 4 + 1] = magBright(mag) * 0.45;
+      pack[i * 4 + 2] = 0.25 + rnd() * 1.4;
+      pack[i * 4 + 3] = rnd();
+      i++;
+    }
+    return { dir, pack, count: i };
+  }
+
+  /* 星座连线：88 星座的多段折线展开成线段顶点（LINES） */
+  function buildFigures() {
+    const figs = skyCat?.SKY_FIGURES;
+    if (!figs?.length) return null;
+    let pairs = 0;
+    for (const f of figs) for (const seg of f.lines) pairs += Math.max(0, seg.length - 1);
+    if (!pairs) return null;
+    const arr = new Float32Array(pairs * 6);
+    let i = 0;
+    for (const f of figs) {
+      for (const seg of f.lines) {
+        for (let k = 0; k + 1 < seg.length; k++) {
+          galDir(seg[k][0], seg[k][1], arr, i * 6);
+          galDir(seg[k + 1][0], seg[k + 1][1], arr, i * 6 + 3);
+          i++;
+        }
+      }
+    }
+    figureN = pairs * 2;
+    return buffer(arr);
+  }
+
   function buildSky() {
-    const cat = skyCatalog({ count: starCount });
+    const cat = buildStars(starCount);
     starBuf = { dir: buffer(cat.dir), pack: buffer(cat.pack) };
+    figureBuf = buildFigures();
     meteorBuf = buffer(meteorParts);
     starN = cat.count;
     skyReady = true;
   }
+
+  ensureSkyCatalog();
 
   /* ── 流星：一条二次贝塞尔轨迹 + 一组带 trail 参数的粒子 ── */
   const meteorParts = (() => {
@@ -571,6 +676,7 @@ export function createEarth(canvas, opts = {}) {
     progBg = program(VS_QUAD, FS_SKY, { aP: 'aP' }, 'sky');
     progStar = program(VS_STAR, FS_STAR, { aDir: 'aDir', aPack: 'aPack' }, 'star');
     progMeteor = program(VS_METEOR, FS_METEOR, { aM: 'aM' }, 'meteor');
+    progLine = program(VS_LINE, FS_LINE, { aDir: 'aDir' }, 'constellation');
     progEarth = program(VS_SPHERE, FS_EARTH, { aPos: 'aPos', aUV: 'aUV' }, 'earth');
     progCloud = program(VS_SPHERE, FS_CLOUD, { aPos: 'aPos', aUV: 'aUV' }, 'cloud');
     progAtmo = program(VS_SPHERE, FS_ATMO, { aPos: 'aPos', aUV: 'aUV' }, 'atmo');
@@ -940,6 +1046,24 @@ export function createEarth(canvas, opts = {}) {
     g.uniform1i(progBg.u.uSky, 3);
     g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
 
+    /* ── 星座连线：88 星座，只画真实目录就绪后的线段 ── */
+    if (figureBuf && state.flags.constellations && themeState.stars > 0.001) {
+      g.enable(g.BLEND);
+      g.blendFunc(g.SRC_ALPHA, g.ONE_MINUS_SRC_ALPHA);
+      g.useProgram(progLine.p);
+      g.bindBuffer(g.ARRAY_BUFFER, figureBuf);
+      g.enableVertexAttribArray(progLine.a.aDir);
+      g.vertexAttribPointer(progLine.a.aDir, 3, g.FLOAT, false, 0, 0);
+      g.uniformMatrix4fv(progLine.u.uProj, false, proj);
+      g.uniformMatrix4fv(progLine.u.uView, false, view);
+      const light = document.documentElement.dataset.theme === 'ivory';
+      g.uniform3fv(progLine.u.uColor, light ? [0.16, 0.20, 0.30] : [0.62, 0.72, 0.92]);
+      g.uniform1f(progLine.u.uAlpha, light ? 0.20 : 0.13);
+      g.uniform1f(progLine.u.uSkyTilt, 0.33);
+      g.uniform1f(progLine.u.uSkySpin, 0.0);
+      g.drawArrays(g.LINES, 0, figureN);
+    }
+
     /* ── 星点：整张星表一次画完 ── */
     if (starBuf && themeState.stars > 0.001 && state.flags.stars) {
       g.enable(g.BLEND);
@@ -957,6 +1081,8 @@ export function createEarth(canvas, opts = {}) {
       g.uniform1f(progStar.u.uDpr, state.dpr);
       g.uniform1f(progStar.u.uTime, t);
       g.uniform1f(progStar.u.uStars, themeState.stars * (state.flags.stars ? 1 : 0));
+      g.uniform1f(progStar.u.uSkyTilt, 0.33);
+      g.uniform1f(progStar.u.uSkySpin, 0.0);
       g.drawArrays(g.POINTS, 0, starN);
     }
 
@@ -1374,7 +1500,7 @@ export function createEarth(canvas, opts = {}) {
     },
     getZoom: () => state.distTo,
     /* 验收用：读取当前视角，不参与渲染 */
-    _debug: () => ({ yaw: state.yaw, pitch: state.pitch, dist: state.dist, spin: state.spin, q: state.quality, baseDist: state.baseDist, reserve: state.reserve, w: state.w, h: state.h }),
+    _debug: () => ({ yaw: state.yaw, pitch: state.pitch, dist: state.dist, spin: state.spin, q: state.quality, baseDist: state.baseDist, reserve: state.reserve, w: state.w, h: state.h, starN, figureN, skyCatReady: !!skyCat, skyReady }),
     isReady: () => state.ready,
     _project: (lat, lng) => {
       const eye = cameraEye();

@@ -167,7 +167,7 @@ ATLAS 不是太阳系模拟器，它是一本**私人地球图册**。因此不�
 | 8 层 | 11 层 | 球面 2D 测绘与注记拆得更细 |
 | 面板覆盖画布 | 面板停靠 + 光轴左移 | 球不被挡住，注记不被压住 |
 
-### 2.1 两个家族、四个分组、十一个图层
+### 2.1 两个家族、四个分组、十二个图层
 
 ID 契约与参考站一致：
 
@@ -185,7 +185,8 @@ F = 要素层：改变"读出什么"（DOM 注记 / 连线 / 卡片）
 | `L03.terminator` | 晨昏线与暮光 | 地表 | 推算 | 关 | — | 0 / 0.5 ms |
 | `L04.atmosphere` | 大气辉光 | 地表 | 推算 | 开 | — | 0 / 0.3 ms |
 | `L05.clouds` | 云层 | 地表 | 观测 | 开 | — | 6 MB / 0.4 ms |
-| `L06.stars` | 星表 | 深空 | 推算 | 开 | — | 11 MB / 0.9 ms |
+| `L06.stars` | 星表（Gaia 亮星） | 深空 | 观测 | 开 | — | 11 MB / 0.9 ms |
+| `F05.constellations` | 星座连线 | 深空 | 观测 | 关 | — | 0 / 0.1 ms |
 | `L07.milkyway` | 银河全景 | 深空 | 观测 | 开 | — | 6 MB / 0.2 ms |
 | `L08.meteor` | 偶发流星 | 深空 | 推算 | 开 | — | 0 / 0.1 ms |
 | `F01.landmarks` | 地标 | 注记 | 私有 | 开 | — | 0 / 0.2 ms |
@@ -418,8 +419,9 @@ INSTRUMENT 02                    08/11   ×      ← 仪器标识 + 状态 + 收
 
 | 项 | 结果 |
 | --- | --- |
-| 默认层数 | `08/11`，URL 保持干净 |
+| 默认层数 | `08/12`，URL 保持干净 |
 | `?layers=L02.graticule,XX.foo,L99.nope` | 只开 `L01` + `L02`；非法 ID 静默丢弃 |
+| `?layers=F05.constellations` | 星座线开启；真实星表异步就位（`skyCatReady`） |
 | `?layers=F08.nomenclature` | 自动补 `F01`，共 3 层 |
 | 关闭 `F01` | `F02`/`F08` 级联关闭，标记与注记同时消失 |
 | 重新打开 `F08` | 自动补 `F01`，提示"已一并打开「地标」" |
@@ -438,8 +440,9 @@ assets/js/
   layer-panel.js    面板渲染（只读 store，写操作回 store）
   earth-overlay.js  经纬网 / 晨昏线 / 旅程线（2D canvas）
   nomenclature.js   编号 / 三档 / 圈径 / 避让 / 卡片（DOM）
-  earth.js          新增 setFlags / setReserve / 投影 sun
+  earth.js          新增 setFlags / setReserve / 投影 sun / 真实星表与星座线缓冲
   main.js           装配：store ↔ 渲染 ↔ 数据
+  data/skycat.js    真实星表 + 星座连线（生成自 ref/sky-catalog.json）
 assets/css/site.css  .lyr-* / .nm-* / 图例 / 响应式
 index.html          #earth-overlay / #nomenclature / #layer-panel / #lyr-toggle
 ```
@@ -474,6 +477,8 @@ main.js ──▶ layers.js ──▶ (metadata only)
 | 图层来源 / 许可 / 预算 | 同（`sources` / `cost`） | 还原 |
 | 图例由层自报 | 同（`legend`） | 还原 |
 | 实时层呼吸点 | 晨昏线逐帧重算，但不标 live（默认光源是固定的，不冒充实时） | 省略 |
+| Deep Star Maps 2020 瓦片金字塔 + tone 曲线 | 瓦片不用，但同源数据落地：5044 亮星目录 + 88 星座线 + B−V 色温 | 还原（数据面） |
+| 深空探索模式（J2000 浏览 / 星座描绘 / 名称 / 搜索 / 星等 LOD） | 未做，槽位保留（见第五节） | 未实现 |
 | 1100 个 IAU 地名 / 真实范围圈 | 地标编号 / 圈径=片量 / 三档露出 | 改编（数据不同） |
 | 时间轴 / 深时 | 无独立轴，年份进卡片 | 省略（私人图册没有深时） |
 | 全屏启动遮罩 / GPU 预热 | 沿用原有加载环 | 保留原状 |
@@ -486,7 +491,10 @@ ID 已预留、实现成本低的三个方向：
 
 - `F03.epoch` — 年份切片（见 2.10）；
 - `L09.aurora` — 极光椭圆（NOAA SWPC 实时），与 `L03` 共用太阳方向；
-- `F04.tracks` — 照片拍摄点轨迹（EXIF 时间序列），与 `F02` 共用 slerp。
+- `F04.tracks` — 照片拍摄点轨迹（EXIF 时间序列），与 `F02` 共用 slerp；
+- **深空探索模式** — 参考站的 Deep Space Explorer：等距圆柱全天图（可用 `skycat` 目录做
+  星点 + 星座线渲染）、J2000 读出、FoV 20–120°、星座名/亮星名标签、搜索（M42 / NGC 7000）、
+  星等 LOD（参考站起手 6.2 等，放大再加深）。数据面（星表/星座线）已在仓库里。
 
 三条原则不变：
 
