@@ -10,20 +10,21 @@ import { geocode, composeIntro } from './geo.js';
 import { sha256Hex, VAULT_HASH, makeBackup, readBackup, photoBlob } from './vault.js';
 import { t, applyI18n, initLang, getLang, setLang, LANGS } from './i18n.js';
 import { createMusic } from './audio.js';
+import { APP } from './config.js';
 import {
   initCloud, cloudAvailable, cloudUser, onCloudChange, cloudReason,
   signInCloud, signOutCloud,
-  pullAll, pushAlbums, pushPhotos, uploadPhotoBlob, downloadPhotoBlob
+  pullAll, pushAlbums, pushPhotos, uploadPhotoBlob, downloadPhotoBlob, removePhotoBlob
 } from './cloud.js';
 import {
   SCHEMA, LIMITS, normalizeAlbum, normalizePhoto, parseCoord, fmtCoord,
-  albumIssues, photoIssues, mergeCollections,
+  albumIssues, photoIssues, mergeCollections, mergeAlbumCollections, sameAlbumContent,
   albumFromRow, photoFromRow, albumToRow, photoToRow
 } from './model.js';
 import {
   loadAlbums, saveAlbums, allPhotos, putPhoto, delPhotos, delPhotosOfAlbum,
   tombstone, clearTombstones, unpushedTombstones, markTombstonesPushed,
-  pruneTombstones, markDirty, clearDirty, pending,
+  pruneTombstones, markDirty, clearDirty, pending, repairPhotos,
   meta as storeMeta, markSynced, onExternalChange, health as storeHealth
 } from './store.js';
 import {
@@ -35,8 +36,8 @@ import {
 
 /* 入口私钥（SHA-256）。改口令：把新口令的 sha256 填到这里 */
 const GATE_HASH = 'c7efaa94c1114dfc8e1d4007d5369b11ab55fa19dea1a31ccf5aabcb3cc39a55';
-/* 入口门禁开关：改为 true 即启用（口令与 GATE_HASH 对应） */
-const GATE_ENABLED = false;
+/* 入口门禁开关（配置在 config.js 的 features.gate） */
+const GATE_ENABLED = APP.features.gate;
 
 /* ───────── 常量 ───────── */
 const ACCENTS = ['#C9A96A', '#7FA8C9', '#C98A7F', '#9BC9A0', '#B9A0D8', '#D8C08A', '#8FA6B8', '#C97F9E'];
@@ -48,8 +49,8 @@ const LS_SEED = 'atlas.seeded.v1';
 const SS_UNLOCK = 'atlas.unlocked.v1';
 const DB_NAME = 'atlas-plates';
 const DB_STORE = 'plates';
-const MAX_PX = 2400;
-const MAX_BYTES = 40 * 1024 * 1024;
+const MAX_PX = APP.limits.photoMaxPx;
+const MAX_BYTES = APP.limits.photoMaxBytes;
 
 const DEFAULT_SITE = {
   name: 'ATLAS',
@@ -63,10 +64,9 @@ const THEMES = {
   noir: {
     label: '墨夜', meta: '#07070A',
     globe: {
-      spaceTop: [0.055, 0.055, 0.068], spaceBottom: [0.012, 0.012, 0.018],
-      spaceCool: [0.44, 0.54, 0.76], spaceWarm: [1.0, 0.86, 0.66],
+      spaceTop: [0.020, 0.020, 0.026], spaceBottom: [0.005, 0.005, 0.008],
       glow: [0.55, 0.42, 0.22], glowAmt: 0.085, grain: 0.012,
-      ambient: 0.05, atmo: [0.24, 0.46, 0.82], stars: 1, nebula: 1.00,
+      ambient: 0.05, atmo: [0.24, 0.46, 0.82], stars: 1,
       exposure: 1.06, nightGain: 1.05, cloud: 0.9, atmoIntensity: 0.56
     }
   },
@@ -74,19 +74,17 @@ const THEMES = {
     label: '宣纸', meta: '#F3F0E8',
     globe: {
       spaceTop: [0.955, 0.945, 0.92], spaceBottom: [0.985, 0.978, 0.955],
-      spaceCool: [0.60, 0.64, 0.74], spaceWarm: [0.98, 0.90, 0.80],
       glow: [1.0, 0.93, 0.78], glowAmt: 0.55, grain: 0.006,
-      ambient: 0.17, atmo: [0.52, 0.7, 0.88], stars: 0, nebula: 0.0,
+      ambient: 0.17, atmo: [0.52, 0.7, 0.88], stars: 0,
       exposure: 1.02, nightGain: 0.9, cloud: 0.74, atmoIntensity: 0.46
     }
   },
   slate: {
     label: '远山', meta: '#070B10',
     globe: {
-      spaceTop: [0.04, 0.058, 0.085], spaceBottom: [0.012, 0.02, 0.033],
-      spaceCool: [0.40, 0.60, 0.88], spaceWarm: [1.0, 0.88, 0.72],
+      spaceTop: [0.016, 0.024, 0.036], spaceBottom: [0.004, 0.007, 0.011],
       glow: [0.22, 0.48, 0.78], glowAmt: 0.10, grain: 0.012,
-      ambient: 0.06, atmo: [0.3, 0.6, 0.98], stars: 1, nebula: 1.0,
+      ambient: 0.06, atmo: [0.3, 0.6, 0.98], stars: 1,
       exposure: 1.16, nightGain: 1.05, cloud: 0.88, atmoIntensity: 0.60
     }
   }
@@ -2385,6 +2383,20 @@ $('#vault-lock-btn')?.addEventListener('click', () => {
   toast(t('vault.lockedToast'));
 });
 
+$('#vault-repair')?.addEventListener('click', async () => {
+  const btn = $('#vault-repair');
+  btn.disabled = true;
+  try {
+    const r = await window.atlasData.repair();
+    const n = (r.removed || 0) + (r.covers || 0);
+    toast(n ? t('vault.repairDone', { n }) : t('vault.repairNone'));
+  } catch (e) {
+    toast(String(e?.message || e), true);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 $('#vault-export')?.addEventListener('click', async () => {
   const btn = $('#vault-export');
   const pass = $('#vault-pass2').value || '';
@@ -2691,6 +2703,7 @@ const ACCT_OPEN = 'atlas.acct.open';
    ─────────────────────────────── */
 const SYNC = { phase: 'idle', error: '', lastAt: 0, tries: 0 };
 let syncTimer = 0, retryTimer = 0, running = false, pulledOnce = false, queued = false;
+let lastPullAt = 0;
 
 /* 云同步的作用域 = 当前本机账号（未登录时是 guest）。
    同一个浏览器里换本机账号，不能把上一个账号的云端数据静默灌进新分区；
@@ -2788,21 +2801,19 @@ async function syncPull() {
 
   /* ① 相册 */
   const localAlbums = state.landmarks.map(normalizeLM).concat(tombstoneAlbums());
-  const mergedA = mergeCollections(localAlbums, remoteAlbums).items;
+  const mergedA = mergeAlbumCollections(localAlbums, remoteAlbums).items;
   const liveAlbums = mergedA.filter(a => !a.deleted);
   const deadAlbums = mergedA.filter(a => a.deleted);
   const deadAlbumIds = new Set(deadAlbums.map(a => a.id));
 
-  let pushedNeeded = false;
+  /* 合并后的内容与云端不一致（本地较新，或字段级合并拼出了新组合）
+     → 需要回推。只看"内容"，避免因为 rev/at 的差异白推一遍。 */
   const remoteAById = new Map(remoteAlbums.map(a => [a.id, a]));
-  for (const l of localAlbums) {
-    /* 墓碑是否需要重推，看 pushedAt；不在这里一律当成"有改动"，
-       否则每次打开页面都会把全部相册再写一遍云端 */
-    if (l.deleted) continue;
-    const r = remoteAById.get(l.id);
-    if (!r || (l.rev | 0) > (r.rev | 0)) pushedNeeded = true;
-    else if ((l.rev | 0) === (r.rev | 0) && (l.at | 0) > (r.at | 0)) pushedNeeded = true;
-  }
+  let pushedNeeded = mergedA.some(a => {
+    if (a.deleted) return false;
+    const r = remoteAById.get(a.id);
+    return !r || !sameAlbumContent(a, r);
+  });
 
   /* 云端删掉的相册：本地连照片一起删，并给照片留墓碑，
      避免下次从第三台设备把它们推回来 */
@@ -2888,6 +2899,7 @@ async function syncPull() {
   }
 
   if (pushedNeeded || Object.keys(unpushedTombstones().albums).length) markDirty('album');
+  lastPullAt = Date.now();
   applyRemote();
 
   return { albums: liveAlbums.length, photos: addedPhotos, removed: removedAlbums };
@@ -2939,7 +2951,7 @@ async function syncPush() {
   /* ② 原图：每轮最多 6 张，失败累计 3 次就跳过（不阻塞其他条目） */
   const dirtyPhotos = new Set(p.photos);
   const todo = state.photos.filter(x => !x.remote && x.blob && (x.upFail || 0) < 3);
-  const batch = todo.slice(0, 6);
+  const batch = todo.slice(0, APP.limits.syncPhotosPerRound);
 
   for (let i = 0; i < batch.length; i++) {
     const ph = batch[i];
@@ -2970,6 +2982,10 @@ async function syncPush() {
     await pushPhotos(rows);
     clearDirty('photo', [...dirtyPhotos, ...changed.map(x => x.id)]);
     markTombstonesPushed('photo', Object.keys(todoTomb.photos));
+    /* 行已经标成 deleted，原图就不必再占对象存储了 */
+    Object.keys(todoTomb.photos).forEach(id => {
+      removePhotoBlob(u.id, id).catch(e => console.warn('[sync] remove file', e));
+    });
   }
 
   if (todo.length > batch.length) schedulePush(700);
@@ -2978,6 +2994,13 @@ async function syncPush() {
 async function syncNow(reason = 'auto') {
   if (running || !cloudUser() || !cloudAvailable() || !scopeBound()) return;
   if (navigator.onLine === false) { renderCloud(); return; }
+
+  /* 切回标签页、断网重连：如果距上次拉取超过阈值，先拉一次，
+     这样另一台设备的删除/改名不用等刷新页面才出现。 */
+  if ((reason === 'visible' || reason === 'online') &&
+      Date.now() - lastPullAt > APP.limits.pullFreshMs) {
+    pulledOnce = false;
+  }
 
   running = true;
   clearTimeout(syncTimer);
@@ -3003,9 +3026,13 @@ async function syncNow(reason = 'auto') {
     renderCloud();
     /* 指数退避：2s / 4s / 8s … 最多 60s，最多 6 次。
        之后交给下一次编辑、上线事件或重新登录触发，不无限重试。 */
-    if (SYNC.tries <= 6) {
+    if (SYNC.tries <= APP.limits.syncRetryMax) {
       clearTimeout(retryTimer);
-      retryTimer = setTimeout(() => syncNow('retry'), Math.min(60000, 2000 * 2 ** (SYNC.tries - 1)));
+      const wait = Math.min(
+        APP.limits.syncRetryMaxMs,
+        APP.limits.syncRetryBaseMs * 2 ** (SYNC.tries - 1)
+      );
+      retryTimer = setTimeout(() => syncNow('retry'), wait);
     }
   } finally {
     running = false;
@@ -3057,13 +3084,9 @@ function initCloudSync() {
   addEventListener('online', () => { if (cloudUser()) syncNow('online'); });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible' || !cloudUser() || running) return;
-    const p = pending();
-    const tu = unpushedTombstones();
-    if (p.albums || p.photos.length || Object.keys(tu.albums).length || Object.keys(tu.photos).length) {
-      schedulePush(600);
-    } else if (!pulledOnce) {
-      syncNow('visible');
-    }
+    /* 是否真的要拉，由 syncNow 里的 30s 阈值判断；
+       有本地改动时它会先拉后推，不会丢。 */
+    syncNow('visible');
   });
 
   $('#acct-cloud-btn')?.addEventListener('click', async () => {
@@ -3249,7 +3272,7 @@ async function boot() {
   state.site = loadSite();
   applySite(state.site);
 
-  applyTheme(localStorage.getItem(LS_THEME) || 'noir');
+  applyTheme(localStorage.getItem(LS_THEME) || APP.defaults.theme);
 
   const stored = loadLandmarks();
   if (stored) state.landmarks = stored;
@@ -3375,6 +3398,20 @@ async function boot() {
       state.photos = await allPhotos();
       renderWall(); syncStats(); syncEarth();
       return { albums: state.landmarks.length, photos: state.photos.length };
+    },
+    /* 整理：删掉坏记录与孤儿照片，清掉失效封面 */
+    repair: async () => {
+      const ids = new Set(state.landmarks.map(l => l.id));
+      const r = await repairPhotos(ids);
+      state.photos = await allPhotos();
+      let covers = 0;
+      const have = new Set(state.photos.map(p => p.id));
+      state.landmarks.forEach(l => {
+        if (l.coverId && !have.has(l.coverId)) { l.coverId = null; covers++; }
+      });
+      if (covers) saveLandmarks();
+      renderWall(); syncStats(); syncEarth(); updateVaultStats();
+      return { ...r, covers };
     }
   };
 

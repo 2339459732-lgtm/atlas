@@ -15,12 +15,10 @@
    · 缩略图随元数据一起拉，原图按需下载，避免首次登录就下几百张。
    ══════════════════════════════════════════════════════════════════ */
 
-/* 应用激活时下发的 publicConfig，原样写死在这里（纯静态站点没有服务端可传） */
-const CFG = {
-  endpoint: 'https://atlas-gallery.app.workbuddy.host',
-  oauthRelayBaseUrl: 'https://www.workbuddy.cn/v2/as/genie-baas/oauth',
-  publishableKey: 'wbpk_l0wwPqEszeiVMFjenfHdwT_WtB8XdT5HZ94wVcwIpck7NGYW4CTI04P'
-};
+import { APP, CLOUD_CFG } from './config.js';
+
+/* 端点与密钥集中在 config.js：换环境不改这个文件 */
+const CFG = CLOUD_CFG;
 
 let client = null;
 let session = null;
@@ -35,9 +33,8 @@ const emit = () => listeners.forEach(fn => { try { fn(); } catch {} });
    所以这里直接按域名判定可用性，避免给访客一个点不通的按钮。 */
 function originBound() {
   const h = location.hostname;
-  return h === 'atlas-gallery.app.workbuddy.host'
-    || h.endsWith('.workbuddy.host')
-    || h === 'localhost' || h === '127.0.0.1';
+  if (APP.cloud.allowLocalhost && (h === 'localhost' || h === '127.0.0.1')) return true;
+  return APP.cloud.hosts.some(s => h === s || h.endsWith('.' + s));
 }
 
 export function cloudAvailable() { return ready && originBound(); }
@@ -176,6 +173,15 @@ export async function uploadPhotoBlob(uid, localId, blob) {
   });
   if (error) throw error;
   return path;
+}
+
+/* 墓碑推送成功后清掉对象存储里的原图。失败不影响下次同步，
+   最多留一个孤儿文件，不会让数据变得不一致。 */
+export async function removePhotoBlob(uid, localId) {
+  if (!client || !session || !uid) return;
+  const path = client.storage.userPath(uid, `photos/${localId}.jpg`);
+  const { error } = await client.storage.remove([path]);
+  if (error) throw error;
 }
 
 export async function downloadPhotoBlob(path) {

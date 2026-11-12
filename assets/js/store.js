@@ -15,6 +15,7 @@
    ══════════════════════════════════════════════════════════════════ */
 
 import { key, dbName } from './accounts.js';
+import { APP } from './config.js';
 import {
   SCHEMA, LIMITS, normalizeAlbum, normalizePhoto,
   albumIssues, photoIssues, isId
@@ -24,7 +25,7 @@ const K_ALBUMS = 'atlas.landmarks.v4';   /* 键名保留：旧浏览器的数据
 const K_META = 'atlas.meta.v1';
 const DB_STORE = 'plates';
 const DB_VERSION = 4;
-const TOMB_TTL = 45 * 864e5;
+const TOMB_TTL = APP.limits.tombstoneDays * 864e5;
 
 const tabId = Math.random().toString(36).slice(2, 9);
 const bus = typeof BroadcastChannel === 'function' ? new BroadcastChannel('atlas-store') : null;
@@ -145,12 +146,29 @@ export function loadAlbums() {
   const env = readEnvelope();
   legacyFlag = !!env.legacy;
   corruptFlag = !!env.corrupted;
-  prevAlbums = new Map(env.items.map(a => [a.id, a]));
+  prevAlbums = new Map(env.items.map(a => [a.id, clone(a)]));
   if (env.legacy) writeAlbums(env.items, false);
   return env;
 }
 
-const signature = a => JSON.stringify({ ...a, rev: 0, at: 0 });
+/* 内容签名：忽略 rev/at/mt 这些"元数据"，只比真正的字段 */
+const clone = a => JSON.parse(JSON.stringify(a));
+const signature = a => JSON.stringify({ ...a, rev: 0, at: 0, mt: {} });
+
+const MT_KEYS = ['name', 'nameEn', 'coord', 'date', 'note', 'memoir', 'accent', 'coverId', 'keyHash', 'geo'];
+
+function changedMt(prev, next) {
+  if (!prev) return [];
+  const out = [];
+  for (const k of MT_KEYS) {
+    if (k === 'geo') {
+      if ((prev.lat ?? null) !== (next.lat ?? null) || (prev.lng ?? null) !== (next.lng ?? null)) out.push('geo');
+      continue;
+    }
+    if (JSON.stringify(prev[k] ?? null) !== JSON.stringify(next[k] ?? null)) out.push(k);
+  }
+  return out;
+}
 
 function writeAlbums(items, bump) {
   const now = Date.now();
@@ -167,6 +185,10 @@ function writeAlbums(items, bump) {
       if (old && signature(old) !== signature(a)) {
         a.rev = (old.rev | 0) + 1;
         a.at = now;
+        /* 记下"哪些字段变了"，字段级合并靠它 */
+        const touched = changedMt(old, a);
+        a.mt = { ...(old.mt || {}) };
+        touched.forEach(k => { a.mt[k] = now; });
       } else if (!old) {
         /* 新条目：至少是第 1 版，时间取创建时间或当下 */
         a.rev = Math.max(a.rev, 1);
@@ -183,7 +205,7 @@ function writeAlbums(items, bump) {
     return { ok: false, error: e, items: out };
   }
 
-  prevAlbums = new Map(out.map(a => [a.id, a]));
+  prevAlbums = new Map(out.map(a => [a.id, clone(a)]));
   corruptFlag = false;
   if (bump) {
     const m = readMeta();
@@ -378,6 +400,34 @@ export async function delPhotos(ids = []) {
   });
   announce('photos');
   return list.length;
+}
+
+/**
+ * 整理照片库（显式调用，不自动跑）：
+ *   · 无法通过契约的记录（坏类型、缺 id）
+ *   · 所属相册已不存在的孤儿
+ * 返回删了多少、留了多少。相册本身不动。
+ */
+export async function repairPhotos(albumIds) {
+  const d = await openDB();
+  return new Promise((res, rej) => {
+    const t = d.transaction(DB_STORE, 'readwrite');
+    const st = t.objectStore(DB_STORE);
+    const req = st.openCursor();
+    let removed = 0, kept = 0;
+
+    req.onsuccess = () => {
+      const cur = req.result;
+      if (!cur) return;
+      const p = normalizePhoto(cur.value);
+      const orphan = p && albumIds && !albumIds.has(p.landmarkId);
+      if (!p || orphan) { cur.delete(); removed++; }
+      else kept++;
+      cur.continue();
+    };
+    t.oncomplete = () => { if (removed) announce('photos'); res({ removed, kept }); };
+    t.onerror = () => rej(t.error);
+  });
 }
 
 export async function delPhotosOfAlbum(albumId) {

@@ -6,8 +6,7 @@
 
 import {
   VS_QUAD, FS_SKY, VS_STAR, FS_STAR, VS_METEOR, FS_METEOR,
-  LAYOUT, LANES, METEOR_SPEC,
-  frame as skyFrame, catalog as skyCatalog
+  METEOR_SPEC, catalog as skyCatalog
 } from './skyfield.js';
 
 const DEG = Math.PI / 180;
@@ -448,24 +447,14 @@ export function createEarth(canvas, opts = {}) {
 
   const starCount = mobile ? 68000 : (lowEnd ? 140000 : 230000);
 
-  /* 银道坐标系：由机位反推，使亮脊落在 LAYOUT.bandY、银心落在 LAYOUT.coreX。
-     第一次 resize 拿到真实宽高比后计算，保证横幅画面里也是水平的。 */
-  let GAL = null;
+  /* 星表：球面均匀分布，不再依赖银河坐标系 */
   let starBuf = null;
   let meteorBuf = null;
   let starN = 0;
   let skyReady = false;
 
   function buildSky() {
-    GAL = skyFrame({
-      yaw: 0.30, pitch: 0.40,
-      bandY: LAYOUT.bandY, coreX: LAYOUT.coreX,
-      aspect: (state.w / state.h) || 1.2,
-      tanHalf: Math.tan(15 * DEG)
-    });
-    const cat = skyCatalog({
-      count: starCount, pole: GAL.pole, core: GAL.core, e1: GAL.e1, e2: GAL.e2
-    });
+    const cat = skyCatalog({ count: starCount });
     starBuf = { dir: buffer(cat.dir), pack: buffer(cat.pack) };
     meteorBuf = buffer(meteorParts);
     starN = cat.count;
@@ -848,7 +837,6 @@ export function createEarth(canvas, opts = {}) {
     ambient: 0.05,
     atmo: [0.22, 0.42, 0.78],
     stars: 1,
-    nebula: 1,
     exposure: 1.06,
     nightGain: 1,
     cloud: 0.82,
@@ -911,33 +899,10 @@ export function createEarth(canvas, opts = {}) {
     g.bindBuffer(g.ARRAY_BUFFER, buf.quad);
     g.enableVertexAttribArray(progBg.a.aP);
     g.vertexAttribPointer(progBg.a.aP, 2, g.FLOAT, false, 0, 0);
-    g.uniform3fv(progBg.u.uRight, rgt);
-    g.uniform3fv(progBg.u.uUp, upv);
-    g.uniform3fv(progBg.u.uFwd, fwd);
-    g.uniform1f(progBg.u.uTanHalf, Math.tan(15 * DEG));
-    g.uniform1f(progBg.u.uAspect, aspect);
-    if (GAL) {
-      g.uniform3fv(progBg.u.uPole, GAL.pole);
-      g.uniform3fv(progBg.u.uCore, GAL.core);
-      g.uniform3fv(progBg.u.uE1, GAL.e1);
-      g.uniform3fv(progBg.u.uE2, GAL.e2);
-    }
-    g.uniform3fv(progBg.u.uCool, themeState.spaceCool || [0.42, 0.52, 0.72]);
-    g.uniform3fv(progBg.u.uWarm, themeState.spaceWarm || [1.0, 0.86, 0.66]);
+    /* 天空只剩上下渐变 + 颗粒：没有任何随视角变化的结构 */
     g.uniform3fv(progBg.u.uTop, themeState.spaceTop);
     g.uniform3fv(progBg.u.uBottom, themeState.spaceBottom);
-    g.uniform1f(progBg.u.uGlow, themeState.nebula == null ? 1 : themeState.nebula);
     g.uniform1f(progBg.u.uGrain, themeState.grain);
-    /* 暗带参数逐条上传：站内与星表共用同一份定义 */
-    const laneV = new Float32Array(24);
-    const laneW = new Float32Array(12);
-    LANES.forEach((L, i) => {
-      laneV[i * 4] = L.b0; laneV[i * 4 + 1] = L.amp; laneV[i * 4 + 2] = L.k; laneV[i * 4 + 3] = L.ph;
-      laneW[i * 2] = L.w; laneW[i * 2 + 1] = L.d;
-    });
-    g.uniform4fv(progBg.u['uLane[0]'], laneV);
-    g.uniform2fv(progBg.u['uLaneW[0]'], laneW);
-    g.uniform1f(progBg.u.uLaneN, LANES.length);
     g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
 
     /* ── 星点：整张星表一次画完 ── */

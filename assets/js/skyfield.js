@@ -1,26 +1,18 @@
 /* ══════════════════════════════════════════════════════════════════
-   skyfield.js — 点阵星空
+   skyfield.js — 星点星空
 
-   与上一版的根本区别：这里没有噪声。
-   银河带由「确定性的星表 + 参数化的暗带」构成，
-   每一颗光点的坐标、尺寸、亮度、色温、星芒都是可枚举、可复现的。
+   这一版**没有银河带**。
+   上一版用参数化银盘 + 尘埃带去"画"银河，在宽画幅下会摊成几条
+   平滑的白色光带——那是装饰，不是天文。没有真实巡天数据支撑时，
+   任何近似都会在某个视角露出破绽，所以整段移除。
 
-   导出三部分：
-     SHADERS  —— 天空底色 / 星点 / 流星 的 GLSL 源码
-     frame    —— 由机位反推银极、银心、银道基向量
-     catalog  —— 按密度场逐点生成星表（种子固定，结果可复现）
+   现在只有两件事：
+     1. 极暗的天空底色（主题给的上下渐变 + 轻微暗角 + 颗粒）
+     2. 球面上均匀分布、按星等分配尺寸与亮度的星点
+
+   星表是确定性的：坐标、尺寸、亮度、色温都由固定种子生成，
+   可枚举、可复现；不含银河密度场，也没有十字星芒。
    ══════════════════════════════════════════════════════════════════ */
-
-/* ── 暗带（银河尘埃带）─────────────────────────────────────────────
-   每一条都是可读的参数，不是随机噪声：
-     b0  银纬中心（弧度）        amp 沿银道摆动的幅度
-     k   摆动频率                ph  相位
-     w   半宽（弧度）            d   遮挡强度 0–1                       */
-export const LANES = [
-  { b0: 0.003, amp: 0.018, k: 4.6, ph: 0.60, w: 0.0135, d: 0.80 },  /* 主暗带：宽而浅，读作区域而非线条 */
-  { b0: -0.030, amp: 0.016, k: 6.2, ph: 2.40, w: 0.0092, d: 0.62 },
-  { b0: 0.030, amp: 0.014, k: 5.4, ph: 4.10, w: 0.0078, d: 0.54 }
-];
 
 /* 色温配色：蓝白 → 正白 → 暖白 → 橙。索引即 aPack.z */
 export const PALETTE = [
@@ -32,16 +24,9 @@ export const PALETTE = [
   [1.00, 0.78, 0.58]    /* 5 M 橙     */
 ];
 
-/* 银河带在画面中的目标位置（0–1，y 自顶向下） */
-export const LAYOUT = {
-  bandY: 0.165,   /* 站内：亮脊从球体上缘升起，不被球体遮住 */
-  coreX: 0.52,    /* 银心横向位置，与参考图一致 */
-  width: 0.046     /* 亮脊半宽（弧度） */
-};
-
 /* ── 星点 ──────────────────────────────────────────────────────────
-   点扩散函数：锐核 + 宽晕 + 十字星芒。全部在片元里解析求值，
-   任何缩放下都是分辨率无关的锐点。 */
+   点扩散函数：锐核 + 很淡的晕。没有星芒、没有光晕环——
+   肉眼看到的星就是一个点，亮星也只是更大更亮一点。 */
 export const VS_STAR = `
 attribute vec3 aDir;
 attribute vec4 aPack;      /* x 尺寸  y 亮度  z 色温索引  w 随机种子 */
@@ -52,7 +37,6 @@ uniform float uTime;
 uniform float uStars;
 varying float vA;
 varying vec3 vC;
-varying float vSpike;
 
 vec3 palette(float i) {
   if (i < 0.5) return vec3(0.62, 0.76, 1.00);
@@ -75,14 +59,14 @@ void main() {
      不做这一步，缓慢自转时整片星会「沙沙闪」。 */
   float boost = 1.0;
   if (px < 2.0) {
-    boost = max(px * px, 0.04) * 0.25;
+    /* 亚像素星的能量摊到 2×2 上，按面积折算；
+       0.06 的下限避免最暗的一批彻底消失 */
+    boost = max(px * px, 0.06) * 0.35;
     px = 2.0;
   }
-  /* 有星芒的星把精灵放大一点，否则芒线只能画在几像素里，等于没有 */
-  vSpike = aPack.x > 3.6 ? 1.0 : 0.0;
-  gl_PointSize = px * (vSpike > 0.5 ? 1.75 : 1.0);
+  gl_PointSize = px;
 
-  /* 闪烁只给亮星，幅度极小 */
+  /* 闪烁只给亮星，幅度极小（大气 scintillation，不是装饰） */
   float tw = 0.96 + 0.04 * sin(uTime * 0.85 + seed * 6.283);
   vA = uStars * aPack.y * boost * tw;
   vC = palette(aPack.z);
@@ -92,31 +76,22 @@ export const FS_STAR = `
 precision mediump float;
 varying float vA;
 varying vec3 vC;
-varying float vSpike;
 void main() {
   vec2 d = gl_PointCoord - 0.5;
   float r = length(d) * 2.0;
   if (r > 1.0) discard;
 
-  /* 点扩散函数：高斯核 + 宽晕 */
+  /* 高斯核 + 12% 的宽晕。晕再大就会在暗底上摊成灰斑 */
   float core = exp(-r * r * 18.0);
-  float halo = exp(-r * r * 3.4) * 0.16;
+  float halo = exp(-r * r * 3.8) * 0.12;
   float a = (core + halo) * vA;
-
-  /* 亮星的四芒：望远镜点扩散函数被副镜支架切出来的衍射，真实星空照片里最典型的细节。
-     芒线只在精灵中心附近有肉，越往外越细，到边缘正好收干净。 */
-  if (vSpike > 0.5) {
-    float sx = pow(max(0.0, 1.0 - abs(d.x) * 4.2), 2.6);
-    float sy = pow(max(0.0, 1.0 - abs(d.y) * 4.2), 2.6);
-    a += (sx + sy) * (1.0 - r * 0.85) * 0.34 * vA;
-  }
 
   gl_FragColor = vec4(vC * a, a);
 }`;
 
 /* ── 天空底色 ──────────────────────────────────────────────────────
-   没有任何噪声：底色 + 银道辉光 + 参数化暗带 + 暗角 + 抖动。
-   辉光是干净的连续场，结构全部来自星点密度与暗带。 */
+   只有上下渐变、暗角与颗粒。没有任何方向性结构，
+   所以无论怎么转、怎么缩放，都不会出现"光带"。 */
 export const VS_QUAD = `
 attribute vec2 aP;
 varying vec2 vP;
@@ -127,24 +102,9 @@ void main() {
 
 export const FS_SKY = `
 precision highp float;
-uniform vec3 uRight;
-uniform vec3 uUp;
-uniform vec3 uFwd;
-uniform float uTanHalf;
-uniform float uAspect;
-uniform vec3 uPole;
-uniform vec3 uCore;
-uniform vec3 uE1;
-uniform vec3 uE2;
-uniform vec3 uCool;
-uniform vec3 uWarm;
 uniform vec3 uTop;
 uniform vec3 uBottom;
-uniform float uGlow;
 uniform float uGrain;
-uniform vec4 uLane[6];     /* b0, amp, k, ph */
-uniform vec2 uLaneW[6];    /* 半宽, 强度  */
-uniform float uLaneN;
 varying vec2 vP;
 
 float hash(vec2 p) {
@@ -154,75 +114,20 @@ float hash(vec2 p) {
 }
 
 void main() {
-  vec2 ndc = vP * 2.0 - 1.0;
-  vec3 dir = normalize(uRight * (ndc.x * uTanHalf * uAspect) + uUp * (ndc.y * uTanHalf) + uFwd);
+  vec3 col = mix(uBottom, uTop, smoothstep(0.0, 1.0, vP.y));
 
-  float b = dot(dir, uPole);
-  float l = atan(dot(dir, uE2), dot(dir, uE1));
-
-  /* 核球：只占 ±8°，是整条银河里唯一偏暖的一段。
-     旧版用 pow(·,22) 又有 0.7 的权重铺满整条带，于是整条银河成了土黄色。 */
-  float bulge = pow(max(dot(dir, uCore), 0.0), 64.0);
-  /* 银盘的视角厚度：核球附近更厚（核球本身是个椭球），盘区薄 */
-  float width = 0.038 + 0.030 * bulge;
-
-  /* 沿银道的亮度包络：两端渐隐，中间最亮 */
-  float env = 0.26 + 0.74 * exp(-pow(abs(l) / 1.62, 3.0));
-  float spine = exp(-pow(abs(b) / width, 2.0));
-  float halo = exp(-pow(abs(b) / (width * 2.8), 2.0));
-
-  float clump = 0.64 + 0.26 * sin(3.1 * l + 9.0 * b)
-                     + 0.17 * sin(6.9 * l - 15.0 * b + 1.7)
-                     + 0.11 * sin(13.0 * l + 26.0 * b + 3.1);
-  clump = max(0.18, clump);
-
-  /* 亮脊细而亮、外晕宽而淡，两者比例决定它像不像一条"带子"，
-     而不是一团摊开的雾。 */
-  float d = (0.034 + 0.86 * spine + 0.22 * halo) * env * clump * (1.0 + 0.30 * bulge) * 0.50;
-
-  /* 暗带：中心线沿银经起伏，宽度内实心、边缘在 0.45–1.0 之间收住，
-     强度再沿银经呼吸一次，避免出现几条等宽的直线。 */
-  for (int i = 0; i < 6; i++) {
-    if (float(i) >= uLaneN) break;
-    float k = uLane[i].z;
-    float bc = uLane[i].x + uLane[i].y * sin(k * (l - uLane[i].w));
-    float t = abs(b - bc) / uLaneW[i].x;
-    float laneCore = smoothstep(1.0, 0.55, t);
-    /* 沿银经的「呼吸」会归零，于是每条暗带自然断成数段——
-       真实的尘埃带是断续的，而不是一条通到底的缎带。 */
-    float g = sin(k * 0.63 * l + uLane[i].w * 1.7) * 0.5 + 0.5;
-    float breathe = pow(g, 2.1) * 1.25;
-    d *= 1.0 - uLaneW[i].y * breathe * laneCore;
-  }
-
-  /* ── 色温 ──
-     银盘是 6000~7000K 的白蓝（积分星光），只有核球因为老年星密集才是 4000K 的暖黄。
-     取物理基色，再掺一点主题色（uCool/uWarm）让三套主题各留一点性格，
-     但掺量只有 22%——主题色不该改写天体的颜色。 */
-  vec3 diskCol  = mix(vec3(0.88, 0.92, 1.00), uCool,  0.22);
-  vec3 bulgeCol = mix(vec3(1.00, 0.90, 0.72), uWarm,  0.22);
-  vec3 tint = mix(diskCol, bulgeCol, clamp(bulge * 0.95, 0.0, 1.0));
-
-  /* 尘埃不仅遮光，还会让背后的星光偏红（选择性消光）：
-     暗带最强的位置把色相往暖里推一点点，这是"可信"的细节 */
-  float dust = clamp(1.0 - d / max(1e-4, (0.026 + 0.95 * spine) * env * 0.50), 0.0, 1.0);
-  tint *= mix(vec3(1.0), vec3(1.00, 0.94, 0.86), dust * 0.5);
-
-  vec3 col = tint * d * uGlow;
-  col += mix(uBottom, uTop, smoothstep(0.0, 1.0, vP.y));
-
-  /* 暗角：让四角沉下去，画面才有"镜头"而不是"贴图" */
+  /* 很轻的暗角：镜头感，而不是把四角压死 */
   float dd = distance(vP, vec2(0.5)) / 0.82;
-  col *= pow(clamp(1.0 - dd * dd * 0.34, 0.0, 1.0), 0.9);
+  col *= pow(clamp(1.0 - dd * dd * 0.24, 0.0, 1.0), 0.9);
 
+  /* 颗粒只为打散 8bit 渐变，幅度约 3 个色阶 */
   col += (hash(vP * 2048.0) - 0.5) * uGrain;
   gl_FragColor = vec4(max(col, 0.0), 1.0);
 }`;
 
 /* ── 流星 ──────────────────────────────────────────────────────────
    轨迹是一条二次贝塞尔曲线；每颗粒子带一个 trail 参数 s。
-   头部 s=0，尾巴 s=1。位置、尺寸、亮度全部由 s 决定，
-   所以「头 → 尾」的形态过渡、亮度衰减是连续的，不是色块。 */
+   头部 s=0，尾巴 s=1。位置、尺寸、亮度全部由 s 决定。 */
 export const VS_METEOR = `
 attribute vec3 aM;           /* x trail 参数  y 横向偏移  z 种子 */
 uniform vec2 uP0;
@@ -297,65 +202,10 @@ void main() {
 }`;
 
 /* ══════════════════════════════════════════════════════════════════
-   机位 → 银道坐标系
-   给定相机基向量与「银道亮脊应落在画面的哪个高度」，
-   反推出银极方向，使银道在屏幕上呈水平。
-   ══════════════════════════════════════════════════════════════════ */
-const nrm = v => { const n = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / n, v[1] / n, v[2] / n]; };
-const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-const crs = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-
-export function cameraBasis(yaw, pitch) {
-  const cp = Math.cos(pitch), sp = Math.sin(pitch);
-  const e = [cp * Math.sin(yaw), sp, cp * Math.cos(yaw)];
-  const fwd = nrm([-e[0], -e[1], -e[2]]);
-  const right = nrm([fwd[1], -fwd[0], 0]);
-  const up = crs(right, fwd);
-  return { fwd, right, up };
-}
-
-export function frame({ yaw, pitch, bandY, coreX, aspect, tanHalf }) {
-  const B = cameraBasis(yaw, pitch);
-  const { fwd, right, up } = B;
-
-  /* 亮脊在屏幕上的落点 → 该方向的单位向量 */
-  const ndcY = 1 - 2 * bandY;
-  const nearDir = nrm([
-    fwd[0] + up[0] * (ndcY * tanHalf) * 1.0,
-    fwd[1] + up[1] * (ndcY * tanHalf) * 1.0,
-    fwd[2] + up[2] * (ndcY * tanHalf) * 1.0
-  ]);
-
-  /* 银极：同时垂直于「屏幕右方向」与「亮脊方向」→ 银道在屏上呈水平 */
-  const pole = nrm(crs(right, nearDir));
-
-  /* 银心：画面 (coreX, bandY) 处，再投影回银道面 */
-  const ndcX = 2 * coreX - 1;
-  const cd = [
-    fwd[0] + right[0] * (ndcX * tanHalf * aspect) + up[0] * (ndcY * tanHalf),
-    fwd[1] + right[1] * (ndcX * tanHalf * aspect) + up[1] * (ndcY * tanHalf),
-    fwd[2] + right[2] * (ndcX * tanHalf * aspect) + up[2] * (ndcY * tanHalf)
-  ];
-  const core = nrm([0, 1, 2].map(i => cd[i] - pole[i] * dot3(cd, pole)));
-
-  /* 银经零点对准银心：亮度包络 exp(-(l/L)³) 才会在 coreX 处达到峰值，
-     否则最亮的一段会漂到画面边缘。 */
-  const e1 = core;
-  const e2 = nrm(crs(pole, e1));
-
-  return { fwd, right, up, pole, core, e1, e2 };
-}
-
-/* ══════════════════════════════════════════════════════════════════
    星表
-   密度场与天空着色器里的完全同构，因此光点分布与辉光严丝合缝。
-   采用拒绝采样：先在球面上取均匀方向，再按密度接收。
+   球面均匀采样（阿基米德螺旋的球面版本），
+   再按星等分布决定尺寸与亮度。没有银河密度场。
    ══════════════════════════════════════════════════════════════════ */
-
-function smoothstep(a, b, x) {
-  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
-  return t * t * (3 - 2 * t);
-}
 
 function mulberry32(a) {
   return function () {
@@ -366,111 +216,36 @@ function mulberry32(a) {
   };
 }
 
-/* 银盘剖面：底色 + 窄亮脊 + 宽晕，三者相加后乘 cos(b) 得每单位立体角的密度。
-   数值必须和 FS_SKY 里的 (0.026 + 0.95*spine + 0.20*halo) 一致，
-   否则星点会浮在辉光外面。 */
-const BASE = 0.034;
-const SPINE_A = 0.86, SPINE_W = 0.038;
-const HALO_A = 0.22, HALO_W = 0.108;
-const LONG_W = 1.62;
-const CORE_BOOST = 1.15;
-const PROFILE_MAX = BASE + SPINE_A + HALO_A;   /* b = 0 处 */
-
-function profileOf(sb) {
-  const t1 = sb / SPINE_W, t2 = sb / HALO_W;
-  return (BASE + SPINE_A * Math.exp(-(t1 * t1)) + HALO_A * Math.exp(-(t2 * t2)));
-}
-
 /**
  * @returns {{ dir: Float32Array, pack: Float32Array, count: number }}
  *   dir  —— 每颗星的世界方向（单位向量）
  *   pack —— (尺寸, 亮度, 色温索引, 种子)
- *
- * 采样在「银纬 / 银经」角度空间里做，而不是在球面上做拒绝采样：
- * 前者每次尝试只要几次乘法和两个 exp，二十万颗星约 60ms；
- * 后者要反复采样整球，同样的数量级要 1.5s 以上。
  */
-export function catalog({ count, pole, core, e1, e2, seed = 20261112 }) {
+export function catalog({ count, seed = 20261112 }) {
   const rnd = mulberry32(seed);
-
   const dir = new Float32Array(count * 3);
   const pack = new Float32Array(count * 4);
 
-  /* 银道面内的正交基：任取一个与银极不平行的方向即可 */
-  const ax = Math.abs(pole[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
-  let u = [
-    pole[1] * ax[2] - pole[2] * ax[1],
-    pole[2] * ax[0] - pole[0] * ax[2],
-    pole[0] * ax[1] - pole[1] * ax[0]
-  ];
-  let n = Math.hypot(u[0], u[1], u[2]) || 1;
-  u = [u[0] / n, u[1] / n, u[2] / n];
-  const v = [
-    pole[1] * u[2] - pole[2] * u[1],
-    pole[2] * u[0] - pole[0] * u[2],
-    pole[0] * u[1] - pole[1] * u[0]
-  ];
+  for (let i = 0; i < count; i++) {
+    /* 球面均匀：z 均匀，经度均匀 */
+    const z = rnd() * 2 - 1;
+    const phi = rnd() * Math.PI * 2;
+    const r = Math.sqrt(Math.max(0, 1 - z * z));
+    const x = r * Math.cos(phi);
+    const y = z;
+    const zz = r * Math.sin(phi);
 
-  let i = 0, guard = 0, cap = count * 40;
-  while (i < count && guard < cap) {
-    guard++;
+    dir[i * 3] = x;
+    dir[i * 3 + 1] = y;
+    dir[i * 3 + 2] = zz;
 
-    /* 银纬：按剖面拒绝采样。cos(beta) 让每单位立体角的密度正确 */
-    let beta = 0, sb = 0, ok = false;
-    for (let k = 0; k < 24; k++) {
-      beta = (rnd() * 2 - 1) * 1.5;
-      sb = Math.abs(Math.sin(beta));
-      if (rnd() * PROFILE_MAX <= profileOf(sb) * Math.cos(beta)) { ok = true; break; }
-    }
-    if (!ok) continue;
-
-    /* 银经：均匀取样，再按亮度包络与暗带遮挡筛选 */
-    const l = (rnd() * 2 - 1) * Math.PI;
-    const al = Math.abs(l) / LONG_W;
-    const env = 0.26 + 0.74 * Math.exp(-(al * al * al));
-    if (rnd() > env) continue;
-
-    /* 谐波团块：三组正弦叠加，确定性、可参数化，用来打破完美对称 */
-    const bb0 = Math.sign(beta) * sb;
-    let clump = 0.64 + 0.26 * Math.sin(3.1 * l + 9.0 * bb0)
-                     + 0.17 * Math.sin(6.9 * l - 15.0 * bb0 + 1.7)
-                     + 0.11 * Math.sin(13.0 * l + 26.0 * bb0 + 3.1);
-    clump = Math.max(0.18, clump);
-    if (rnd() > clump) continue;
-
-    let keep = 1;
-    const bb = Math.sign(beta) * sb;
-    for (let q = 0; q < LANES.length; q++) {
-      const L = LANES[q];
-      const bc = L.b0 + L.amp * Math.sin(L.k * (l - L.ph));
-      const t = Math.abs(bb - bc) / L.w;
-      const core = 1 - smoothstep(0.55, 1.0, t);
-      const g = Math.sin(L.k * 0.63 * l + L.ph * 1.7) * 0.5 + 0.5;
-      const breathe = Math.pow(g, 2.1) * 1.25;
-      keep *= 1 - L.d * breathe * core;
-    }
-    if (rnd() > keep) continue;
-
-    const cb = Math.cos(beta), sbb = Math.sin(beta);
-    const cl = Math.cos(l), sl = Math.sin(l);
-    dir[i * 3] = pole[0] * sbb + (u[0] * cl + v[0] * sl) * cb;
-    dir[i * 3 + 1] = pole[1] * sbb + (u[1] * cl + v[1] * sl) * cb;
-    dir[i * 3 + 2] = pole[2] * sbb + (u[2] * cl + v[2] * sl) * cb;
-
-    const x = dir[i * 3], y = dir[i * 3 + 1], z = dir[i * 3 + 2];
-    const c0 = Math.max(0, x * core[0] + y * core[1] + z * core[2]);
-    const coreF = Math.pow(c0, 8);
-
-    /* 星等：四级幂律。亮星只占 0.2%，但体积与亮度都远高于暗星 */
+    /* 星等：四级幂律。亮星只占 0.15%，但尺寸与亮度都远高于暗星 */
     const m = rnd();
     let size, bright;
-    if (m < 0.0020) { size = 5.2 + rnd() * 6.0; bright = 1.00; }
-    else if (m < 0.0380) { size = 2.0 + rnd() * 2.1; bright = 0.86; }
-    else if (m < 0.2400) { size = 1.15 + rnd() * 0.85; bright = 0.62; }
-    else { size = 0.66 + Math.pow(rnd(), 1.9) * 0.80; bright = 0.30 + rnd() * 0.26; }
-
-    /* 银心附近整体更亮：密度靠采样，亮度靠这一步 */
-    bright *= 1 + 0.45 * coreF;
+    if (m < 0.0015) { size = 4.2 + rnd() * 3.4; bright = 1.00; }
+    else if (m < 0.0300) { size = 1.9 + rnd() * 1.7; bright = 0.86; }
+    else if (m < 0.2200) { size = 1.05 + rnd() * 0.70; bright = 0.66; }
+    else { size = 0.70 + Math.pow(rnd(), 1.9) * 0.70; bright = 0.40 + rnd() * 0.28; }
 
     /* 色温：绝大部分是白/暖白，蓝白与橙是少数 */
     const cq = rnd();
@@ -486,10 +261,9 @@ export function catalog({ count, pole, core, e1, e2, seed = 20261112 }) {
     pack[i * 4 + 1] = bright;
     pack[i * 4 + 2] = ci;
     pack[i * 4 + 3] = rnd();
-    i++;
   }
 
-  return { dir, pack, count: i };
+  return { dir, pack, count };
 }
 
 /* ── 流星参数：单颗流星的完整生命曲线 ────────────────────────────── */

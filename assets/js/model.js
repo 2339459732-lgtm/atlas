@@ -35,6 +35,13 @@ export const LIMITS = {
 };
 
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{2,63}$/;
+
+/* 可按字段合并的元数据。lat/lng 合成一个 geo 单元，
+   避免出现"纬度来自 A、经度来自 B"的错位组合。 */
+export const ALBUM_MT_FIELDS = [
+  'name', 'nameEn', 'coord', 'date', 'note', 'memoir',
+  'accent', 'coverId', 'geo', 'keyHash'
+];
 const HEX6 = /^#[0-9a-fA-F]{6}$/;
 const SHA256 = /^[0-9a-fA-F]{64}$/;
 const REMOTE_RE = /^users\/[A-Za-z0-9_-]{2,64}\/photos\/[A-Za-z0-9_-]{3,80}\.jpg$/;
@@ -98,6 +105,17 @@ export function fmtCoord(lat, lng) {
   return `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lng).toFixed(2)}°${lng >= 0 ? 'E' : 'W'}`;
 }
 
+/* 字段修改时间表：{ name: 1700000000000, note: … } */
+function normalizeMt(raw) {
+  if (!raw || typeof raw !== 'object') return {};
+  const out = {};
+  for (const f of ALBUM_MT_FIELDS) {
+    const t = int(raw[f], 0, 4e12, 0);
+    if (t) out[f] = t;
+  }
+  return out;
+}
+
 /* ── 手记 ── */
 export function normalizeMemoir(raw) {
   if (!raw || typeof raw !== 'object') return null;
@@ -134,6 +152,8 @@ export function normalizeAlbum(raw, opts = {}) {
     lng: geo ? geo.lng : null,
     keyHash: SHA256.test(raw.keyHash || '') ? String(raw.keyHash).toLowerCase() : '',
     createdAt: int(raw.createdAt, 0, 4e12),
+    /* 每个字段最后被改的时间，用于"两个人改了不同字段"时的合并 */
+    mt: normalizeMt(raw.mt),
     rev: int(raw.rev, 0, 1e9),
     at: int(raw.at, 0, 4e12),
     deleted: raw.deleted === true
@@ -250,7 +270,78 @@ export function pickNewer(local, remote) {
   if (lr !== rr) return lr > rr ? local : remote;
   const la = local.at | 0, ra = remote.at | 0;
   if (la !== ra) return la > ra ? local : remote;
-  return local;
+  /* rev/at 完全相同但内容不同：用序列化结果做确定性选择，
+     否则两台设备都会保留自己那份，永远合不到一起。 */
+  const ls = JSON.stringify(local), rs = JSON.stringify(remote);
+  if (ls === rs) return local;
+  return ls < rs ? local : remote;
+}
+
+/**
+ * 地标合并：先按整条记录选基准（rev → at → 内容哈希），
+ * 再逐字段用 mt 覆盖——A 改了名字、B 改了手记，两边都能留住。
+ */
+export function mergeAlbums(local, remote) {
+  if (!local) return remote;
+  if (!remote) return local;
+  if (local.deleted !== remote.deleted) return local.deleted ? local : remote;
+
+  const base = pickNewer(local, remote);
+  const other = base === local ? remote : local;
+  if (!other) return base;
+
+  const out = { ...base };
+  const mt = { ...(base.mt || {}) };
+  const baseMt = base.mt || {};
+  const otherMt = other.mt || {};
+
+  const take = (key, field) => {
+    const to = otherMt[key] | 0;
+    const tb = baseMt[key] | 0;
+    if (to > tb) {
+      out[field] = other[field];
+      mt[key] = to;
+      return true;
+    }
+    return false;
+  };
+
+  ['name', 'nameEn', 'coord', 'date', 'note', 'memoir', 'accent', 'coverId', 'keyHash']
+    .forEach(f => take(f, f));
+
+  /* 经纬度作为整体替换，避免一半新一半旧 */
+  if ((otherMt.geo | 0) > (baseMt.geo | 0)) {
+    out.lat = other.lat;
+    out.lng = other.lng;
+    mt.geo = otherMt.geo;
+  }
+
+  out.mt = mt;
+  out.rev = Math.max(local.rev | 0, remote.rev | 0);
+  out.at = Math.max(local.at | 0, remote.at | 0);
+  return out;
+}
+
+/* 只比"内容字段"，用来判断合并后的记录是否与云端行不同（需要回推） */
+const CONTENT_FIELDS = ['name', 'nameEn', 'coord', 'date', 'note', 'memoir', 'accent', 'coverId', 'lat', 'lng', 'keyHash'];
+
+export function sameAlbumContent(a, b) {
+  if (!a || !b) return false;
+  return CONTENT_FIELDS.every(f => JSON.stringify(a[f] ?? null) === JSON.stringify(b[f] ?? null));
+}
+
+export function mergeAlbumCollections(local, remote) {
+  const map = new Map((local || []).map(x => [x.id, x]));
+  const conflicts = [];
+  for (const r of remote || []) {
+    if (!r || !isId(r.id)) continue;
+    const l = map.get(r.id);
+    if (!l) { map.set(r.id, r); continue; }
+    const win = mergeAlbums(l, r);
+    if (win !== l) conflicts.push({ id: r.id, kept: 'merged' });
+    map.set(r.id, win);
+  }
+  return { items: [...map.values()], conflicts };
 }
 
 export function mergeCollections(local, remote) {
@@ -298,7 +389,9 @@ export function albumToRow(a) {
     payload: {
       name: a.name, nameEn: a.nameEn, coord: a.coord, date: a.date,
       note: a.note, memoir: a.memoir, accent: a.accent, coverId: a.coverId,
-      lat: a.lat, lng: a.lng, keyHash: a.keyHash, createdAt: a.createdAt
+      lat: a.lat, lng: a.lng, keyHash: a.keyHash, createdAt: a.createdAt,
+      /* 字段时钟随 payload 走：换设备后才能做字段级合并 */
+      mt: a.mt && Object.keys(a.mt).length ? a.mt : undefined
     },
     rev: a.rev | 0,
     deleted: a.deleted === true
