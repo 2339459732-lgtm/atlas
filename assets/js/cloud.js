@@ -89,7 +89,9 @@ export async function signInCloud() {
   if (!client) return false;
   const back = new URL(location.href);
   back.pathname = new URL('.', location.href).pathname;
-  back.search = '';
+  /* 只去掉 OAuth 自己的参数，保留 sharecode 等站点参数：
+     应用域名靠 sharecode 放行，回调若丢它会 403。 */
+  ['code', 'state', 'provider', 'error', 'error_description'].forEach(k => back.searchParams.delete(k));
   back.hash = '';
   const { data, error } = await client.auth.signInWithOAuth({ provider: 'workbuddy', redirectTo: back.toString() });
   if (error) throw error;
