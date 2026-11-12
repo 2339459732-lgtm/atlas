@@ -524,3 +524,37 @@ ALTER TABLE atlas_photos ADD COLUMN rev BIGINT NOT NULL DEFAULT 0,
 登录/首登拉取/昵称上云 ✓ · 冲突 LWW（云 rev9 胜本地 rev1）✓
 · 断网重试恢复 ✓ · SDK 缺失降级 ✓ · 联想+点选往返+坐标入库 ✓
 · 375px 面板无溢出 ✓。真实邮件验证码链路待用户在应用域名实测。
+
+## 15 太阳系图集整合（Atlas of Space · Apache-2.0）
+
+### 15.1 可行性
+
+- 上游 gordonhart/atlasof.space：Apache-2.0、纯静态 SPA（Vite+React+
+  Three.js）、主题全 CSS 变量驱动（--sx-accent 等）、图层状态走 ?layers=。
+- 结论：自托管 + 同源 iframe 是最优解（隔离 + 可注入样式/DOM + 状态常驻）。
+
+### 15.2 落地
+
+- vendor：ref/vendor-solar.sh（content-type 白名单 + 15MB/文件上限）
+  镜像外壳（solar/）+ 行星 2k/4k/8k + 太阳 AIA 九波段 + 土星环 +
+  卫星纹理（含 hd）+ 星表/银河 8k/88 星座描绘图（按 catalog art 字段
+  的真实文件名，缩写名是坑）+ 地球模块数据 + 字体；合计约 230MB。
+- 集成（main.js initSolarIntegration）：头部「地球|太阳系」分段切换 +
+  移动端菜单入口；enterSolar 首次进入才建 iframe（懒加载），
+  「HTML load ≠ 挂载完成」→ 轮询 #root 子节点再收加载层；
+  exitSolar 只隐藏不销毁（状态保持）；进入停地球（stop）与音乐、
+  返回恢复；?mode=solar 深链接 + ?solar-layers= 透传；sessionStorage 记忆。
+- 品牌：同源注入样式表（html:root + !important 映射 --sx-accent/--node/
+  --accent-yellow/--sx-cool → 品牌金 #C9A96A；挂 body 末尾压过其 <link>）；
+  父页面悬浮条：返回按钮（让开其 40px 顶栏）+「ATLAS × Atlas of Space」署名。
+- 性能/缓存：_headers 新增 /fonts immutable、/solar/assets 7d、
+  纹理目录 14d；首屏零额外请求。
+- 许可：solar/LICENSE（Apache-2.0 全文）+ solar/ATTRIBUTION.md（素材署名）。
+
+### 15.3 验收
+
+- 切换往返：地球 running false→true、iframe 同实例、挂载 canvas 正常、
+  --sx-accent 计算值 #C9A96A、加载层按时收起 ✓
+- 深链接 ?mode=solar&solar-layers=… 直达且透传 ✓；390px 菜单入口 ✓
+- 剩余 404 仅三处且属预期：/api/orbits（上游后端依赖）、
+  /sky/tiles 与 /sky/dso-img 的 manifest（Tier-2 未镜像，见 SOLAR_INTEGRATION.md）。

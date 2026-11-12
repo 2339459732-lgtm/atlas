@@ -85,6 +85,11 @@ try {
     <a href="#planet" data-nav="planet" data-i18n="nav.planet">地球</a>
   </nav>
 
+  <div class="modes" id="modes" role="tablist" aria-label="视图切换">
+    <button type="button" class="modes__btn" id="mode-planet" data-mode="planet" role="tab" aria-selected="true" data-i18n="nav.globe">地球</button>
+    <button type="button" class="modes__btn" id="mode-solar" data-mode="solar" role="tab" aria-selected="false" data-i18n="nav.solar">太阳系</button>
+  </div>
+
   <div class="nav__end">
     <button type="button" class="search-btn" id="palette-btn" aria-label="搜索与命令">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.2"/><path d="M15.4 15.4L20 20" stroke-linecap="round"/></svg>
@@ -144,6 +149,7 @@ try {
       </button>
       <div class="menu__pop" id="menu-pop" role="menu" hidden>
         <button type="button" role="menuitem" data-act="new"><span data-i18n="menu.new">新建地标</span><kbd>N</kbd></button>
+        <button type="button" role="menuitem" data-act="solar"><span data-i18n="menu.solar">太阳系图集</span></button>
         <button type="button" role="menuitem" data-act="settings"><span data-i18n="menu.settings">站点设置</span><kbd>S</kbd></button>
         <button type="button" role="menuitem" data-act="export"><span data-i18n="menu.export">导出作品集</span><kbd>E</kbd></button>
         <button type="button" role="menuitem" data-act="theme"><span data-i18n="menu.theme">切换主题</span><em id="menu-theme-name">墨夜</em></button>
@@ -377,6 +383,29 @@ try {
   </section>
 
 </main>
+
+<!-- ══════════ 太阳系图集（Atlas of Space · Apache-2.0，自托管子应用） ══════════ -->
+<section class="solar" id="solar-view" hidden aria-label="太阳系图集" data-i18n-aria="nav.solar">
+  <div class="solar__loading" id="solar-loading" hidden>
+    <span class="solar__ring" aria-hidden="true"></span>
+    <p data-i18n="solar.loading">正在打开太阳系图集…</p>
+  </div>
+  <iframe class="solar__frame" id="solar-frame" title="Atlas of Space"
+          allow="fullscreen" loading="lazy"
+          referrerpolicy="strict-origin-when-cross-origin"></iframe>
+  <div class="solar__bar">
+    <button type="button" class="solar__back" id="solar-back" data-i18n="solar.back">返回地球</button>
+    <span class="solar__brand" aria-hidden="true">
+      <svg viewBox="0 0 64 64" fill="none" aria-hidden="true">
+        <circle cx="32" cy="33" r="20.5" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M32 13L14.9 46.4M32 13L49.1 46.4" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>
+        <path d="M23.2 32.4H40.8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M32 7.9C32.55 9.85 33.05 10.35 35 10.9C33.05 11.45 32.55 11.95 32 13.9C31.45 11.95 30.95 11.45 29 10.9C30.95 10.35 31.45 9.85 32 7.9Z" fill="var(--brand)"/>
+      </svg>
+      ATLAS<i>× Atlas of Space</i>
+    </span>
+  </div>
+</section>
 
 <!-- ══════════ 页脚 ══════════ -->
 <footer class="colophon" id="colophon">

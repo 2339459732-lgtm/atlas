@@ -1,0 +1,166 @@
+{
+  "album": "The Arrow of Time: Soundtrack to Timelapse of the Future",
+  "artist": "melodysheep",
+  "year": 2019,
+  "license": "Attribution Non Commercial Share Alike",
+  "source": "https://melodysheep.bandcamp.com/album/the-arrow-of-time-soundtrack-to-timelapse-of-the-future",
+  "neteaseAlbum": "https://music.163.com/#/album?id=78242870",
+  "neteaseAlbumId": 78242870,
+  "defaultSource": "netease",
+  "tracks": [
+    {
+      "id": "01-sun-mother",
+      "title": "Sun Mother",
+      "order": 1,
+      "duration": 216,
+      "file": "/audio/music/01-sun-mother.mp3",
+      "netease": 1355146597,
+      "bandcamp": "https://melodysheep.bandcamp.com/track/sun-mother",
+      "stream": "https://t4.bcbits.com/stream/8f36cb3d1f3ae52417472eead2eec50a/mp3-128/3249558239?p=0&ts=1790065558&t=3a0eec048512c738405f91e6ed3d3bd9892c29cd&token=1790065558_40d8028bca41941730507405418fe711307ce172",
+      "userFile": false
+    },
+    {
+      "id": "02-the-somnium",
+      "title": "The Somnium",
+      "order": 2,
+      "duration": 330,
+      "file": "/audio/music/02-the-somnium.mp3",
+      "netease": 1355146598,
+      "bandcamp": "https://melodysheep.bandcamp.com/track/the-somnium",
+      "stream": "https://t4.bcbits.com/stream/03319a15cf46208d20fb4cd8c53ff466/mp3-128/1265401729?p=0&ts=1790065558&t=9ea21d6ad989e96852d8c6e6ce5bf2eb3931486a&token=1790065558_41af4c387d33b254441e55dc48cc599b392b8145",
+      "userFile": false
+    },
+    {
+      "id": "ether",
+      "title": "Ether",
+      "order": 3,
+      "duration": 115,
+      "file": "/audio/music/ether.flac",
+      "netease": 1355147161,
+      "bandcamp": "https://melodysheep.bandcamp.com/track/ether",
+      "stream": "https://t4.bcbits.com/stream/93a1ac4bd95534272719e3e0c1524348/mp3-128/1747291821?p=0&ts=1790065558&t=ab2ac58bfecd44423bb0767d4820cadd0a3f546b&token=1790065558_1b88e1f7ce8ad9e277ad81c19bb9e5cb61fad907",
+      "userFile": true
+    },
+    {
+      "id": "04-wither-away",
+      "title": "Wither Away",
+      "order": 4,
+      "duration": 59,
+      "file": "/audio/music/04-wither-away.mp3",
+      "netease": 1355146599,
+      "bandcamp": "https://melodysheep.bandcamp.com/track/wither-away",
+      "stream": "https://t4.bcbits.com/stream/22a4d91d8c10e4e1ab4bfc0b03118f59/mp3-128/1220577555?p=0&ts=1790065558&t=0c8b6bfb53f05341b99f16dba891bec9801034ea&token=1790065558_77ad9cbe7ac7a0a5f9899df6d313039188147dd9",
+      "userFile": false
+    },
+    {
+      "id": "afterlife",
+      "title": "Afterlife",
+      "order": 5,
+      "duration": 51,
+      "file": "/audio/music/afterlife.flac",
+      "netease": 1355147162,
+      "bandcamp": "https://melodysheep.bandcamp.com/track/afterlife-3",
+      "stream": "https://t4.bcbits.com/stream/c2e014530d1a04d45f7b0e2834672de0/mp3-128/1518438348?p=0&ts=1790065558&t=5ac83a88271d4e6f2f4e6b5945b0412b1bc25735&token=1790065558_8562f5476d0ceb2b1b7748bf4be22c49a51c9366",
+      "userFile": true
+    },
+    {
+      "id": "06-mesa",
+      "title": "Mesa",
+      "order": 6,
+      "duration": 72,
+      "file": "/audio/music/06-mesa.mp3",
+      "netease": 1355146600,
+      "bandcamp": "https://melodysheep.bandcamp.com/track/mesa",
+      "stream": "https://t4.bcbits.com/stream/2dea93b1da407de3629fe0947e7178d0/mp3-128/2560820854?p=0&ts=1790065558&t=32b23d30a6ba7c21f43b122170b72f83b1d1242e&token=1790065558_4a8ea4b14b75e456413634a81556e7bffa5a956a",
+      "userFile": false
+    },
+    {
+      "id": "07-subterranean",
+      "title": "Subterranean",
+      "order": 7,
+      "duration": 103,
+      "file": "/audio/music/07-subterranean.mp3",
+      "netease": 1355147163,
+      "bandcamp": "https://melodysheep.bandcamp.com/track/subterranean",
+      "stream": "https://t4.bcbits.com/stream/0a166389fa431ff4a5eb476ebb99e965/mp3-128/4156399266?p=0&ts=1790065558&t=e59802300f2f107e06b3544eb1ea572b021df8fb&token=1790065558_074280dd1032b01b07819d5eca4ec1c28fc7190c",
+      "userFile": false
+    },
+    {
+      "id": "08-the-long-sleep",
+      "title": "The Long Sleep",
+      "order": 8,
+      "duration": 103,
+      "file": "/audio/music/08-the-long-sleep.mp3",
+      "netease": 1355147164,
+      "bandcamp": "https://melodysheep.bandcamp.com/track/the-long-sleep",
+      "stream": "https://t4.bcbits.com/stream/5f3c2ba510cb35ca21b27c54b0172848/mp3-128/938552047?p=0&ts=1790065558&t=e004ae24ec8fb10784164aadb6e7fa22868f0b39&token=1790065558_a988968b4686a02831048fd58f3c4d2cc9bdc95e",
+      "userFile": false
+    },
+    {
+      "id": "09-black-desert",
+      "title": "Black Desert",
+      "order": 9,
+      "duration": 93,
+      "file": "/audio/music/09-black-desert.mp3",
+      "netease": 1355146601,
+      "bandcamp": "https://melodysheep.bandcamp.com/track/black-desert",
+      "stream": "https://t4.bcbits.com/stream/63f751a67093649d8298d78f56d74fc4/mp3-128/782299599?p=0&ts=1790065558&t=e2ca3361cbc169d50236ade3ebf01094145f8c53&token=1790065558_69565056f75912434b7d1d9604a2a8a5ec26a7b7",
+      "userFile": false
+    },
+    {
+      "id": "10-hawking-s-waltz",
+      "title": "Hawking's Waltz",
+      "order": 10,
+      "duration": 75,
+      "file": "/audio/music/10-hawking-s-waltz.mp3",
+      "netease": 1355147165,
+      "bandcamp": "https://melodysheep.bandcamp.com/track/hawkings-waltz",
+      "stream": "https://t4.bcbits.com/stream/2fae8f316ae093378141db7412a27f82/mp3-128/1050520462?p=0&ts=1790065558&t=a8fb306a0ceb86f6616f90a37e410c7da1f56af8&token=1790065558_4151f18e10f82c9f7d48e99b5595e908143daef2",
+      "userFile": false
+    },
+    {
+      "id": "11-oceans-of-time",
+      "title": "Oceans of Time",
+      "order": 11,
+      "duration": 167,
+      "file": "/audio/music/11-oceans-of-time.mp3",
+      "netease": 1355147166,
+      "bandcamp": "https://melodysheep.bandcamp.com/track/oceans-of-time",
+      "stream": "https://t4.bcbits.com/stream/142d71dd7940e857f9e8aa841966d3a2/mp3-128/3378126243?p=0&ts=1790065558&t=b3390034a6abc40c6f56f854077c76c164fb0346&token=1790065558_45208d6788a17e6309344bcbd735a6201533b8ff",
+      "userFile": false
+    },
+    {
+      "id": "12-the-rising-dawn-bellows-like-thunder",
+      "title": "The Rising Dawn Bellows Like Thunder",
+      "order": 12,
+      "duration": 252,
+      "file": "/audio/music/12-the-rising-dawn-bellows-like-thunder.mp3",
+      "netease": 1355146602,
+      "bandcamp": "https://melodysheep.bandcamp.com/track/the-rising-dawn-bellows-like-thunder",
+      "stream": "https://t4.bcbits.com/stream/7fa6715c3ea6a70b246cef21cce953bf/mp3-128/2591896022?p=0&ts=1790065558&t=cd895223eb8a06b312eb47a70eb9e68ae3a4414b&token=1790065558_4a90d7a11dced9a081832e72c9c7ebe192e50358",
+      "userFile": false
+    },
+    {
+      "id": "13-city-of-ghosts",
+      "title": "City of Ghosts",
+      "order": 13,
+      "duration": 92,
+      "file": "/audio/music/13-city-of-ghosts.mp3",
+      "netease": 1355147167,
+      "bandcamp": "https://melodysheep.bandcamp.com/track/city-of-ghosts",
+      "stream": "https://t4.bcbits.com/stream/eb215c8dcd1b01ecea2d56d729ed2360/mp3-128/1504022075?p=0&ts=1790065558&t=1677456696df10a1e1286563c0b1ab9f5c82e1dc&token=1790065558_f5f8fb4f905b36b7d1bc0ed7529105a680c6b828",
+      "userFile": false
+    },
+    {
+      "id": "14-passage-bonus-track",
+      "title": "Passage (Bonus Track)",
+      "order": 14,
+      "duration": 165,
+      "file": "/audio/music/14-passage-bonus-track.mp3",
+      "netease": 1355146603,
+      "bandcamp": "https://melodysheep.bandcamp.com/track/passage-bonus-track",
+      "stream": "https://t4.bcbits.com/stream/82d49585556afdab6973e1ff93b3aeb4/mp3-128/773983463?p=0&ts=1790065558&t=b676c525a52a97d65c54b0b2b73e9a1b3d9b3e0c&token=1790065558_18e6d2e17d41123d4a665e796e77328251eb6518",
+      "userFile": false
+    }
+  ]
+}

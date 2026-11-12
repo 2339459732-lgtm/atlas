@@ -162,6 +162,7 @@ main.js（应用编排，唯一修改 state 的地方）
  ├─ nomenclature.js 地名志：区域编号 / 三档露出 / 圈径 / 卡片
  ├─ geo.js      地名 → 坐标（本地地名库 + 线上回退）；25 字介绍生成
  ├─ data/gazetteer.js 世界城市地名库（GeoNames，生成文件，懒加载）
+ ├─ solar/ + planets/ + moons/ + sky/ + data/ 太阳系图集子应用（Atlas of Space · Apache-2.0 自托管）
  ├─ vault.js    SHA-256 校验 / AES-GCM 备份
  ├─ drift.js    首屏微尘
  ├─ audio.js    程序化配乐
@@ -202,6 +203,14 @@ ID 是稳定地址（`/^[A-Z]\d{2}\.[a-z0-9-]+$/`），组序只影响阅读顺�
 左移半个栏宽，球与注记整体让位，而不是被面板盖住。
 
 细节与验收见 `LAYER_SYSTEM.md`。
+
+## 太阳系图集集成（2.7）
+
+视图级双模式：头部「地球 | 太阳系」分段切换。子应用（Atlas of Space）
+自托管为同源 iframe：懒加载、状态保持（iframe 常驻）、主题变量映射
+（--sx-accent → 品牌金）、悬浮品牌条、`?mode=solar` 与 `?solar-layers=`
+深链接、进入图集即停地球渲染与音乐。镜像脚本 `ref/vendor-solar.sh`，
+缓存策略见 `_headers`。完整方案见 `SOLAR_INTEGRATION.md`。
 
 ## 技术选型一览
 - 无框架、无构建步骤：原生 ES Modules，GitHub Pages 直接托管。

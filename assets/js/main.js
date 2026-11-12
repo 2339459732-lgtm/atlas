@@ -1920,6 +1920,7 @@ menuPop.addEventListener('click', e => {
   closeMenu();
   const act = b.dataset.act;
   if (act === 'new') openDialog();
+  if (act === 'solar') enterSolar();
   if (act === 'settings') openSettings();
   if (act === 'export') exportStandalone();
   if (act === 'theme') cycleTheme();
@@ -3053,7 +3054,7 @@ function initMusic() {
   const hintBtn = $('#audio-hint-btn');
   if (!btn) return null;
 
-  const music = createMusic();
+  music = createMusic();
   const paint = ({ playing, muted }) => {
     const st = muted ? 'off' : (playing ? 'on' : 'pending');
     btn.dataset.state = st;
@@ -3739,6 +3740,129 @@ async function initCloudSync() {
   });
 }
 
+/* ───────── 太阳系图集（Atlas of Space · Apache-2.0，自托管） ─────────
+   整合策略：同源 iframe 挂载 → 主题变量映射 + 品牌植入 → 懒加载。
+   状态保持：iframe 一旦创建就不销毁，切回地球只是隐藏，相机与图层原样保留。 */
+
+const SOLAR_SRC = './solar/index.html';
+const MODE_KEY = 'atlas.mode.v1';
+let solarActive = false;
+let solarLoaded = false;
+let musicResume = false;
+let music = null;   /* initMusic() 里赋值；进入图集视图时暂停、返回时恢复 */
+
+function currentMode() {
+  try {
+    const q = new URLSearchParams(location.search);
+    if (q.get('mode') === 'solar') return 'solar';
+    if (q.get('mode') === 'planet') return 'planet';
+    return sessionStorage.getItem(MODE_KEY) === 'solar' ? 'solar' : 'planet';
+  } catch { return 'planet'; }
+}
+
+function applyModeUi() {
+  solarActive = !$('#solar-view')?.hidden;
+  document.documentElement.classList.toggle('is-solar', solarActive);
+  document.body.style.overflow = solarActive ? 'hidden' : '';
+  $$('#modes [data-mode]').forEach(b => {
+    b.setAttribute('aria-selected', String(b.dataset.mode === (solarActive ? 'solar' : 'planet')));
+  });
+}
+
+/* 把 ATLAS 品牌注入图集文档：主题变量映射 + 左下角徽标与署名。
+   同源 iframe 允许直接操作子文档，不需要 postMessage。 */
+function injectSolarBrand(frame) {
+  try {
+    const doc = frame?.contentDocument;
+    if (!doc) return;
+    const st = doc.createElement('style');
+    st.textContent = `
+/* 品牌色映射：!important + 挂在 body 尾部，压过图集自带样式表的同名变量 */
+html:root{
+  --sx-accent:#C9A96A!important;
+  --sx-accent-soft:rgba(201,169,106,.16)!important;
+  --node:#C9A96A!important;
+  --accent-yellow:#C9A96A!important;
+  --sx-cool:#9DB8D9!important;
+}
+.atlas-solar-badge{
+  position:fixed;left:calc(14px + env(safe-area-inset-left,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));
+  z-index:60;display:flex;align-items:center;gap:10px;padding:8px 12px;
+  background:rgba(12,11,10,.62);border:1px solid rgba(255,240,220,.12);border-radius:12px;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  font-family:"AtlasSans","Inter","PingFang SC",sans-serif;color:var(--sx-dim,#f3ede4);
+  font-size:11px;letter-spacing:.04em;text-decoration:none;pointer-events:auto;
+}
+.atlas-solar-badge b{display:flex;align-items:center;gap:7px;color:var(--sx-ink,#f3ede4);font-weight:600;letter-spacing:.18em;}
+.atlas-solar-badge svg{width:18px;height:18px;color:#C9A96A;}
+.atlas-solar-badge i{opacity:.55;font-style:normal;}
+.atlas-solar-badge:hover{border-color:rgba(201,169,106,.4);}`;
+    doc.body.appendChild(st);
+
+    /* 品牌只做变量映射：徽标由父页面的悬浮条统一呈现，避免两处重复 */
+  } catch (e) { console.warn('[solar] brand inject', e); }
+}
+
+function enterSolar() {
+  const view = $('#solar-view');
+  const frame = $('#solar-frame');
+  if (!view) return;
+
+  /* 地球渲染与音乐让位：省 GPU，也避免两套背景音叠加 */
+  earth?.stop();
+  if (music?.isPlaying()) { musicResume = true; music.stop(); }
+
+  view.hidden = false;
+
+  /* 懒加载：第一次进入才真正拉 2.6MB 的图集包 */
+  if (!solarLoaded && frame) {
+    solarLoaded = true;
+    let src = SOLAR_SRC;
+    try {
+      const layers = new URLSearchParams(location.search).get('solar-layers') || '';
+      if (layers) src += '?layers=' + encodeURIComponent(layers);
+    } catch {}
+    $('#solar-loading').hidden = false;
+    /* HTML load 只是开始：等 React 把场景挂进 #root 再收加载层 */
+    const watchMount = () => {
+      let tries = 0;
+      const t = setInterval(() => {
+        tries++;
+        const doc = frame.contentDocument;
+        const mounted = doc && doc.querySelector('#root')?.childElementCount > 0;
+        if (mounted || tries > 60) {
+          clearInterval(t);
+          $('#solar-loading').hidden = true;
+          injectSolarBrand(frame);
+        }
+      }, 250);
+    };
+    frame.addEventListener('load', watchMount, { once: true });
+    frame.src = src;
+  }
+
+  try { sessionStorage.setItem(MODE_KEY, 'solar'); } catch {}
+  applyModeUi();
+}
+
+function exitSolar() {
+  const view = $('#solar-view');
+  if (!view) return;
+  view.hidden = true;               /* iframe 不销毁：相机与图层状态原样保留 */
+  earth?.start();
+  if (musicResume) { musicResume = false; music?.start(); }
+  try { sessionStorage.setItem(MODE_KEY, 'planet'); } catch {}
+  applyModeUi();
+}
+
+function initSolarIntegration() {
+  $('#mode-solar')?.addEventListener('click', enterSolar);
+  $('#mode-planet')?.addEventListener('click', exitSolar);
+  $('#solar-back')?.addEventListener('click', exitSolar);
+  /* 深链接：?mode=solar 直接落在图集视图，?solar-layers= 透传给子应用 */
+  if (currentMode() === 'solar') enterSolar();
+}
+
 function initAccounts() {
   const btn = $('#acct-btn');
   const dlg = $('#acct-dlg');
@@ -4207,7 +4331,8 @@ async function boot() {
        状态变化时触发，之后不会自己补一次。表现为地球区块一片黑、画布停在 300×150。
        所以这里不靠回调顺序，只记可见性，谁准备好了谁来启动。 */
     let earthVisible = false;
-    const kickStart = () => { if (earth && earthVisible) earth.start(); };
+    /* 图集视图在场时，即使球区可见也保持停转：省 GPU，也为返回时恢复一致 */
+    const kickStart = () => { if (earth && earthVisible && !solarActive) earth.start(); };
 
     const loadIO = new IntersectionObserver(entries => {
       if (!entries[0].isIntersecting || earthStarted) return;
@@ -4221,7 +4346,7 @@ async function boot() {
 
     const runIO = new IntersectionObserver(entries => {
       earthVisible = entries[0].isIntersecting;
-      if (!earthVisible) { earth?.stop(); return; }
+      if (!earthVisible || solarActive) { earth?.stop(); return; }
       kickStart();
     }, { threshold: 0 });
     runIO.observe(stage);
@@ -4320,6 +4445,7 @@ async function boot() {
   initCloudSync();
   initMusic();
   initMemoir();
+  initSolarIntegration();
 }
 
 boot();

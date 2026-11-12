@@ -2,6 +2,18 @@
   Cache-Control: public, max-age=31536000, immutable
 /assets/*
   Cache-Control: public, max-age=604800
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+/solar/assets/*
+  Cache-Control: public, max-age=604800
+/planets/*
+  Cache-Control: public, max-age=1209600
+/moons/*
+  Cache-Control: public, max-age=1209600
+/sky/*
+  Cache-Control: public, max-age=1209600
+/data/*
+  Cache-Control: public, max-age=1209600
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

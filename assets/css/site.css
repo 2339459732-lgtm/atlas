@@ -3113,3 +3113,81 @@ html[data-gate="open"] .gate { display: none; }
 
 /* 点选地球拾取模式：光标十字准星 */
 #earth-canvas.is-picking { cursor: crosshair; }
+
+/* ───────── 视图切换（地球 ⇄ 太阳系） ───────── */
+.modes {
+  display: flex; align-items: center; gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line-2); border-radius: 999px;
+  background: var(--wash);
+}
+.modes__btn {
+  padding: 5px 13px;
+  border: 0; border-radius: 999px; background: none; cursor: pointer;
+  font-family: var(--f-mono); font-size: var(--fs-micro); letter-spacing: .1em;
+  color: var(--ink-3); white-space: nowrap;
+  transition: color .25s, background-color .25s;
+}
+.modes__btn:hover { color: var(--ink); }
+.modes__btn[aria-selected="true"] {
+  background: var(--ink); color: var(--bg);
+}
+
+/* ───────── 太阳系图集视图 ───────── */
+.solar {
+  position: fixed; inset: 0; z-index: 90;
+  background: #020608;
+}
+.solar__frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.solar__loading {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  background: #020608; color: rgba(243,237,228,.6);
+  font-family: var(--f-mono); font-size: var(--fs-mono); letter-spacing: .14em;
+}
+.solar__ring {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 1px solid rgba(201,169,106,.25);
+  border-top-color: #C9A96A;
+  animation: solarSpin 1s linear infinite;
+}
+@keyframes solarSpin { to { transform: rotate(360deg); } }
+.solar__bar {
+  /* 图集自带 40px 顶栏：悬浮条让到其下方，避免遮住它的菜单 */
+  position: absolute; top: max(52px, calc(env(safe-area-inset-top, 0px) + 44px));
+  left: max(14px, env(safe-area-inset-left, 0px)); z-index: 3;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  pointer-events: none;
+}
+.solar__back {
+  pointer-events: auto;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  background: rgba(12,11,10,.6); border: 1px solid rgba(255,240,220,.14); border-radius: 999px;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  font-family: var(--f-ui); font-size: 12px; letter-spacing: .06em;
+  color: #f3ede4; cursor: pointer;
+  transition: border-color .3s, transform .3s;
+}
+.solar__back:hover { border-color: rgba(201,169,106,.5); transform: translateY(-1px); }
+.solar__bar svg { width: 14px; height: 14px; }
+.solar__brand {
+  pointer-events: auto;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 12px;
+  background: rgba(12,11,10,.6); border: 1px solid rgba(255,240,220,.14); border-radius: 999px;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  font-family: var(--f-mono); font-size: 11px; font-weight: 500; letter-spacing: .24em;
+  color: #f3ede4; text-decoration: none;
+}
+.solar__brand i { font-style: normal; font-size: 9px; letter-spacing: .08em; color: rgba(243,237,228,.55); }
+.solar__brand svg { width: 16px; height: 16px; }
+
+/* 图集视图在场：收起站点头部，只留悬浮条 */
+.is-solar .nav { visibility: hidden; opacity: 0; pointer-events: none; }
+.is-solar main { visibility: hidden; }
+
+@media (max-width: 900px) {
+  .modes { display: none; }   /* 小屏走「更多」菜单 */
+  .solar__brand { display: none; }
+}

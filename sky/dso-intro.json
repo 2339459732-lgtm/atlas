@@ -1,0 +1,807 @@
+{
+ "source": "Hand-written summaries (2026-10-23). Distances are rounded literature values (light years); see the SIMBAD / NED links in each record for references.",
+ "objects": {
+  "M1": {
+   "ly": 6500,
+   "year": "1054",
+   "who": "1054 年宋朝天关客星 · 1731 年 John Bevis 重新发现",
+   "tags": [
+    "超新星遗迹",
+    "蟹状星云",
+    "脉冲星"
+   ],
+   "zh": "蟹状星云是一次有详细记录的超新星爆发留下的遗迹：公元 1054 年，宋朝天文学家记录了一颗白天都能看见的「天关客星」，持续亮了 23 天。现在中心是一颗每秒自转约 30 圈、直径只有二十公里的中子星，它的脉冲辐射持续给周围气体注入能量。",
+   "en": "The Crab is the remnant of a supernova that was recorded in detail: in 1054 Chinese astronomers noted a &quot;guest star&quot; bright enough to see by day for 23 days. Its core is now a neutron star about 20 km across, spinning some 30 times a second, whose pulsed radiation keeps powering the surrounding gas.",
+   "extra": "视直径约 6′；小望远镜能认出它是一小片模糊的「蟹爪」，脉冲星需要更大口径才能拍到。"
+  },
+  "M2": [
+   "宝瓶座里最亮的球状星团之一，约 15 万颗恒星挤在直径约 175 光年的球内，距离约 3.3 万光年，年龄约 130 亿年。",
+   "One of the richest globular clusters, about 150,000 stars in a ball 175 light years across, 33,000 light years away and some 13 billion years old."
+  ],
+  "M3": [
+   "北天最壮观的球状星团之一，约 50 万颗恒星，以含有大量变星（逾 270 颗天琴 RR 型变星）著称，距离约 3.4 万光年。",
+   "A northern showpiece of about half a million stars, famous for its 270-plus RR Lyrae variables; about 34,000 light years away."
+  ],
+  "M4": [
+   "离地球最近的球状星团之一，距离约 7200 光年，就在心宿二旁边。哈勃在这里找到了宇宙中最古老的白矮星之一。",
+   "One of the nearest globular clusters, about 7,200 light years away beside Antares; Hubble found some of the oldest known white dwarfs here."
+  ],
+  "M5": [
+   "巨蛇座的大型球状星团，年龄约 130 亿年，距离约 2.5 万光年，直径约 165 光年。",
+   "A large, ancient globular cluster in Serpens, roughly 13 billion years old and 25,000 light years away."
+  ],
+  "M6": [
+   "蝴蝶星团：天蝎座尾部的疏散星团，亮星排列形似展翅的蝴蝶，距离约 1600 光年。",
+   "The Butterfly Cluster, an open cluster whose brightest stars trace a pair of wings; about 1,600 light years away."
+  ],
+  "M7": [
+   "托勒密星团：公元 130 年左右托勒密已记载的肉眼疏散星团，距离约 980 光年，位于天蝎座尾针附近的银河背景上。",
+   "Ptolemy's Cluster, a naked-eye open cluster noted around AD 130, about 980 light years away against the rich Milky Way near Scorpius's sting."
+  ],
+  "M8": {
+   "ly": 4100,
+   "year": "1654",
+   "who": "Giovanni Battista Hodierna",
+   "tags": [
+    "发射星云",
+    "疏散星团 NGC 6530",
+    "恒星形成区"
+   ],
+   "zh": "礁湖星云是人马座里的巨大恒星形成区，也是夏季银河中心方向上最醒目的亮斑之一。它被一条暗尘埃带从中间切开，明暗对比像一片「礁湖」，因而得名。云内嵌着年轻的疏散星团 NGC 6530，以及被称为「沙漏」的明亮电离区，中心有极热的 Herschel 36 星。",
+   "en": "The Lagoon Nebula is a huge star-forming region in Sagittarius and one of the brightest patches toward the Galactic centre. A dark dust lane splits it in two, giving the lagoon-like contrast that names it. Inside lie the young open cluster NGC 6530, the bright Hourglass region, and the very hot star Herschel 36.",
+   "extra": "视直径约 90′，真实大小约 110 光年；暗夜下肉眼可见为一团灰白光斑，双筒望远镜能看到它与星团的组合。"
+  },
+  "M9": [
+   "靠近银心方向的球状星团，受前景尘埃遮挡而偏暗偏红，距离约 2.6 万光年。",
+   "A globular cluster close to the Galactic centre, dimmed and reddened by foreground dust; about 26,000 light years away."
+  ],
+  "M10": [
+   "蛇夫座的亮球状星团，距离约 1.4 万光年，与 M12 在天空中只相隔几度。",
+   "A bright globular cluster in Ophiuchus, about 14,000 light years away and only a few degrees from M12."
+  ],
+  "M11": [
+   "野鸭星团：已知最密集的疏散星团之一，约 2900 颗恒星，亮星排成楔形，像一群飞行的野鸭，距离约 6200 光年。",
+   "The Wild Duck Cluster, one of the densest open clusters with about 2,900 stars in a V-shape like a flight of ducks; about 6,200 light years away."
+  ],
+  "M12": [
+   "蛇夫座的球状星团，结构较松散，距离约 1.6 万光年。研究显示它已被银河系潮汐剥离了大量低质量恒星。",
+   "A loosely packed globular cluster in Ophiuchus, about 16,000 light years away, stripped of many low-mass stars by the Milky Way's tides."
+  ],
+  "M13": [
+   "武仙座球状星团：北天最亮的球状星团，约 30 万颗恒星，距离约 2.2 万光年。1974 年阿雷西博射电望远镜向它发送了人类第一条星际信息。",
+   "The Great Hercules Cluster, the brightest globular in the northern sky with about 300,000 stars, 22,000 light years away; target of the 1974 Arecibo message."
+  ],
+  "M14": [
+   "蛇夫座的球状星团，距离约 3 万光年，1938 年在其中发现过一颗新星。",
+   "A globular cluster in Ophiuchus about 30,000 light years away; a nova erupted in it in 1938."
+  ],
+  "M15": [
+   "飞马座的球状星团，核心极其致密（核坍缩型），内含一个行星状星云 Pease 1，距离约 3.3 万光年。",
+   "A core-collapsed globular cluster in Pegasus, one of the densest known, containing the planetary nebula Pease 1; about 33,000 light years away."
+  ],
+  "M16": {
+   "ly": 5700,
+   "year": "1745",
+   "who": "Jean-Philippe de Chéseaux",
+   "tags": [
+    "发射星云",
+    "创生之柱",
+    "鹰状星云"
+   ],
+   "zh": "鹰状星云是著名的「创生之柱」所在地：几根长达数光年的冷分子云柱从星云中耸起，柱内正在孕育新的恒星。1995 年哈勃拍摄的那张照片让这几根柱子成为天文史上最广为人知的影像之一。",
+   "en": "The Eagle Nebula is home to the Pillars of Creation: cold molecular columns several light-years tall rising out of the nebula, with new stars forming inside. The 1995 Hubble image of them became one of the most recognisable astronomical photographs ever made.",
+   "extra": "视直径约 35′；柱体本身是暗的，要靠背后的电离气体衬托；小望远镜只能看到一片亮斑。"
+  },
+  "M17": {
+   "ly": 5500,
+   "year": "1745",
+   "who": "Jean-Philippe de Chéseaux",
+   "tags": [
+    "发射星云",
+    "欧米伽星云",
+    "恒星形成区"
+   ],
+   "zh": "欧米伽星云（天鹅星云）是银河系中最亮、质量最大的恒星形成区之一，形状像一只展翅的天鹅或希腊字母 Ω。云内包含已知最年轻的星团之一，一群只有几十万年历史的恒星。",
+   "en": "The Omega (Swan) Nebula is one of the brightest and most massive star-forming regions in the Galaxy, shaped like a swan in flight or the Greek letter omega. It contains one of the youngest known clusters, stars only a few hundred thousand years old.",
+   "extra": "视直径约 11′；表面亮度很高，双筒望远镜在小光害下就能看到，小望远镜能看出天鹅的「身体」。"
+  },
+  "M18": [
+   "人马座的小型疏散星团，约 20 颗亮星，距离约 4900 光年。",
+   "A small open cluster in Sagittarius with about 20 bright members, roughly 4,900 light years away."
+  ],
+  "M19": [
+   "蛇夫座里形状最扁的球状星团之一，距离约 2.9 万光年，离银心仅约 5000 光年。",
+   "One of the most oblate globular clusters, about 29,000 light years from us and only 5,000 from the Galactic centre."
+  ],
+  "M20": {
+   "ly": 5200,
+   "year": "1764",
+   "who": "Charles Messier",
+   "tags": [
+    "发射星云",
+    "反射星云",
+    "三裂星云"
+   ],
+   "zh": "三叶星云同时呈现两种星云：被热星电离的红色发射区，与被尘埃散射出的蓝色反射区，中间被暗尘埃带分割成三块，故名「三叶」。它是少数能在一张照片里同时看到红、蓝两种星云成因的天体。",
+   "en": "The Trifid shows two kinds of nebula at once: red emission where hot stars ionise the gas, and blue reflection where dust scatters starlight, split into three lobes by dark lanes — hence the name. It is one of the few objects where both mechanisms appear side by side.",
+   "extra": "视直径约 28′；小望远镜能看出明亮核心与暗带，颜色需要长曝光照片才明显。"
+  },
+  "M21": [
+   "三叶星云旁边的年轻疏散星团，年龄约 460 万年，距离约 3900 光年。",
+   "A young open cluster near the Trifid Nebula, about 4.6 million years old and 3,900 light years away."
+  ],
+  "M22": [
+   "人马座球状星团：全天第三亮的球状星团，距离约 1 万光年，是最早被发现的球状星团之一（1665 年）。",
+   "The Sagittarius Cluster, the third-brightest globular, about 10,000 light years away and among the first discovered (1665)."
+  ],
+  "M23": [
+   "人马座的疏散星团，约 150 颗成员星，距离约 2150 光年。",
+   "An open cluster of about 150 stars in Sagittarius, roughly 2,150 light years away."
+  ],
+  "M24": [
+   "人马座恒星云：透过银河尘埃的一扇「窗口」看到的银河系旋臂恒星密集区，深度达数千光年，宽约 600 光年。",
+   "The Sagittarius Star Cloud, a window through the dust onto a dense stretch of a spiral arm, about 600 light years wide and thousands deep."
+  ],
+  "M25": [
+   "人马座的疏散星团，内含一颗造父变星 U Sgr，距离约 2000 光年。",
+   "An open cluster in Sagittarius containing the Cepheid variable U Sgr; about 2,000 light years away."
+  ],
+  "M26": [
+   "盾牌座的疏散星团，中心有一个成员星稀少的区域，可能是前景尘埃造成，距离约 5000 光年。",
+   "An open cluster in Scutum with a curious sparse core, possibly caused by foreground dust; about 5,000 light years away."
+  ],
+  "M27": [
+   "哑铃星云：第一个被发现的行星状星云（1764 年），是一颗类太阳恒星临终时抛出的气体壳层，距离约 1360 光年。",
+   "The Dumbbell Nebula, the first planetary nebula discovered (1764): gas shed by a dying Sun-like star, about 1,360 light years away."
+  ],
+  "M28": [
+   "人马座的球状星团，1987 年在其中发现了第一颗位于球状星团里的毫秒脉冲星，距离约 1.8 万光年。",
+   "A globular cluster in Sagittarius where the first millisecond pulsar in a globular cluster was found (1987); about 18,000 light years away."
+  ],
+  "M29": [
+   "天鹅座的小型疏散星团，被浓厚尘埃遮挡变暗，距离约 4000 光年。",
+   "A small open cluster in Cygnus dimmed by heavy dust; about 4,000 light years away."
+  ],
+  "M30": [
+   "摩羯座的核坍缩球状星团，距离约 2.7 万光年，正以每秒约 180 千米的速度朝我们运动。",
+   "A core-collapsed globular cluster in Capricornus, about 27,000 light years away and approaching at 180 km/s."
+  ],
+  "M31": [
+   "仙女座星系：离银河系最近的大型旋涡星系，约 1 万亿颗恒星，距离约 250 万光年，是肉眼能看到的最远天体之一。约 45 亿年后它将与银河系合并。",
+   "The Andromeda Galaxy, the nearest large spiral, with about a trillion stars, 2.5 million light years away – one of the most distant things visible to the naked eye. It will merge with the Milky Way in about 4.5 billion years."
+  ],
+  "M32": [
+   "仙女座星系的致密矮椭圆伴星系，可能是一个被 M31 剥去外层的旋涡星系的残核，距离约 250 万光年。",
+   "A compact dwarf elliptical companion of Andromeda, perhaps the stripped core of a former spiral; 2.5 million light years away."
+  ],
+  "M33": [
+   "三角座星系：本星系群第三大的成员，正面朝向我们的旋涡星系，含有巨大的恒星形成区 NGC 604，距离约 290 万光年。",
+   "The Triangulum Galaxy, third-largest in the Local Group, a face-on spiral hosting the giant star-forming region NGC 604; about 2.9 million light years away."
+  ],
+  "M34": [
+   "英仙座的疏散星团，约 100 颗恒星，年龄约 2 亿年，距离约 1500 光年。",
+   "An open cluster in Perseus of about 100 stars, some 200 million years old and 1,500 light years away."
+  ],
+  "M35": [
+   "双子座的疏散星团，约 300 颗恒星，旁边可以看到更远、更老的星团 NGC 2158，距离约 2800 光年。",
+   "An open cluster of some 300 stars in Gemini, with the more distant, older cluster NGC 2158 beside it; about 2,800 light years away."
+  ],
+  "M36": [
+   "御夫座的年轻疏散星团（约 2500 万年），距离约 4100 光年。",
+   "A young open cluster in Auriga, about 25 million years old and 4,100 light years away."
+  ],
+  "M37": [
+   "御夫座最丰富的疏散星团，约 500 颗恒星，距离约 4500 光年。",
+   "The richest open cluster in Auriga, with about 500 stars; about 4,500 light years away."
+  ],
+  "M38": [
+   "御夫座的疏散星团，亮星排成十字形，距离约 4200 光年。",
+   "An open cluster in Auriga whose bright stars form a cross; about 4,200 light years away."
+  ],
+  "M39": [
+   "天鹅座的稀疏疏散星团，约 30 颗星，距离仅约 1000 光年。",
+   "A sparse open cluster of about 30 stars in Cygnus, only about 1,000 light years away."
+  ],
+  "M41": [
+   "天狼星南方约 4° 的疏散星团，约 100 颗恒星，距离约 2300 光年，古希腊时代可能已被记录。",
+   "An open cluster 4° south of Sirius with about 100 stars, some 2,300 light years away; possibly noted by Aristotle."
+  ],
+  "M42": {
+   "ly": 1344,
+   "year": "1610",
+   "who": "Nicolas-Claude Fabri de Peiresc（记录）",
+   "tags": [
+    "发射星云",
+    "恒星形成区",
+    "猎户座大星云"
+   ],
+   "zh": "猎户座大星云是离我们最近的大质量恒星形成区，也是肉眼唯一能直接看出的星云——就在猎户腰带下方那团「佩剑」的模糊光斑里。它的核心是四合星（猎户座 θ¹），四颗年轻热星的紫外光把周围氢气电离，使整片云发出红粉色光；云里还藏着数百颗正在形成的原恒星，以及被星风吹出的空腔。",
+   "en": "The Orion Nebula is the nearest massive star-forming region and the only nebula plainly visible to the naked eye — the fuzzy patch in Orion&apos;s Sword. Its core, the Trapezium (θ¹ Orionis), is a quartet of hot young stars whose ultraviolet light ionises the surrounding hydrogen and makes the whole cloud glow pink; hundreds of protostars are still forming inside, sculpted by stellar winds.",
+   "extra": "它的视直径约 65′，对应真实大小约 24 光年；用双筒望远镜就能看出核心的明亮区域，小望远镜可以分辨出四合星。"
+  },
+  "M43": [
+   "德梅朗星云：猎户座大星云的一部分，被一条暗尘埃带隔开，由一颗年轻恒星 NU Ori 照亮。",
+   "De Mairan's Nebula, part of the Orion Nebula complex separated by a dust lane and lit by the young star NU Ori."
+  ],
+  "M44": [
+   "蜂巢星团（鬼宿星团）：巨蟹座的肉眼疏散星团，约 1000 颗恒星，距离约 577 光年，中国古称「积尸气」。",
+   "The Beehive Cluster (Praesepe), a naked-eye open cluster of about 1,000 stars in Cancer, 577 light years away."
+  ],
+  "M45": [
+   "昴星团（七姐妹星团）：最著名的疏散星团，年龄约 1 亿年，距离约 444 光年。照片里环绕亮星的蓝色反射星云是星团正好穿过的星际尘埃。",
+   "The Pleiades (Seven Sisters), the most famous open cluster, about 100 million years old and 444 light years away. The blue haze is interstellar dust the cluster is passing through."
+  ],
+  "M46": [
+   "船尾座的疏散星团，前方叠着一个更近的行星状星云 NGC 2438，距离约 5000 光年。",
+   "An open cluster in Puppis with the foreground planetary nebula NGC 2438 in front of it; about 5,000 light years away."
+  ],
+  "M47": [
+   "船尾座的明亮疏散星团，距离约 1600 光年，与 M46 相邻。",
+   "A bright open cluster in Puppis, about 1,600 light years away and close to M46 on the sky."
+  ],
+  "M48": [
+   "长蛇座的疏散星团，约 80 颗恒星，距离约 1500 光年。",
+   "An open cluster of about 80 stars in Hydra, roughly 1,500 light years away."
+  ],
+  "M49": [
+   "室女座星系团里最亮的成员之一，巨椭圆星系，距离约 5600 万光年。",
+   "A giant elliptical galaxy, one of the brightest in the Virgo Cluster, about 56 million light years away."
+  ],
+  "M50": [
+   "麒麟座的疏散星团，轮廓像一颗心，距离约 3200 光年。",
+   "A heart-shaped open cluster in Monoceros, about 3,200 light years away."
+  ],
+  "M51": [
+   "涡状星系：第一个被识别出旋涡结构的星系（1845 年），正在与伴星系 NGC 5195 相互作用，距离约 2300 万光年。",
+   "The Whirlpool Galaxy, the first galaxy recognised as a spiral (1845), interacting with its companion NGC 5195; about 23 million light years away."
+  ],
+  "M52": [
+   "仙后座的疏散星团，附近有气泡星云 NGC 7635，距离约 5000 光年。",
+   "An open cluster in Cassiopeia near the Bubble Nebula, about 5,000 light years away."
+  ],
+  "M53": [
+   "后发座的球状星团，离银心最远的球状星团之一，距离约 5.8 万光年。",
+   "One of the more remote globular clusters, about 58,000 light years away in Coma Berenices."
+  ],
+  "M54": [
+   "人马座的球状星团，实际上属于正被银河系吞并的人马座矮椭圆星系，是第一个被确认的河外球状星团，距离约 8.7 万光年。",
+   "A globular cluster that actually belongs to the Sagittarius Dwarf Galaxy being absorbed by the Milky Way – the first extragalactic globular identified; about 87,000 light years away."
+  ],
+  "M55": [
+   "人马座的松散球状星团，距离约 1.75 万光年。",
+   "A loose globular cluster in Sagittarius, about 17,500 light years away."
+  ],
+  "M56": [
+   "天琴座的球状星团，位于辇道增七与渐台二之间，距离约 3.2 万光年。",
+   "A globular cluster in Lyra between Albireo and Sulafat, about 32,000 light years away."
+  ],
+  "M57": {
+   "ly": 2570,
+   "year": "1779",
+   "who": "Antoine Darquier de Pellepoix",
+   "tags": [
+    "行星状星云",
+    "环状星云"
+   ],
+   "zh": "环状星云是行星状星云的经典样本：一颗类太阳恒星临终时抛出的外壳被中心白矮星照亮，形成一圈环。从地球看它正好侧对着我们，所以是标准的「甜甜圈」形状。",
+   "en": "The Ring Nebula is the textbook planetary nebula: the shell shed by a dying Sun-like star, lit by the white dwarf left behind. We see it nearly along its axis, so it appears as the classic doughnut.",
+   "extra": "视直径约 1.4′，真实直径约 1.3 光年；中心白矮星约 16 等，小望远镜就能看到那个「烟圈」。"
+  },
+  "M58": [
+   "室女座星系团的棒旋星系，距离约 6200 万光年。",
+   "A barred spiral in the Virgo Cluster, about 62 million light years away."
+  ],
+  "M59": [
+   "室女座星系团的椭圆星系，距离约 6000 万光年。",
+   "An elliptical galaxy in the Virgo Cluster, about 60 million light years away."
+  ],
+  "M60": [
+   "室女座星系团的巨椭圆星系，旁边是旋涡星系 NGC 4647，中心有一个约 45 亿倍太阳质量的黑洞，距离约 5700 万光年。",
+   "A giant elliptical in the Virgo Cluster beside the spiral NGC 4647, with a 4.5-billion-solar-mass black hole; about 57 million light years away."
+  ],
+  "M61": [
+   "室女座的正向旋涡星系，以超新星频发著称（已观测到 8 颗），距离约 5300 万光年。",
+   "A face-on spiral in Virgo known for its frequent supernovae (eight observed); about 53 million light years away."
+  ],
+  "M62": [
+   "蛇夫座形状不规则的球状星团，离银心很近，受潮汐扭曲，距离约 2.2 万光年。",
+   "An irregularly shaped globular cluster close to the Galactic centre, distorted by tides; about 22,000 light years away."
+  ],
+  "M63": [
+   "向日葵星系：絮状旋臂的旋涡星系，距离约 2900 万光年。",
+   "The Sunflower Galaxy, a flocculent spiral about 29 million light years away."
+  ],
+  "M64": [
+   "黑眼睛星系：核心前方有一条显眼的暗尘埃带，外盘与内盘的气体反向旋转，距离约 1700 万光年。",
+   "The Black Eye Galaxy, with a dark dust band in front of its core and outer gas rotating opposite to the inner disc; about 17 million light years away."
+  ],
+  "M65": [
+   "狮子座三重星系之一，侧向的旋涡星系，距离约 3500 万光年。",
+   "A member of the Leo Triplet, an inclined spiral about 35 million light years away."
+  ],
+  "M66": [
+   "狮子座三重星系里最大的一个，旋臂受引力扰动而不对称，距离约 3600 万光年。",
+   "The largest of the Leo Triplet, its arms distorted by gravitational interaction; about 36 million light years away."
+  ],
+  "M67": [
+   "巨蟹座的古老疏散星团，年龄约 40 亿年，成员星与太阳年龄、成分相近，距离约 2700 光年。",
+   "One of the oldest known open clusters, about 4 billion years old with Sun-like stars; about 2,700 light years away."
+  ],
+  "M68": [
+   "长蛇座的球状星团，距离约 3.3 万光年。",
+   "A globular cluster in Hydra, about 33,000 light years away."
+  ],
+  "M69": [
+   "人马座靠近银心的球状星团，金属丰度较高，距离约 2.9 万光年。",
+   "A metal-rich globular cluster near the Galactic centre in Sagittarius; about 29,000 light years away."
+  ],
+  "M70": [
+   "人马座的球状星团，1995 年海尔-波普彗星就是在它旁边被发现的，距离约 2.9 万光年。",
+   "A globular cluster in Sagittarius next to which Comet Hale–Bopp was discovered in 1995; about 29,000 light years away."
+  ],
+  "M71": [
+   "天箭座的松散球状星团，曾长期被当作疏散星团，距离约 1.3 万光年。",
+   "A loose globular cluster in Sagitta, long mistaken for an open cluster; about 13,000 light years away."
+  ],
+  "M72": [
+   "宝瓶座的暗弱球状星团，距离约 5.5 万光年。",
+   "A faint, distant globular cluster in Aquarius, about 55,000 light years away."
+  ],
+  "M73": [
+   "宝瓶座的四颗星组成的星群，并不是真正的星团。",
+   "A small asterism of four stars in Aquarius, not a physical cluster."
+  ],
+  "M74": [
+   "幻影星系：标准的正向「宏伟旋臂」星系，面亮度低、目视很难看到，距离约 3200 万光年。",
+   "The Phantom Galaxy, a classic face-on grand-design spiral with low surface brightness; about 32 million light years away."
+  ],
+  "M75": [
+   "人马座的致密球状星团，距离约 6.7 万光年。",
+   "A compact, distant globular cluster in Sagittarius, about 67,000 light years away."
+  ],
+  "M76": [
+   "小哑铃星云：英仙座的行星状星云，形状像缩小的 M27，是梅西耶天体中最暗的之一，距离约 2500 光年。",
+   "The Little Dumbbell, a planetary nebula in Perseus and one of the faintest Messier objects; about 2,500 light years away."
+  ],
+  "M77": [
+   "鲸鱼座 A：最近、最亮的赛弗特星系之一，核心有活跃的超大质量黑洞，距离约 4700 万光年。",
+   "Cetus A, one of the nearest and brightest Seyfert galaxies with an active supermassive black hole; about 47 million light years away."
+  ],
+  "M78": [
+   "猎户座最亮的反射星云，尘埃反射附近年轻恒星的蓝光，距离约 1350 光年。",
+   "The brightest reflection nebula in the sky, dust reflecting the blue light of young stars in Orion; about 1,350 light years away."
+  ],
+  "M79": [
+   "天兔座的球状星团，可能来自一个被银河系吞并的矮星系，距离约 4.1 万光年。",
+   "A globular cluster in Lepus, possibly captured from a dwarf galaxy; about 41,000 light years away."
+  ],
+  "M80": [
+   "天蝎座最致密的球状星团之一，1860 年其中爆发过一颗新星，距离约 3.2 万光年。",
+   "One of the densest globular clusters, in Scorpius; a nova erupted in it in 1860. About 32,000 light years away."
+  ],
+  "M81": [
+   "波德星系：大熊座的明亮旋涡星系，距离约 1200 万光年，与 M82 正在引力相互作用。",
+   "Bode's Galaxy, a bright grand-design spiral in Ursa Major, about 12 million light years away and interacting with M82."
+  ],
+  "M82": [
+   "雪茄星系：受 M81 引力扰动而爆发式形成恒星的星暴星系，两极喷出红色的氢气流，距离约 1200 万光年。",
+   "The Cigar Galaxy, a starburst triggered by M81, blowing red hydrogen out of its poles; about 12 million light years away."
+  ],
+  "M83": [
+   "南风车星系：明亮的棒旋星系，超新星频发，距离约 1500 万光年。",
+   "The Southern Pinwheel, a bright barred spiral with frequent supernovae; about 15 million light years away."
+  ],
+  "M84": [
+   "室女座星系团中心区的透镜状星系，射电观测显示有两道喷流，距离约 6000 万光年。",
+   "A lenticular galaxy at the heart of the Virgo Cluster with twin radio jets; about 60 million light years away."
+  ],
+  "M85": [
+   "后发座的透镜状星系，室女座星系团最北的成员，距离约 6000 万光年。",
+   "A lenticular galaxy in Coma Berenices, the northernmost member of the Virgo Cluster; about 60 million light years away."
+  ],
+  "M86": [
+   "室女座星系团的椭圆星系，正以每秒约 1500 千米朝银河系靠近（蓝移），距离约 5200 万光年。",
+   "An elliptical in the Virgo Cluster, approaching us at about 1,500 km/s (blueshifted); about 52 million light years away."
+  ],
+  "M87": [
+   "室女座 A：室女座星系团中心的巨椭圆星系，有一道 5000 光年长的喷流。2019 年事件视界望远镜在这里拍下了人类第一张黑洞照片（约 65 亿倍太阳质量），距离约 5300 万光年。",
+   "Virgo A, the giant elliptical at the core of the Virgo Cluster with a 5,000-light-year jet. In 2019 the Event Horizon Telescope imaged its 6.5-billion-solar-mass black hole – the first black hole photograph. About 53 million light years away."
+  ],
+  "M88": [
+   "后发座的旋涡星系，旋臂结构对称清晰，距离约 4700 万光年。",
+   "A spiral in Coma Berenices with neat, symmetric arms; about 47 million light years away."
+  ],
+  "M89": [
+   "室女座星系团中几乎正圆的椭圆星系，外围有暗弱的壳层结构，距离约 5000 万光年。",
+   "A nearly spherical elliptical in the Virgo Cluster with faint outer shells; about 50 million light years away."
+  ],
+  "M90": [
+   "室女座星系团的旋涡星系，恒星形成几乎停止，也是少数朝我们靠近的星系之一，距离约 6000 万光年。",
+   "A Virgo Cluster spiral whose star formation has almost stopped; one of the few galaxies approaching us. About 60 million light years away."
+  ],
+  "M91": [
+   "后发座的棒旋星系，距离约 6300 万光年；梅西耶当年记录的位置有误，直到 1969 年才被确认。",
+   "A barred spiral in Coma Berenices, about 63 million light years away; Messier's position was wrong and it was only identified in 1969."
+  ],
+  "M92": [
+   "武仙座的球状星团，常被 M13 的光芒掩盖，但同样明亮，是银河系最古老的球状星团之一，距离约 2.7 万光年。",
+   "A globular cluster in Hercules, overshadowed by M13 but nearly as bright and among the oldest in the Galaxy; about 27,000 light years away."
+  ],
+  "M93": [
+   "船尾座的疏散星团，亮星排成楔形，距离约 3600 光年。",
+   "A wedge-shaped open cluster in Puppis, about 3,600 light years away."
+  ],
+  "M94": [
+   "猎犬座的旋涡星系，有一个明亮的星暴内环，距离约 1600 万光年。",
+   "A spiral in Canes Venatici with a bright starburst ring; about 16 million light years away."
+  ],
+  "M95": [
+   "狮子座的棒旋星系，中心有一个恒星形成环，距离约 3300 万光年。",
+   "A barred spiral in Leo with a star-forming ring around its core; about 33 million light years away."
+  ],
+  "M96": [
+   "狮子座 I 星系群中最亮的旋涡星系，旋臂不对称，距离约 3100 万光年。",
+   "The brightest galaxy of the Leo I group, a spiral with lopsided arms; about 31 million light years away."
+  ],
+  "M97": [
+   "猫头鹰星云：大熊座的行星状星云，两块暗区像猫头鹰的眼睛，距离约 2000 光年。",
+   "The Owl Nebula, a planetary nebula in Ursa Major whose two dark patches look like an owl's eyes; about 2,000 light years away."
+  ],
+  "M98": [
+   "后发座几乎侧向的旋涡星系，正在朝我们靠近，距离约 4400 万光年。",
+   "A nearly edge-on spiral in Coma Berenices, approaching us; about 44 million light years away."
+  ],
+  "M99": [
+   "后发座的正向旋涡星系，一条旋臂被拉长，可能受过近邻星系扰动，距离约 5000 万光年。",
+   "A face-on spiral in Coma Berenices with one stretched arm, probably disturbed by a neighbour; about 50 million light years away."
+  ],
+  "M100": [
+   "后发座的宏伟旋涡星系，室女座星系团最亮的旋涡之一，哈勃用其中的造父变星测量了宇宙距离尺度，距离约 5500 万光年。",
+   "A grand-design spiral, one of the brightest in the Virgo Cluster, whose Cepheids Hubble used to calibrate the cosmic distance scale; about 55 million light years away."
+  ],
+  "M101": [
+   "风车星系：大熊座的大型正向旋涡星系，直径约 17 万光年，2011 年这里出现过一颗明亮的 Ia 型超新星，距离约 2100 万光年。",
+   "The Pinwheel Galaxy, a huge face-on spiral 170,000 light years across in Ursa Major; a bright type Ia supernova appeared here in 2011. About 21 million light years away."
+  ],
+  "M102": [
+   "通常认为是天龙座的纺锤星系 NGC 5866：侧向的透镜状星系，一条笔直的尘埃带横贯中央，距离约 4400 万光年。",
+   "Usually identified with the Spindle Galaxy NGC 5866, an edge-on lenticular split by a straight dust lane; about 44 million light years away."
+  ],
+  "M103": [
+   "仙后座的年轻疏散星团，约 40 颗成员星，距离约 1 万光年。",
+   "A young open cluster of about 40 stars in Cassiopeia, roughly 10,000 light years away."
+  ],
+  "M104": [
+   "草帽星系：近乎侧向的星系，明亮的核球与一圈浓厚的尘埃带形似墨西哥宽边帽，距离约 3100 万光年。",
+   "The Sombrero Galaxy, seen nearly edge-on: a bright bulge ringed by a thick dust lane like a wide-brimmed hat; about 31 million light years away."
+  ],
+  "M105": [
+   "狮子座的椭圆星系，中心有约 2 亿倍太阳质量的黑洞，距离约 3300 万光年。",
+   "An elliptical galaxy in Leo with a 200-million-solar-mass central black hole; about 33 million light years away."
+  ],
+  "M106": [
+   "猎犬座的旋涡星系，核心是活跃的赛弗特核，射电与 X 射线里可以看到两条「异常旋臂」，距离约 2400 万光年。",
+   "A spiral in Canes Venatici with an active Seyfert nucleus and two 'anomalous arms' seen in radio and X-rays; about 24 million light years away."
+  ],
+  "M107": [
+   "蛇夫座的松散球状星团，距离约 2.1 万光年。",
+   "A loose globular cluster in Ophiuchus, about 21,000 light years away."
+  ],
+  "M108": [
+   "大熊座几乎侧向的棒旋星系，紧邻猫头鹰星云，距离约 4600 万光年。",
+   "A nearly edge-on barred spiral in Ursa Major right beside the Owl Nebula; about 46 million light years away."
+  ],
+  "M109": [
+   "大熊座的棒旋星系，位于北斗七星的天玑附近，距离约 6700 万光年。",
+   "A barred spiral in Ursa Major near the star Phecda of the Big Dipper; about 67 million light years away."
+  ],
+  "M110": [
+   "仙女座星系的矮椭圆伴星系，内含少量年轻恒星，距离约 270 万光年。",
+   "A dwarf elliptical companion of Andromeda with a few young stars; about 2.7 million light years away."
+  ],
+  "ESO056-115": [
+   "大麦哲伦云：银河系最大的卫星星系，距离约 16 万光年，南半球肉眼可见。1987 年这里爆发了近 400 年来最近的超新星 SN 1987A，蜘蛛星云是本星系群最活跃的恒星形成区。",
+   "The Large Magellanic Cloud, the Milky Way's largest satellite, about 160,000 light years away and visible to the naked eye from the south. Home of SN 1987A and the Tarantula Nebula."
+  ],
+  "NGC292": [
+   "小麦哲伦云：银河系的矮星系卫星，距离约 20 万光年，与大麦哲伦云之间由一道中性氢「麦哲伦桥」相连。",
+   "The Small Magellanic Cloud, a dwarf satellite of the Milky Way about 200,000 light years away, linked to the LMC by the hydrogen 'Magellanic Bridge'."
+  ],
+  "NGC5139": [
+   "半人马座 ω：银河系最大、最亮的球状星团，约 1000 万颗恒星，可能是一个被吞并矮星系的残核，距离约 1.7 万光年。",
+   "Omega Centauri, the largest and brightest globular cluster with about 10 million stars, probably the core of a swallowed dwarf galaxy; about 17,000 light years away."
+  ],
+  "NGC104": [
+   "杜鹃座 47：全天第二亮的球状星团，紧挨小麦哲伦云（但比它近得多），距离约 1.5 万光年。",
+   "47 Tucanae, the second-brightest globular cluster, beside (but far in front of) the Small Magellanic Cloud; about 15,000 light years away."
+  ],
+  "NGC3372": {
+   "ly": 7500,
+   "year": "1752",
+   "who": "Nicolas-Louis de Lacaille",
+   "tags": [
+    "发射星云",
+    "船底座星云",
+    "海山二"
+   ],
+   "zh": "船底座星云是银河系里最大、最亮的恒星形成区之一，比猎户座大星云大四倍以上。它包含海山二（η Carinae）——一颗极不稳定的高光度蓝变星，19 世纪曾短暂成为全天第二亮星，并在周围抛出「侏儒星云」双瓣结构。",
+   "en": "The Carina Nebula is one of the largest and brightest star-forming regions in the Galaxy, more than four times the size of the Orion Nebula. It contains Eta Carinae, an unstable luminous blue variable that briefly became the second-brightest star in the sky in the 19th century and threw out the bipolar Homunculus Nebula.",
+   "extra": "视直径超过 2°，比满月还大；南半球肉眼可见，是韦布望远镜的重点拍摄目标。"
+  },
+  "NGC2070": [
+   "蜘蛛星云（剑鱼座 30）：大麦哲伦云里的巨型恒星形成区，本星系群最活跃的造星工厂，中心星团 R136 含有已知最重的恒星。",
+   "The Tarantula Nebula (30 Doradus) in the LMC, the most active star factory in the Local Group; its core cluster R136 holds the most massive stars known."
+  ],
+  "NGC7293": {
+   "ly": 650,
+   "year": "1824",
+   "who": "Karl Ludwig Harding",
+   "tags": [
+    "行星状星云",
+    "螺旋星云"
+   ],
+   "zh": "螺旋星云是离我们最近的行星状星云之一，是一颗类太阳恒星死亡时抛出的外层气体，中心留下一颗白矮星。它之所以像一只「上帝之眼」，是因为我们几乎正对着它的赤道面看——实际结构是一个甜甜圈，两端还有向外喷出的纤维。",
+   "en": "The Helix is one of the nearest planetary nebulae: the shed outer layers of a dying Sun-like star, with a white dwarf left at the centre. It looks like a giant eye because we view it almost face-on — the real shape is a doughnut with jets and filaments streaming out of both poles.",
+   "extra": "视直径约 16′，真实直径约 2.9 光年；表面亮度低，需要双筒望远镜或长曝光才能看出圆环。"
+  },
+  "NGC6543": [
+   "猫眼星云：结构最复杂的行星状星云之一，层层嵌套的气体壳显示中心恒星曾周期性地抛出物质，距离约 3300 光年。",
+   "The Cat's Eye Nebula, one of the most intricate planetary nebulae; nested shells record repeated outbursts of its central star. About 3,300 light years away."
+  ],
+  "NGC2237": {
+   "ly": 5200,
+   "year": "1690",
+   "who": "John Flamsteed（记录）",
+   "tags": [
+    "发射星云",
+    "玫瑰星云",
+    "疏散星团 NGC 2244"
+   ],
+   "zh": "玫瑰星云中间是一群刚诞生的年轻热星（NGC 2244），它们的光和星风把周围气体吹成一个环形空腔，边缘剩下的气体发光，看起来像一朵玫瑰。整团云约有 130 光年宽。",
+   "en": "At the heart of the Rosette Nebula is a newborn cluster of hot stars (NGC 2244); their light and winds have blown the surrounding gas into a ring, leaving the glowing rim that looks like a rose. The whole cloud is about 130 light-years across.",
+   "extra": "视直径约 80′，比满月还大但表面亮度低；需要长曝光或 Hα 滤镜，肉眼看不到。"
+  },
+  "NGC7000": [
+   "北美洲星云：天鹅座天津四旁边的发射星云，轮廓酷似北美大陆，「墨西哥湾」是一片前景暗尘埃，距离约 2200 光年。",
+   "The North America Nebula near Deneb, shaped like the continent; its 'Gulf of Mexico' is a foreground dust cloud. About 2,200 light years away."
+  ],
+  "NGC6960": [
+   "面纱星云西段：天鹅座圈超新星遗迹的一部分，约 1 万到 2 万年前一颗恒星爆发形成，距离约 2400 光年。",
+   "The western Veil Nebula, part of the Cygnus Loop supernova remnant from an explosion 10,000–20,000 years ago; about 2,400 light years away."
+  ],
+  "NGC6992": [
+   "面纱星云东段：天鹅座圈超新星遗迹最亮的一段纤维，激波正在撞击周围的星际气体。",
+   "The eastern Veil Nebula, the brightest filaments of the Cygnus Loop where the blast wave hits interstellar gas."
+  ],
+  "NGC253": [
+   "玉夫座星系：南天最亮的星系之一，星暴星系，距离约 1100 万光年。",
+   "The Sculptor Galaxy, one of the brightest in the southern sky and a vigorous starburst; about 11 million light years away."
+  ],
+  "NGC5128": [
+   "半人马座 A：最近的射电星系，椭圆星系上横贯一条巨大的尘埃带，可能是吞并旋涡星系留下的，距离约 1200 万光年。",
+   "Centaurus A, the nearest radio galaxy: an elliptical crossed by a huge dust lane, probably from a swallowed spiral; about 12 million light years away."
+  ],
+  "NGC869": [
+   "英仙座双星团 h：与 χ（NGC 884）并列的肉眼星团，两者都是约 1400 万年的年轻星团，距离约 7500 光年。",
+   "h Persei, one half of the naked-eye Double Cluster with χ Persei (NGC 884); both are about 14 million years old and 7,500 light years away."
+  ],
+  "NGC884": [
+   "英仙座双星团 χ：双星团的另一半，含有多颗红超巨星。",
+   "χ Persei, the other half of the Double Cluster, notable for several red supergiants."
+  ],
+  "NGC2392": [
+   "爱斯基摩星云：双子座的行星状星云，外层纤维像皮毛兜帽，距离约 4200 光年。",
+   "The Eskimo Nebula, a planetary nebula in Gemini whose outer filaments resemble a fur hood; about 4,200 light years away."
+  ],
+  "NGC3242": [
+   "木魂星云：长蛇座的明亮行星状星云，目视大小与木星相近，距离约 4800 光年。",
+   "The Ghost of Jupiter, a bright planetary nebula in Hydra about the apparent size of Jupiter; about 4,800 light years away."
+  ],
+  "NGC6302": {
+   "ly": 4000,
+   "year": "1826",
+   "who": "James Dunlop",
+   "tags": [
+    "行星状星云",
+    "蝴蝶星云",
+    "Bug 星云"
+   ],
+   "zh": "蝴蝶星云（虫星云）是已知温度最高的恒星之一的家：中心恒星的表面温度约 25 万 K。它抛出的气体沿赤道方向形成一条浓密的尘埃带，两极则喷出两条巨大的「翅膀」，整体呈蝴蝶形。",
+   "en": "The Butterfly (Bug) Nebula hosts one of the hottest known stars, with a surface near 250,000 K. Its ejected gas forms a thick equatorial dust band with two enormous bipolar lobes, giving the butterfly shape.",
+   "extra": "视直径约 1′；表面亮度偏低，需要中型望远镜加高倍放大与窄带滤镜。"
+  },
+  "NGC7635": {
+   "ly": 11000,
+   "year": "1787",
+   "who": "William Herschel",
+   "tags": [
+    "发射星云",
+    "气泡星云"
+   ],
+   "zh": "气泡星云是一个真正的气体气泡：中心有一颗约 40 倍太阳质量的 O 型星，它每秒喷出的星风以约 1700 公里每秒的速度把周围气体推开，形成直径约 10 光年的气泡。气泡还在扩张，边缘就是被压缩发光的壳。",
+   "en": "The Bubble Nebula is a genuine bubble of gas: a roughly 40-solar-mass O star at its centre drives winds outward at about 1,700 km/s, clearing a shell some 10 light-years across. The bubble is still expanding, and its glowing rim is the compressed edge.",
+   "extra": "视直径约 15′；表面亮度不高，需要长曝光与 OIII 滤镜。"
+  },
+  "IC434": [
+   "猎户座参宿一附近的发射星云，著名的马头星云（Barnard 33）就是映在它红色背景上的暗尘埃云，距离约 1400 光年。",
+   "An emission nebula near Alnitak in Orion; the famous Horsehead (Barnard 33) is a dark dust cloud silhouetted against its red glow. About 1,400 light years away."
+  ],
+  "IC1396": [
+   "仙王座的大型发射星云与星团，内部的暗云「象鼻」正在孕育新恒星，距离约 2400 光年。",
+   "A large emission nebula and cluster in Cepheus whose dark 'Elephant's Trunk' is forming new stars; about 2,400 light years away."
+  ],
+  "IC2944": [
+   "跑鸡星云：半人马座的发射星云，里面有一群被称为「萨克雷小球」的致密暗云，距离约 6000 光年。",
+   "The Running Chicken Nebula in Centaurus, dotted with dense dark 'Thackeray's globules'; about 6,000 light years away."
+  ],
+  "NGC2024": {
+   "ly": 1350,
+   "year": "1786",
+   "who": "William Herschel",
+   "tags": [
+    "发射星云",
+    "反射星云",
+    "火焰星云"
+   ],
+   "zh": "火焰星云在猎户座腰带最东侧的参宿一（Alnitak）旁边，被那颗超热蓝星的紫外光照得发光。它与旁边的马头星云属于同一片分子云，一个是被点亮的正面，一个是挡住光的背面。",
+   "en": "The Flame Nebula sits beside Alnitak, the easternmost star of Orion&apos;s Belt, glowing under that very hot blue star&apos;s ultraviolet light. It belongs to the same molecular cloud as the Horsehead: one face lit up, the other blocking the light away.",
+   "extra": "视直径约 30′；双筒望远镜里几乎是空的，需要小望远镜加长曝光与 UHC 滤镜。"
+  },
+  "NGC1499": [
+   "加利福尼亚星云：英仙座的长条发射星云，由附近的炽热恒星英仙座 ξ 照亮，距离约 1000 光年。",
+   "The California Nebula, a long emission nebula in Perseus lit by the hot star ξ Persei; about 1,000 light years away."
+  ],
+  "NGC4565": [
+   "针状星系：最著名的侧向旋涡星系之一，细长的星盘被一条尘埃带一分为二，距离约 4000 万光年。",
+   "The Needle Galaxy, a classic edge-on spiral whose thin disc is split by a dust lane; about 40 million light years away."
+  ],
+  "NGC891": [
+   "仙女座的侧向旋涡星系，被认为与银河系从侧面看的样子相似，距离约 3000 万光年。",
+   "An edge-on spiral in Andromeda thought to resemble the Milky Way seen from the side; about 30 million light years away."
+  ],
+  "NGC6888": [
+   "新月星云：天鹅座的沃尔夫-拉叶星 WR 136 的强星风吹出的气体壳，距离约 5000 光年。",
+   "The Crescent Nebula, a shell blown by the Wolf–Rayet star WR 136 in Cygnus; about 5,000 light years away."
+  ],
+  "NGC6826": [
+   "闪视星云：天鹅座的行星状星云，直视时中心星更显眼、余光看时星云更明显，看起来会「闪」。",
+   "The Blinking Planetary in Cygnus, which seems to vanish and reappear as you shift your gaze between star and nebula."
+  ],
+  "NGC2264": [
+   "麒麟座的疏散星团「圣诞树星团」与锥状星云所在的恒星形成区，距离约 2500 光年。",
+   "The Christmas Tree Cluster and Cone Nebula star-forming region in Monoceros, about 2,500 light years away."
+  ],
+  "NGC1977": [
+   "奔跑者星云：猎户座大星云北边的蓝色反射星云，距离约 1500 光年。",
+   "The Running Man Nebula, a blue reflection nebula just north of the Orion Nebula; about 1,500 light years away."
+  ],
+  "NGC7662": [
+   "蓝雪球星云：仙女座的明亮行星状星云，在望远镜里呈蓝绿色小圆盘，距离约 5600 光年。",
+   "The Blue Snowball, a bright planetary nebula in Andromeda showing a blue-green disc; about 5,600 light years away."
+  ],
+  "NGC7009": [
+   "土星状星云：宝瓶座的行星状星云，两侧伸出的喷流像土星的环，距离约 5200 光年。",
+   "The Saturn Nebula in Aquarius, whose side jets resemble Saturn's rings; about 5,200 light years away."
+  ],
+  "NGC3132": [
+   "南环星云：船帆座的行星状星云，詹姆斯·韦布太空望远镜 2022 年的首批图像之一，距离约 2500 光年。",
+   "The Southern Ring Nebula in Vela, one of JWST's first images in 2022; about 2,500 light years away."
+  ],
+  "NGC6744": [
+   "孔雀座的大型棒旋星系，被认为是银河系的「孪生」之一，距离约 3000 万光年。",
+   "A large barred spiral in Pavo often called a Milky Way look-alike; about 30 million light years away."
+  ],
+  "NGC1300": [
+   "波江座的典型棒旋星系，长棒两端连着两条舒展的旋臂，距离约 6100 万光年。",
+   "A textbook barred spiral in Eridanus with two sweeping arms off a long bar; about 61 million light years away."
+  ],
+  "NGC1365": [
+   "天炉座的巨型棒旋星系，属于天炉座星系团，距离约 5600 万光年。",
+   "The Great Barred Spiral in the Fornax Cluster, about 56 million light years away."
+  ],
+  "NGC4038": [
+   "触须星系之一：两个正在碰撞的星系，抛出的潮汐尾像昆虫的触须，碰撞激发了大量恒星形成，距离约 4500 万光年。",
+   "Half of the Antennae Galaxies, a colliding pair whose tidal tails look like insect antennae; about 45 million light years away."
+  ],
+  "NGC4039": [
+   "触须星系的另一半，与 NGC 4038 正在合并。",
+   "The other half of the Antennae, merging with NGC 4038."
+  ],
+  "NGC2997": [
+   "唧筒座的宏伟旋涡星系，核心周围有一圈恒星形成区，距离约 3500 万光年。",
+   "A grand-design spiral in Antlia with a ring of star formation around its core; about 35 million light years away."
+  ],
+  "NGC55": [
+   "玉夫座的侧向棒旋星系，属于玉夫座星系群，距离约 650 万光年。",
+   "An edge-on barred spiral in the Sculptor Group, about 6.5 million light years away."
+  ],
+  "NGC300": [
+   "玉夫座的正向旋涡星系，距离约 600 万光年，是研究恒星与星团的近邻样本。",
+   "A face-on spiral in Sculptor about 6 million light years away, a nearby laboratory for stars and clusters."
+  ],
+  "NGC6822": [
+   "巴纳德星系：本星系群里的不规则矮星系，距离约 160 万光年。",
+   "Barnard's Galaxy, an irregular dwarf in the Local Group about 1.6 million light years away."
+  ],
+  "NGC6334": [
+   "猫爪星云：天蝎座的恒星形成区，几块发射区像猫的脚印，距离约 5500 光年。",
+   "The Cat's Paw Nebula, a star-forming region in Scorpius whose lobes resemble a paw print; about 5,500 light years away."
+  ],
+  "NGC6357": [
+   "龙虾星云：天蝎座的发射星云，内含一些已知质量最大的恒星，距离约 5500 光年。",
+   "The Lobster (War and Peace) Nebula in Scorpius, holding some of the most massive known stars; about 5,500 light years away."
+  ],
+  "NGC3603": [
+   "船底座的巨型恒星形成区，是银河系里最致密的大质量星团之一，距离约 2 万光年。",
+   "A giant star-forming region in Carina containing one of the Galaxy's most compact massive clusters; about 20,000 light years away."
+  ],
+  "NGC2440": [
+   "船尾座的行星状星云，中心白矮星温度约 20 万度，是已知最热的之一，距离约 4000 光年。",
+   "A planetary nebula in Puppis whose 200,000-degree white dwarf is one of the hottest known; about 4,000 light years away."
+  ],
+  "NGC6751": [
+   "天鹰座的行星状星云，被称为「发光之眼」，距离约 6500 光年。",
+   "The Glowing Eye, a planetary nebula in Aquila about 6,500 light years away."
+  ],
+  "NGC7027": [
+   "天鹅座年轻而致密的行星状星云，研究行星状星云早期演化的经典样本，距离约 3000 光年。",
+   "A young, compact planetary nebula in Cygnus, a classic case of early nebular evolution; about 3,000 light years away."
+  ],
+  "IC2118": [
+   "女巫头星云：参宿七照亮的反射星云，轮廓像侧脸，距离约 900 光年。",
+   "The Witch Head Nebula, a reflection nebula lit by Rigel; about 900 light years away."
+  ],
+  "IC1805": [
+   "心脏星云：仙后座的发射星云，形似心脏，旁边是灵魂星云 IC 1848，距离约 7500 光年。",
+   "The Heart Nebula in Cassiopeia, beside the Soul Nebula IC 1848; about 7,500 light years away."
+  ],
+  "IC1848": [
+   "灵魂星云：仙后座的发射星云，与心脏星云相邻。",
+   "The Soul Nebula in Cassiopeia, neighbour of the Heart Nebula."
+  ],
+  "IC4604": [
+   "蛇夫座 ρ 星云：离地球最近的恒星形成区之一，色彩丰富的尘埃与气体，距离约 460 光年。",
+   "The Rho Ophiuchi cloud complex, one of the nearest star-forming regions, with colourful dust and gas; about 460 light years away."
+  ],
+  "IC4592": [
+   "蓝马头星云：天蝎座 ν 照亮的蓝色反射星云，距离约 400 光年。",
+   "The Blue Horsehead, a reflection nebula lit by ν Scorpii; about 400 light years away."
+  ],
+  "IC5146": [
+   "茧状星云：天鹅座的发射与反射星云，位于一条长长的暗星云末端，距离约 4000 光年。",
+   "The Cocoon Nebula in Cygnus at the end of a long dark nebula; about 4,000 light years away."
+  ],
+  "IC1318": [
+   "天鹅座 γ 星云：天津一周围的大片发射星云，距离约 5000 光年。",
+   "The Sadr region, a large emission complex around γ Cygni; about 5,000 light years away."
+  ],
+  "IC405": [
+   "烽火恒星星云：御夫座的发射与反射星云，由一颗逃逸星御夫座 AE 照亮，距离约 1500 光年。",
+   "The Flaming Star Nebula in Auriga, lit by the runaway star AE Aurigae; about 1,500 light years away."
+  ],
+  "IC443": [
+   "水母星云：双子座的超新星遗迹，距离约 5000 光年。",
+   "The Jellyfish Nebula, a supernova remnant in Gemini about 5,000 light years away."
+  ],
+  "IC2177": [
+   "海鸥星云：麒麟座与大犬座交界处的发射星云，形似展翅的海鸥，距离约 3800 光年。",
+   "The Seagull Nebula on the Monoceros–Canis Major border, shaped like a bird in flight; about 3,800 light years away."
+  ],
+  "IC342": [
+   "鹿豹座的正向旋涡星系，被银河系尘埃严重遮挡，所以又叫「隐藏星系」，距离约 1100 万光年。",
+   "The Hidden Galaxy in Camelopardalis, a face-on spiral heavily dimmed by Milky Way dust; about 11 million light years away."
+  ],
+  "B33": {
+   "ly": 1375,
+   "year": "1888",
+   "who": "Williamina Fleming",
+   "tags": [
+    "暗星云",
+    "马头星云"
+   ],
+   "zh": "马头星云其实是一块不透明的暗尘埃云，因为正好挡在背后发光的氢气前面，才被「勾勒」出一张马脸。它的寿命很短：几千到几万年内就会被附近年轻恒星的辐射侵蚀掉。",
+   "en": "The Horsehead is a dark, opaque dust cloud that only becomes visible in silhouette against glowing hydrogen behind it. It is short-lived: radiation from nearby young stars will erode it within a few thousand to a few tens of thousands of years.",
+   "extra": "视直径约 8×6′；需要至少 20 厘米口径望远镜或长时间曝光，Hβ 滤镜帮助很大。"
+  }
+ }
+}
