@@ -98,8 +98,8 @@ export const DICT = {
   'music.on': ['音乐已开启', 'Music on'],
   'music.off': ['音乐已关闭', 'Music off'],
   'nav.lang': ['切换语言', 'Switch language'],
-  'nav.brandHome': ['ATLAS 图册 · 回到顶部', 'ATLAS · Back to top'],
-  'brand.cn': ['图册', 'ATLAS'],
+  'nav.brandHome': ['AtlasL 图谱 · 回到顶部', 'AtlasL · Back to top'],
+  'brand.cn': ['图谱', 'ATLAS'],
 
   /* 主题菜单 */
   'theme.title': ['主题', 'Theme'],
@@ -116,7 +116,7 @@ export const DICT = {
   /* 开篇 */
   'hero.kicker': ['私人地理志', 'PRIVATE ATLAS'],
   'hero.title1': ['经纬所及', 'Meridians'],
-  'hero.title2': ['皆成图册', 'of Memory'],
+  'hero.title2': ['皆成图谱', 'of Memory'],
   'hero.new': ['新建地标', 'New landmark'],
   'hero.globe': ['转动地球', 'Turn the globe'],
   'hero.statLandmarks': ['地标', 'Places'],
@@ -419,7 +419,7 @@ export const DICT = {
 
   /* 入口门禁 */
   'gate.title': ['私钥', 'Private key'],
-  'gate.sub': ['输入私钥，进入图册。', 'Enter the key to open the atlas.'],
+  'gate.sub': ['输入私钥，进入图谱。', 'Enter the key to open the atlas.'],
   'gate.enter': ['进入', 'Enter'],
   'gate.err': ['私钥不正确', 'Incorrect key'],
   'gate.note': ['私钥仅在本机校验，不会上传。', 'The key is checked locally and never uploaded.'],

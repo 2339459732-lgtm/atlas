@@ -3218,3 +3218,174 @@ html[data-gate="open"] .gate { display: none; }
   transition: transform .2s;
 }
 .skip-link:focus-visible { transform: none; }
+
+/* ══════════════════════════════════════════════════════════════════
+   AtlasL 图谱 · 仪器仪表风（v2.6.4）
+   设计语言：私人天文台。面板=仪器，读数=档案。
+   角括、发丝线、刻度条、品牌金——只调视觉，不动布局与语义。
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── 通用仪器元素 ── */
+.instrument {
+  position: relative;
+}
+.instrument::before, .instrument::after {
+  content: ''; position: absolute; width: 9px; height: 9px; pointer-events: none;
+}
+.instrument::before { top: -1px; left: -1px; border-top: 1px solid color-mix(in oklab, var(--brand) 55%, transparent); border-left: 1px solid color-mix(in oklab, var(--brand) 55%, transparent); }
+.instrument::after { bottom: -1px; right: -1px; border-bottom: 1px solid color-mix(in oklab, var(--brand) 55%, transparent); border-right: 1px solid color-mix(in oklab, var(--brand) 55%, transparent); }
+
+/* ── 首页：读数框、刻度条、统计仪器格 ── */
+.hero__meta {
+  position: relative;
+  border-top: 1px solid var(--line);
+}
+.hero__meta::before, .hero__meta::after {
+  content: ''; position: absolute; width: 8px; height: 8px; top: -1px;
+}
+.hero__meta::before { left: 0; border-top: 1px solid color-mix(in oklab, var(--brand) 60%, transparent); border-left: 1px solid color-mix(in oklab, var(--brand) 60%, transparent); }
+.hero__meta::after { right: 0; border-top: 1px solid color-mix(in oklab, var(--brand) 60%, transparent); border-right: 1px solid color-mix(in oklab, var(--brand) 60%, transparent); }
+.hero__meta-c { color: color-mix(in oklab, var(--brand) 62%, var(--ink-3)); }
+
+.hero__ticks {
+  display: flex; align-items: flex-end; gap: 3px;
+  height: 14px; margin-top: clamp(14px, 1.6vw, 22px);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+.hero__ticks i {
+  flex: 1; height: 100%;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--brand) 46%, transparent), transparent 42%, color-mix(in oklab, var(--brand) 30%, transparent) 42%);
+  opacity: .5;
+}
+.hero__ticks i:nth-child(2n) { transform: scaleY(.62); }
+.hero__ticks i:nth-child(3n) { opacity: .3; }
+
+.hero__stats div {
+  position: relative;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.hero__stats div::after {
+  content: ''; position: absolute; top: -1px; left: 0; width: 22px;
+  border-top: 1px solid color-mix(in oklab, var(--brand) 72%, transparent);
+}
+.hero__stats dd { font-family: var(--f-mono); font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+
+/* ── 概览：轮播控制台 ── */
+.deck__bar {
+  position: relative;
+  border-top: 1px solid var(--line-2);
+  border-bottom: 1px solid var(--line);
+}
+.deck__bar::before {
+  content: ''; position: absolute; top: -1px; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, color-mix(in oklab, var(--brand) 70%, transparent), transparent 30%, transparent 70%, color-mix(in oklab, var(--brand) 70%, transparent));
+}
+.deck__meta { position: relative; }
+.deck__no { font-family: var(--f-mono); letter-spacing: .3em; color: var(--ink-3); }
+.deck__coord {
+  margin: 5px 0 0; font-family: var(--f-mono);
+  font-size: var(--fs-micro); letter-spacing: .16em;
+  color: color-mix(in oklab, var(--brand) 70%, var(--ink-3));
+}
+
+/* ── 概览：自动标签/接下来 两块仪器卡 ── */
+.ov__panel {
+  position: relative;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+  background:
+    linear-gradient(135deg, color-mix(in oklab, var(--brand) 4%, transparent), transparent 40%),
+    var(--surface);
+}
+.ov__panel::before, .ov__panel::after {
+  content: ''; position: absolute; width: 10px; height: 10px; pointer-events: none;
+}
+.ov__panel::before { top: -1px; left: -1px; border-top: 1px solid color-mix(in oklab, var(--brand) 62%, transparent); border-left: 1px solid color-mix(in oklab, var(--brand) 62%, transparent); }
+.ov__panel::after { bottom: -1px; right: -1px; border-bottom: 1px solid color-mix(in oklab, var(--brand) 62%, transparent); border-right: 1px solid color-mix(in oklab, var(--brand) 62%, transparent); }
+.ov__label {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--f-mono); letter-spacing: .24em; color: var(--ink-3);
+}
+.ov__label::before {
+  content: ''; width: 5px; height: 5px;
+  background: var(--brand); border-radius: 1px;
+  transform: rotate(45deg);
+}
+
+/* ── 图层面板：数据链总线 ──
+   组间用竖线串成总线；每行一个菱形节点挂在总线上；
+   开启时节点点亮、链路接通，开关呈链条环状。 */
+.lyr-sec { position: relative; }
+.lyr-sec::before {
+  content: ''; position: absolute; left: 8px; top: 0; bottom: 0;
+  width: 1px;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--brand) 34%, transparent), color-mix(in oklab, var(--line-2) 60%, transparent) 30%, color-mix(in oklab, var(--line-2) 60%, transparent) 82%, transparent);
+}
+.lyr-row { padding-left: 22px; }
+.lyr-row::before {
+  content: ''; position: absolute; left: 5.5px; top: 14px;
+  width: 5px; height: 5px; border-radius: 1px;
+  background: var(--line-2);
+  transform: rotate(45deg);
+  transition: background-color .28s, box-shadow .28s;
+}
+.lyr-row::after {
+  content: ''; position: absolute; left: 8px; top: 16.5px; width: 10px; height: 1px;
+  background: var(--line-2);
+  transition: background-color .28s;
+}
+.lyr-row[data-on="yes"]::before {
+  background: var(--brand);
+  box-shadow: 0 0 7px color-mix(in oklab, var(--brand) 75%, transparent);
+}
+.lyr-row[data-on="yes"]::after {
+  background: color-mix(in oklab, var(--brand) 46%, transparent);
+}
+/* 链条开关：轨道是半开的链环，圆点换菱形节点 */
+.lyr-sw__track {
+  border-radius: 7px;
+  border-style: dashed;
+  border-color: var(--line-3);
+}
+.lyr-sw__dot {
+  border-radius: 1px;
+  transform: rotate(45deg);
+  width: 7px; height: 7px; left: 2.5px; top: 2.5px;
+}
+.lyr-row[data-on="yes"] .lyr-sw__track {
+  border-style: solid;
+  background: color-mix(in oklab, var(--brand) 18%, transparent);
+  border-color: color-mix(in oklab, var(--brand) 52%, transparent);
+}
+.lyr-row[data-on="yes"] .lyr-sw__dot {
+  left: 14.5px; background: var(--brand);
+  box-shadow: 0 0 9px color-mix(in oklab, var(--brand) 85%, transparent);
+}
+
+/* 移动端：总线随抽屉收窄，节点贴边 */
+@media (max-width: 620px) {
+  .lyr-row { padding-left: 18px; }
+  .lyr-sec::before { left: 6px; }
+  .lyr-row::before { left: 3.5px; }
+  .lyr-row::after { left: 6px; }
+}
+
+/* 分组头 = 总线节点：编号落在竖线上，像链节的铆钉 */
+.lyr-sec__head { padding-left: 0; }
+.lyr-sec__no {
+  position: relative; z-index: 1;
+  display: grid; place-items: center;
+  width: 15px; height: 15px; margin-left: 1px;
+  background: none; border: 0; padding: 0;
+  color: color-mix(in oklab, var(--brand) 88%, #fff);
+}
+.lyr-sec__no::before {
+  content: ''; position: absolute; inset: 1px; z-index: -1;
+  background: var(--bg);
+  border: 1px solid color-mix(in oklab, var(--brand) 46%, transparent);
+  border-radius: 3px;
+  transform: rotate(45deg);
+}
+.lyr-sec__head h4, .lyr-sec__head small { margin-left: 8px; }

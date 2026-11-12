@@ -66,9 +66,9 @@ const MAX_PX = APP.limits.photoMaxPx;
 const MAX_BYTES = APP.limits.photoMaxBytes;
 
 const DEFAULT_SITE = {
-  name: 'ATLAS',
-  cn: '图册',
-  title: '去过的地方',
+  name: 'AtlasL 图谱',
+  cn: '图谱',
+  title: '私人地理志',
   lede: '一处地标，一本相册。先在地球上落一个点，再把那里的照片放进去——同一座城的片子待在一起，翻起来才像一次回来。',
   accent: '#C9A96A'
 };
@@ -377,7 +377,7 @@ function applySite(site) {
   set('site-name', site.name);
   set('site-lede', lede);
   set('hero-site', site.name);
-  document.title = site.name;
+  document.title = site.name.includes('AtlasL') ? site.name : `${site.name} · AtlasL 图谱`;
   const md = document.querySelector('meta[name="description"]');
   if (md) md.setAttribute('content', lede || title);
 }
@@ -2537,6 +2537,7 @@ function renderDeck() {
     $('#car-no').textContent = '№ 00';
     $('#car-name').textContent = t('ov.emptyTitle');
     $('#car-sub').textContent = t('ov.emptySub');
+    const cd = $('#car-coord'); if (cd) cd.textContent = '—';
     $('#car-prev').disabled = true;
     $('#car-next').disabled = true;
     return;
@@ -2604,7 +2605,9 @@ function layoutDeck(fi = deckIndex) {
     $('#car-name').textContent = placeName(lm);
     $('#car-sub').textContent = isLocked(lm)
       ? t('ov.lockedSub')
-      : `${t('ov.count', { n: photosOf(lm.id).length })} · ${lm.coord || '—'}`;
+      : t('ov.count', { n: photosOf(lm.id).length });
+    const cd = $('#car-coord');
+    if (cd) cd.textContent = lm.coord || '—';
   }
   $('#car-prev').disabled = deckIndex === 0;
   $('#car-next').disabled = deckIndex >= state.landmarks.length - 1;
