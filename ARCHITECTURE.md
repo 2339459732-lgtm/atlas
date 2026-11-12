@@ -2,7 +2,8 @@
 
 > 一个可离线运行的私人地理相册：WebGL 实体地球 + 册集面板 + 加密保险库。
 > 默认全部数据留在浏览器本机，账号即 ATLAS 本机账号；换设备用加密备份迁移。
-> 云同步引擎与数据表保留，但界面入口默认关闭（`config.features.cloudSync`）。
+> ATLAS 云账号（邮箱验证码）为主路径：账号资料与作品随账号跨设备同步；
+> 本机账号与离线模式保留为降级路径（`config.features.cloudSync`）。
 > 数据层的完整契约、合并规则与验证方式见 **`DATA_ARCHITECTURE.md`**；
 > 账号、跨设备同步与密码/恢复码流程见 **`ACCOUNT_SYNC.md`**。
 
@@ -118,8 +119,11 @@
 `JSON → gzip → AES-GCM(PBKDF2-SHA256, 18 万轮)`，导出 `.atlas` 文件；导入按 id 合并，不覆盖已有照片。
 换设备或清缓存后，用同一文件与口令即可完整恢复；口令遗失不可解密。
 
-### 云同步（可选）
-（引擎保留，默认关闭）登录后，相册、手记、照片元数据与缩略图自动上云，原图按需下载。
+### 云同步（主路径）
+登录 ATLAS 云账号后：先拉后推。相册按 rev → at → 字段级 mt 合并，
+照片元数据/缩略图 LWW，原图按需下载、离线编辑打脏标记自动补推；
+失败指数退避重试；配置异常（域名未绑定 / SDK 失败 / 断网 / 令牌失效）
+一律降级为「本地可用 + 明确提示」。详见 `CLOUD_SYNC.md`。
 合并规则、墓碑、作用域与验证方式见 `DATA_ARCHITECTURE.md`；未登录或域名未绑定时完全走本地路径。
 注意：备份是"整包快照"，云同步是"逐条合并"，两者互补，不互相替代。
 
@@ -149,14 +153,15 @@ main.js（应用编排，唯一修改 state 的地方）
  ├─ config.js   全局配置：云端点/密钥、默认主题、同步与保留期上限
  ├─ model.js    数据契约：字段/上限/默认值/id/合并（纯函数）
  ├─ store.js    本机持久化：信封版本 / IndexedDB / 墓碑 / 脏标记 / 跨标签广播 / 体检
- ├─ cloud.js    云端传输：OAuth + atlas_albums/photos + 对象存储（只传不算）
+ ├─ cloud.js    云端传输：邮箱验证码认证 + atlas_albums/photos/settings + 对象存储（只传不算）
  ├─ accounts.js 本机账号与命名空间：PBKDF2、恢复码、失败节流、cloudId 绑定
  ├─ earth.js    球体几何 / 5 套着色器 / 相机与拾取 / 光点 / 图层开关与停靠取景
  ├─ layers.js   图层注册表 / ID 解析 / 依赖与状态机（URL + localStorage）
  ├─ layer-panel.js 图层仪表面板：组 → 行 → 摘要 → 详情
  ├─ earth-overlay.js 2D 测绘层：经纬网 / 晨昏线 / 旅程线
  ├─ nomenclature.js 地名志：区域编号 / 三档露出 / 圈径 / 卡片
- ├─ geo.js      地名 → 坐标；25 字介绍生成
+ ├─ geo.js      地名 → 坐标（本地地名库 + 线上回退）；25 字介绍生成
+ ├─ data/gazetteer.js 世界城市地名库（GeoNames，生成文件，懒加载）
  ├─ vault.js    SHA-256 校验 / AES-GCM 备份
  ├─ drift.js    首屏微尘
  ├─ audio.js    程序化配乐
@@ -171,7 +176,7 @@ main.js（应用编排，唯一修改 state 的地方）
   → renderWall() / buildMarkers() / renderOverview()
   → Earth.setMarkers() → 每帧 project(lat,lng) → DOM 标记
 
-云同步：本地 + 本地墓碑 ⇄ 云端行，按 rev/at 合并；删除优先，墓碑保留 45 天
+云同步：本地 + 本地墓碑 ⇄ 云端行，按 rev/at 合并；删除优先，墓碑保留 180 天
 备份：相册 + 照片 Blob → gzip → AES-GCM；导入逐条过契约并清墓碑
 图层：?layers= → layers.parse → store.init → apply(on, ctx) → earth/overlay/nomenclature
       → 同一 emit 写回 URL 与 localStorage；面板只读 store
@@ -202,7 +207,7 @@ ID 是稳定地址（`/^[A-Z]\d{2}\.[a-z0-9-]+$/`），组序只影响阅读顺�
 - 无框架、无构建步骤：原生 ES Modules，GitHub Pages 直接托管。
 - 3D：手写 WebGL1/2 兼容着色器（GLSL ES 1.00），不引入引擎。
 - 加密：Web Crypto（PBKDF2 + AES-GCM），压缩用 CompressionStream。
-- 云（可选、默认关闭）：Cloud SDK（OAuth + Postgres 行级安全 + 对象存储），不引入自建服务端。
+- 云（主路径）：Cloud SDK（邮箱验证码认证 + Postgres 行级安全 + 对象存储），不引入自建服务端。
 - 地理：维基百科坐标 API + OpenStreetMap Nominatim（均为公开数据，需注明来源）。
 - 字体：Archivo Variable（自托管 woff2）＋ 系统宋体。
 
@@ -211,5 +216,5 @@ ID 是稳定地址（`/^[A-Z]\d{2}\.[a-z0-9-]+$/`），组序只影响阅读顺�
 2. 地名解析依赖外部服务（维基百科坐标 + Nominatim），离线时只能手动落点。
 3. 前端私钥可被绕过，不构成安全边界；相册口令只保护"界面入口"，不加密照片。
 4. 备份文件包含原始照片，体积随照片数线性增长。
-5. 云同步只在 `*.workbuddy.host` 域生效；GitHub Pages 上是纯本地模式。
+5. 云同步只在 `*.workbuddy.host` 域生效；GitHub Pages / 本地预览显式降级为纯本地模式并提示。
 6. 相册按字段合并（`mt` 时钟，rev/at 兜底），照片按整条记录合并；同一字段并发修改仍然后写者赢；删除在 180 天墓碑窗口内优先于编辑。

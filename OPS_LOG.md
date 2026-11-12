@@ -472,3 +472,55 @@ ALTER TABLE atlas_photos ADD COLUMN rev BIGINT NOT NULL DEFAULT 0,
 - 亮星色温：蓝/白/橙并存（真实 B−V 分布）；天狼星银道坐标
   (227.23°, −8.89°) 与刊布值一致。
 - 控制台 0 error；`?layers=F05.constellations` 可分享。
+
+## 14 账号与作品云端同步（ATLAS 云账号）
+
+需求：账号与作品上云、首登拉取、离线上传与冲突策略、多设备一致、
+登录态/令牌刷新/配置异常降级、新建地标识别与坐标标注。
+
+### 14.1 云端结构（已存在，核对通过）
+
+- `atlas_albums` / `atlas_photos`：`owner_id DEFAULT auth.uid()`、
+  `UNIQUE(owner_id, local_id)`、`payload` JSONB、rev、deleted 墓碑；
+- `atlas_settings`：`owner_id` 主键单行文档（站点设置 + 账号资料 profile）；
+- 三表 RLS 开启，owner-only 策略（ALL, USING/WITH CHECK = auth.uid()），
+  授权覆盖 authenticated + anon。
+- 端点 `atlas-gallery.app.workbuddy.host` 与站点同域：发布到应用域名
+  时 Origin 精确匹配，云登录可用；GitHub Pages 降级为纯本地。
+
+### 14.2 认证
+
+- 邮箱验证码注册/登录（ATLAS 云账号品牌）：sendOtp → 保存挑战 →
+  verifyOtp（提交只消费已保存的挑战，不重发）→ getSession 读会话。
+- 会话由 SDK 持久化，getSession 近过期自动刷新；同步遇 401/凭据类
+  错误先 refreshSession 一次，仍无会话则登出并提示。
+- 配置异常四档降级：域名未绑定（Origin 校验）/ SDK 加载失败 /
+  断网 / 同步失败，全部显式提示 + 本机可用，不静默。
+
+### 14.3 同步引擎
+
+- 首登：onCloudChange → 绑定分区 → syncNow('auth') → 先拉后推；
+  拉取分页 500 行/页；合并 rev → at → 字段级 mt；原图按需（ensureBlob
+  远端回退）；同步结果 toast 汇总（取回/合并计数）。
+- 离线上传：脏标记 + 墓碑 pushedAt；编辑后防抖 1.2s、切回标签页、
+  断网重连、手动同步多路触发；每轮 ≤6 张原图；指数退避 2s→60s×6。
+- 推送行统一带 updated_at（LWW 时间基准）。冲突策略 = 行级
+  rev→at→本地 + 相册字段级 mt 合并，合并结果自动回推，无需手选。
+
+### 14.4 地标识别与坐标标注
+
+- `ref/build-gazetteer.py` → `assets/data/gazetteer.js`（GeoNames
+  cities5000，人口≥5 万 11985 城，5803 带中文名，618KB 懒加载）。
+- 中文名提取：别名 CJK 候选（双字优先、去行政后缀）+ 130 条策展覆盖 +
+  中文国名表；检索：全等 > 前缀 > 包含，同档人口降序。
+- 对话框：输入即联想（↑↓/Enter/Esc）；选中回填中英名+坐标+国家；
+  提交/失焦先查本地库再回落 Wikipedia+OSM。
+- 「点选地球」拾取模式：对话框让位、十字光标、点击球面回填返回；
+  Esc 取消回表单（preventDefault + 下一帧重开，规避 Esc 默认取消
+  刚打开的模态框的陷阱）。
+
+### 14.5 验收（桩 SDK 六组用例全过）
+
+登录/首登拉取/昵称上云 ✓ · 冲突 LWW（云 rev9 胜本地 rev1）✓
+· 断网重试恢复 ✓ · SDK 缺失降级 ✓ · 联想+点选往返+坐标入库 ✓
+· 375px 面板无溢出 ✓。真实邮件验证码链路待用户在应用域名实测。

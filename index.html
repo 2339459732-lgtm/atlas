@@ -639,6 +639,7 @@ try {
     <label class="field">
       <span class="field__name" data-i18n="dlg.name">地名</span>
       <input class="field__input" id="f-name" type="text" maxlength="16" placeholder="里斯本" data-i18n-ph="dlg.namePh" required autocomplete="off" />
+      <div class="ac-suggest" id="ac-suggest" role="listbox" aria-label="地名联想" hidden></div>
     </label>
 
     <div class="field-row">
@@ -656,6 +657,7 @@ try {
       <i class="geo__dot" aria-hidden="true"></i>
       <p class="geo__text" id="geo-text" data-i18n="geo.idle">填写地名后自动识别坐标</p>
       <button type="button" class="geo__btn" id="geo-btn" data-i18n="geo.retry">重新定位</button>
+      <button type="button" class="geo__btn" id="geo-pick" data-i18n="geo.pick">点选地球</button>
     </div>
 
     <label class="field">
@@ -740,18 +742,50 @@ try {
     </button>
   </div>
 
-  <!-- 云同步：跨设备保存作品与照片 -->
+  <!-- ATLAS 云账号：邮箱验证码注册/登录，作品跨设备同步 -->
   <div class="acct-cloud" id="acct-cloud" hidden>
     <span class="acct-cloud__dot" id="acct-cloud-dot" aria-hidden="true"></span>
     <div class="acct-cloud__txt">
-      <p class="acct-cloud__t" id="acct-cloud-title" data-i18n="cloud.title">云同步</p>
+      <p class="acct-cloud__t" id="acct-cloud-title" data-i18n="cloud.title">ATLAS 云账号</p>
       <p class="acct-cloud__s" id="acct-cloud-sub" data-i18n="cloud.sub">登录后，作品与照片可在其他设备上打开。</p>
     </div>
-    <div class="acct-cloud__acts">
-      <button type="button" class="acct-cloud__btn" id="acct-cloud-btn" data-i18n="cloud.signIn">登录以启用同步</button>
-      <button type="button" class="acct-cloud__btn acct-cloud__btn--ghost" id="acct-cloud-sync" data-i18n="cloud.syncNow" hidden>立即同步</button>
-      <button type="button" class="acct-cloud__btn acct-cloud__btn--ghost" id="acct-cloud-out" data-i18n="cloud.signOut" hidden>退出云同步</button>
+
+    <!-- 未登录：验证码登录 / 注册 -->
+    <div class="acct-cloud__form" id="acct-cloud-form">
+      <div class="acct-cloud__row">
+        <input class="field__input" id="acct-cloud-email" type="email" inputmode="email"
+               autocomplete="email" spellcheck="false" placeholder="you@example.com"
+               data-i18n-ph="cloud.emailPh" />
+        <button type="button" class="acct-cloud__btn" id="acct-cloud-send" data-i18n="cloud.send">发送验证码</button>
+      </div>
+      <div class="acct-cloud__row" id="acct-cloud-code-row" hidden>
+        <input class="field__input" id="acct-cloud-code" type="text" inputmode="numeric" maxlength="6"
+               autocomplete="one-time-code" spellcheck="false" placeholder="6 位验证码"
+               data-i18n-ph="cloud.codePh" />
+        <button type="button" class="acct-cloud__btn" id="acct-cloud-go" data-i18n="cloud.go">登录 / 注册</button>
+      </div>
+      <div class="acct-cloud__row acct-cloud__row--meta">
+        <span class="acct-cloud__hint" id="acct-cloud-hint" data-i18n="cloud.hint">验证码登录；首次使用将自动注册 ATLAS 账号。</span>
+        <button type="button" class="acct-cloud__link" id="acct-cloud-resend" data-i18n="cloud.resend" disabled>重新发送</button>
+      </div>
+      <p class="acct-cloud__err" id="acct-cloud-err" hidden></p>
     </div>
+
+    <!-- 已登录：昵称 + 同步状态 -->
+    <div class="acct-cloud__me" id="acct-cloud-me" hidden>
+      <div class="acct-cloud__row">
+        <input class="field__input" id="acct-cloud-nick" type="text" maxlength="24"
+               autocomplete="nickname" spellcheck="false" placeholder="昵称" data-i18n-ph="cloud.nickPh" />
+        <button type="button" class="acct-cloud__btn acct-cloud__btn--ghost" id="acct-cloud-nick-save" data-i18n="cloud.nickSave">保存</button>
+      </div>
+      <div class="acct-cloud__acts">
+        <button type="button" class="acct-cloud__btn" id="acct-cloud-sync" data-i18n="cloud.syncNow">立即同步</button>
+        <button type="button" class="acct-cloud__btn acct-cloud__btn--ghost" id="acct-cloud-out" data-i18n="cloud.signOut">退出登录</button>
+      </div>
+    </div>
+
+    <!-- 降级提示：域名未绑定 / SDK 失败 / 离线 -->
+    <p class="acct-cloud__note" id="acct-cloud-note" hidden></p>
   </div>
 
   <!-- 已登录 -->

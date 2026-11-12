@@ -1,17 +1,19 @@
 /* ══════════════════════════════════════════════════════════════════
    cloud.js — 云端同步（WorkBuddy Cloud Service）
 
-   身份用 WorkBuddy 账号（OAuth），数据落在 atlas_albums / atlas_photos
-   两张表，照片原图放在对象存储的 users/<uid>/photos/ 下。
+   身份：ATLAS 云账号 = 邮箱验证码注册/登录（WorkBuddy 云认证）。
+   数据：atlas_albums / atlas_photos 两张表 + atlas_settings 单行文档，
+        照片原图放在对象存储的 users/<uid>/photos/ 下。
    RLS 以 auth.uid() 为界，前端永远不发送 owner_id。
 
    设计取舍：
-   · 只在这台机器上用过的人，本地账号（assets/accounts.js）照旧可用；
-     云同步是叠加层，不是替换——没登录云也能离线用。
+   · 云端是主路径，本机账号与离线模式是降级路径：
+     配置异常（域名未绑定 / SDK 加载失败 / 断网 / 令牌失效）时
+     一律降级为「本地可用 + 明确提示」，绝不静默。
    · 拉取不是「云端覆盖本地」，而是按 rev/updated_at 合并：
      本地改得更晚的留在本地并在下一轮推上去，云端更晚的才落地。
    · 删除是墓碑（deleted=true + rev+1），不是物理删——否则旧设备
-     一推就把条目复活了。墓碑保留 45 天后由 store 清理。
+     一推就把条目复活了。墓碑保留期由 store 管理。
    · 缩略图随元数据一起拉，原图按需下载，避免首次登录就下几百张。
    ══════════════════════════════════════════════════════════════════ */
 
@@ -28,7 +30,7 @@ const listeners = new Set();
 
 const emit = () => listeners.forEach(fn => { try { fn(); } catch {} });
 
-/* 数据面按 Origin 精确匹配：只有这套域名（以及本地调试）能真的调通。
+/* 数据面按 Origin 精确匹配：只有绑定的域名（以及本地调试）能真的调通。
    GitHub Pages 上 SDK 照样能初始化，但任何请求都会被拒，
    所以这里直接按域名判定可用性，避免给访客一个点不通的按钮。 */
 function originBound() {
@@ -41,7 +43,11 @@ export function cloudAvailable() { return ready && originBound(); }
 export function cloudUser() {
   if (!session?.user) return null;
   const u = session.user;
-  return { id: u.id, name: u.name || u.nickname || u.email || '你' };
+  return {
+    id: u.id,
+    name: u.name || u.nickname || (u.email ? u.email.split('@')[0] : '你'),
+    email: u.email || ''
+  };
 }
 export function cloudReason() { return reason; }
 export function onCloudChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
@@ -85,6 +91,84 @@ export async function initCloud() {
   }
 }
 
+/* ── ATLAS 云账号：邮箱验证码，注册与登录同一入口 ── */
+
+/* 待验证的挑战：{ email, verificationId, isExistingUser }。
+   提交时只消费已保存的挑战，绝不在提交里重发验证码。 */
+let pendingOtp = null;
+
+export function otpPending() {
+  return pendingOtp ? { email: pendingOtp.email } : null;
+}
+
+export async function sendEmailCode(email) {
+  if (!client) throw new Error('sdk_not_ready');
+  const mail = String(email || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) throw new Error('bad_email');
+  const sent = await client.auth.sendOtp({ email: mail });
+  if (sent.error) throw sent.error;
+  pendingOtp = {
+    email: mail,
+    verificationId: sent.data.verificationId,
+    isExistingUser: sent.data.isExistingUser
+  };
+  return { isNew: !sent.data.isExistingUser };
+}
+
+export async function submitEmailOtp(email, code) {
+  if (!client) throw new Error('sdk_not_ready');
+  const p = pendingOtp;
+  const mail = String(email || '').trim();
+  if (!p || p.email !== mail) throw new Error('need_code');
+  const token = String(code || '').trim();
+  if (!/^\d{6}$/.test(token)) throw new Error('bad_code');
+  const completed = await client.auth.verifyOtp({
+    email: p.email,
+    verificationId: p.verificationId,
+    isExistingUser: p.isExistingUser,
+    token
+  });
+  if (completed.error) throw completed.error;
+  const wasNew = !p.isExistingUser;
+  pendingOtp = null;
+  /* verifyOtp 完成后 SDK 已持有会话（注册/登录都建立会话）：
+     这里读一次最新的会话并广播，登录态随之持久化。 */
+  try {
+    const { data } = await client.auth.getSession();
+    session = data || null;
+  } catch { session = null; }
+  emit();
+  return { isNew: wasNew, email: mail };
+}
+
+export function dropOtp() { pendingOtp = null; }
+
+/* ── 会话：持久化由 SDK 负责；这里只做「保证可用」与「手动刷新」 ── */
+
+/** 取会话；临近过期 SDK 会自动刷新。令牌失效时尝试一次强制刷新，
+    仍失败才把会话置空——配置异常的最后一层防御。 */
+export async function ensureSession() {
+  if (!client) return null;
+  try {
+    const { data, error } = await client.auth.getSession();
+    if (!error && data) { session = data; return data; }
+    const r = await client.auth.refreshSession();
+    if (!r.error && r.data) { session = r.data; emit(); return r.data; }
+  } catch { /* 网络失败等：保留现有 session，由上层按 offline 处理 */ }
+  if (!session) return null;
+  return session;
+}
+
+export async function refreshCloudSession() {
+  if (!client) return null;
+  const { data, error } = await client.auth.refreshSession();
+  if (error || !data) return null;
+  session = data;
+  emit();
+  return data;
+}
+
+/* WorkBuddy OAuth 登录（备用入口，当前界面不展示） */
 export async function signInCloud() {
   if (!client) return false;
   const back = new URL(location.href);
@@ -103,6 +187,7 @@ export async function signOutCloud() {
   if (!client) return;
   try { await client.auth.signOut(); } catch {}
   session = null;
+  pendingOtp = null;
   emit();
 }
 
@@ -163,7 +248,7 @@ export async function pullAll() {
   return { albums: withMs(a), photos: withMs(p) };
 }
 
-/* 站点设置：单行文档，按 rev → updated_at 合并 */
+/* 站点设置 + 账号资料：单行文档，按 rev → updated_at 合并 */
 export async function pullSettings() {
   if (!client || !session) return null;
   const { data, error } = await guard(
@@ -180,16 +265,19 @@ export async function pushSettings(payload, rev) {
   if (!client || !session) return;
   const { error } = await guard(
     client.database.from('atlas_settings')
-      .upsert([{ payload, rev: rev | 0 }], { onConflict: 'owner_id' }),
+      .upsert([{ payload, rev: rev | 0, updated_at: new Date().toISOString() }], { onConflict: 'owner_id' }),
     'settings_push', 15000
   );
   if (error) throw error;
 }
 
+/* 写入行统一带 updated_at：rev 相同时用它裁决谁更晚（LWW）。 */
+const stamp = rows => rows.map(r => ({ ...r, updated_at: new Date().toISOString() }));
+
 export async function pushAlbums(rows) {
   if (!client || !session || !rows.length) return;
   const { error } = await guard(
-    client.database.from('atlas_albums').upsert(rows, { onConflict: 'owner_id,local_id' }),
+    client.database.from('atlas_albums').upsert(stamp(rows), { onConflict: 'owner_id,local_id' }),
     'albums_push', 20000
   );
   if (error) throw error;
@@ -198,7 +286,7 @@ export async function pushAlbums(rows) {
 export async function pushPhotos(rows) {
   if (!client || !session || !rows.length) return;
   const { error } = await guard(
-    client.database.from('atlas_photos').upsert(rows, { onConflict: 'owner_id,local_id' }),
+    client.database.from('atlas_photos').upsert(stamp(rows), { onConflict: 'owner_id,local_id' }),
     'photos_push', 20000
   );
   if (error) throw error;

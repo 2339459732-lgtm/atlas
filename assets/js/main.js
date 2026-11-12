@@ -10,14 +10,15 @@ import { createNomenclature } from './nomenclature.js';
 import { createLayerStore } from './layers.js';
 import { createLayerPanel } from './layer-panel.js';
 import { createDust } from './drift.js';
-import { geocode, composeIntro } from './geo.js';
+import { geocode, searchPlaces, composeIntro } from './geo.js';
 import { sha256Hex, VAULT_HASH, makeBackup, readBackup, photoBlob } from './vault.js';
 import { t, applyI18n, initLang, getLang, setLang, LANGS } from './i18n.js';
 import { createMusic } from './audio.js';
 import { APP } from './config.js';
 import {
   initCloud, cloudAvailable, cloudUser, onCloudChange, cloudReason,
-  signInCloud, signOutCloud,
+  signOutCloud, refreshCloudSession,
+  sendEmailCode, submitEmailOtp,
   pullAll, pushAlbums, pushPhotos, pullSettings, pushSettings,
   uploadPhotoBlob, downloadPhotoBlob, removePhotoBlob
 } from './cloud.js';
@@ -275,7 +276,9 @@ function loadSite() {
 }
 
 const sitePayload = s => ({
-  name: s.name, cn: s.cn, title: s.title, lede: s.lede, accent: s.accent
+  name: s.name, cn: s.cn, title: s.title, lede: s.lede, accent: s.accent,
+  /* 账号资料（昵称等）与站点设置共用 settings 单行文档 */
+  profile: s.profile && Object.keys(s.profile).length ? s.profile : undefined
 });
 
 /* 站点设置也是数据：写本地 + 标脏 + 排队上云。
@@ -551,7 +554,16 @@ function initEarth() {
       $$('.planet__item').forEach(b => b.classList.toggle('is-lit', !!m && b.dataset.id === m.id));
       $$('.marker').forEach(x => x.classList.toggle('is-lit', !!m && x.dataset.id === m.id));
     },
-    onEmpty: geo => openDialog({ lat: geo.lat, lng: geo.lng }),
+    onEmpty: geo => {
+      /* 拾取模式：对话框为「点选地球」临时让路，选完带着原表单内容回来 */
+      if (globePick) {
+        globePick = false;
+        setGlobePick(false);
+        reopenPickDialog({ lat: geo.lat, lng: geo.lng });
+        return;
+      }
+      openDialog({ lat: geo.lat, lng: geo.lng });
+    },
     onReady: ({ ok }) => {
       if (!ok) {
         loader.classList.add('is-done');
@@ -1635,6 +1647,18 @@ palette.addEventListener('click', e => { if (e.target === palette) closePalette(
 const dlg = $('#dlg');
 let swatchPick = ACCENTS[0];
 let pickGeo = null;
+let gazHit = null;       /* 联想选中的地名库条目（含中英名与坐标） */
+let globePick = false;   /* 「点选地球」拾取模式：对话框让位，点球回填 */
+
+function hideSuggest() {
+  const box = $('#ac-suggest');
+  if (box) { box.hidden = true; box.innerHTML = ''; }
+}
+
+function setGlobePick(on) {
+  globePick = on;
+  $('#earth-canvas')?.classList.toggle('is-picking', on);
+}
 
 function paintSwatches(active) {
   const box = $('#swatches');
@@ -1658,14 +1682,33 @@ function paintSwatches(active) {
 function openDialog(geo) {
   state.editing = null;
   pickGeo = geo || null;
+  gazHit = null;
+  globePick = false;
+  setGlobePick(false);
+  hideSuggest();
   $('#dlg-form').reset();
   $('#dlg-kicker').textContent = t('dlg.newKicker');
   $('#dlg-title').textContent = t('dlg.newTitle');
   $('#dlg-submit').textContent = t('dlg.create');
   $('#dlg-err').hidden = true;
   paintSwatches(ACCENTS[Math.floor(Math.random() * ACCENTS.length)]);
-  if (geo) $('#f-coord').value = fmtCoord(geo.lat, geo.lng);
+  if (geo) {
+    $('#f-coord').value = fmtCoord(geo.lat, geo.lng);
+    setGeo('ok', `${t('geo.picked')} · ${fmtCoord(geo.lat, geo.lng)}`);
+  }
   dlg.showModal();
+  setTimeout(() => $('#f-name').focus(), 60);
+}
+
+/* 「点选地球」回来：保留表单内容，只回填坐标 */
+function reopenPickDialog(geo) {
+  if (!dlg) return;
+  pickGeo = geo || pickGeo;
+  if (pickGeo) {
+    $('#f-coord').value = fmtCoord(pickGeo.lat, pickGeo.lng);
+    setGeo('ok', `${t('geo.picked')} · ${fmtCoord(pickGeo.lat, pickGeo.lng)}`);
+  }
+  if (!dlg.open) dlg.showModal();
   setTimeout(() => $('#f-name').focus(), 60);
 }
 
@@ -1673,6 +1716,10 @@ function openEditDialog(lm) {
   if (!lm) return;
   state.editing = lm.id;
   pickGeo = lm.lat != null ? { lat: lm.lat, lng: lm.lng } : null;
+  gazHit = null;
+  globePick = false;
+  setGlobePick(false);
+  hideSuggest();
   $('#dlg-kicker').textContent = t('dlg.editKicker');
   $('#dlg-title').textContent = t('dlg.editTitle');
   $('#dlg-submit').textContent = t('dlg.save');
@@ -1697,16 +1744,20 @@ $('#dlg-form').addEventListener('submit', async e => {
 
   /* 需要坐标，或英文界面下需要把中文名转成英文名时，都走一次解析（有缓存） */
   let hit = null;
-  if (!geo || (getLang() === 'en' && hasCJK)) {
-    try { hit = await geocode(name); } catch {}
+  if (!geo || (getLang() === 'en' && hasCJK && !gazHit)) {
+    /* 地名库先答：本地联想没选中的，这里再补一次即时检索 */
+    let places = [];
+    try { places = await searchPlaces(name, 1); } catch { places = []; }
+    if (places.length) { hit = { labelEn: places[0].en, labelZh: places[0].zh || '', lat: places[0].lat, lng: places[0].lng }; }
+    else { try { hit = await geocode(name); } catch {} }
   }
   if (!geo && hit) {
     geo = { lat: hit.lat, lng: hit.lng };
     $('#f-coord').value = fmtCoord(geo.lat, geo.lng);
   }
 
-  /* 中英双名：name 保留用户输入，nameEn 用于英文界面 */
-  const nameEn = (hit && hit.labelEn) || (hasCJK ? '' : name);
+  /* 中英双名：联想/识别的英文名优先，name 保留用户输入 */
+  const nameEn = (gazHit && gazHit.en) || (hit && hit.labelEn) || (hasCJK ? '' : name);
 
   const keyRaw = ($('#f-key').value || '').trim();
   const keyHash = keyRaw ? await sha256Hex(keyRaw) : '';
@@ -2216,10 +2267,12 @@ document.addEventListener('keydown', e => {
 });
 
 
-/* ───────── 地理识别：地名 → 坐标 ───────── */
+/* ───────── 地理识别：地名 → 坐标 ─────────
+   两级识别：本地地名库（离线、即时）→ 线上 geocode（Wikipedia + OSM）。 */
 const geoEl = $('#geo');
 const geoText = $('#geo-text');
 const geoBtn = $('#geo-btn');
+const geoPickBtn = $('#geo-pick');
 let geoBusy = false;
 
 function setGeo(stateName, text) {
@@ -2229,11 +2282,33 @@ function setGeo(stateName, text) {
   geoBtn.disabled = stateName === 'loading';
 }
 
+function applyGeoHit(place, source) {
+  gazHit = place;
+  pickGeo = { lat: place.lat, lng: place.lng };
+  $('#f-coord').value = fmtCoord(place.lat, place.lng);
+  const shown = getLang() === 'en' ? place.en : (place.zh || place.en);
+  setGeo('ok', `${shown} · ${place.country} · ${source}`);
+  if (!$('#f-note').value.trim()) {
+    $('#f-note').value = composeIntro({
+      name: getLang() === 'en' ? place.en : (place.zh || place.en),
+      lat: place.lat, lng: place.lng,
+      date: $('#f-date').value, lang: getLang()
+    });
+  }
+}
+
 async function locateFromName() {
   if (!geoEl || geoBusy) return;
   const name = ($('#f-name').value || '').trim();
   if (name.length < 2) { setGeo('idle', t('geo.idle')); return; }
+  let places = [];
+  try { places = await searchPlaces(name, 1); } catch { places = []; }
+  if (places.length) {
+    applyGeoHit(places[0], t('geo.gaz'));
+    return;
+  }
 
+  /* ② 线上识别（Wikipedia / OSM），带缓存 */
   geoBusy = true;
   setGeo('loading', t('geo.loading'));
   let hit = null;
@@ -2241,26 +2316,116 @@ async function locateFromName() {
   geoBusy = false;
 
   if (hit) {
-    pickGeo = { lat: hit.lat, lng: hit.lng };
-    $('#f-coord').value = fmtCoord(hit.lat, hit.lng);
-    const shown = getLang() === 'en' ? (hit.labelEn || hit.label) : hit.label;
-    setGeo('ok', `${shown} · ${hit.source}`);
-    if (!$('#f-note').value.trim()) {
-      $('#f-note').value = composeIntro({
-        name: getLang() === 'en' ? (hit.labelEn || name) : name,
-        lat: hit.lat, lng: hit.lng,
-        date: $('#f-date').value, lang: getLang()
-      });
-    }
+    applyGeoHit(
+      { zh: hit.labelZh || '', en: hit.labelEn || hit.label, country: hit.source, lat: hit.lat, lng: hit.lng },
+      hit.source
+    );
   } else {
+    gazHit = null;
     setGeo('fail', t('geo.fail'));
   }
 }
 
+/* ── 联想下拉：输入即查地名库 ── */
+const acBox = $('#ac-suggest');
+let gazList = [];
+let gazIdx = -1;
+let suggestTimer = 0;
+
+function renderSuggest() {
+  if (!acBox) return;
+  acBox.innerHTML = '';
+  gazList.forEach((p, i) => {
+    const b = el('button', 'ac-item');
+    b.type = 'button';
+    b.dataset.i = String(i);
+    const name = getLang() === 'en' ? p.en : (p.zh || p.en);
+    b.innerHTML = `<span class="ac-item__name">${esc(name)}</span>` +
+      `<span class="ac-item__sub">${esc([getLang() === 'en' ? (p.zh || '') : p.en, p.country].filter(Boolean).join(' · '))}</span>` +
+      `<span class="ac-item__geo">${esc(fmtCoord(p.lat, p.lng))}</span>`;
+    b.addEventListener('click', () => choosePlace(p));
+    acBox.appendChild(b);
+  });
+  acBox.hidden = false;
+}
+
+function paintSuggestActive() {
+  $$('.ac-item', acBox).forEach((b, i) => {
+    b.dataset.active = String(i === gazIdx);
+    if (i === gazIdx) b.scrollIntoView({ block: 'nearest' });
+  });
+}
+
+function choosePlace(p) {
+  gazHit = p;
+  pickGeo = { lat: p.lat, lng: p.lng };
+  $('#f-name').value = (getLang() === 'en' ? p.en : (p.zh || p.en)).slice(0, 16);
+  $('#f-coord').value = fmtCoord(p.lat, p.lng);
+  setGeo('ok', `${p.zh || p.en} · ${p.country} · ${t('geo.gaz')}`);
+  hideSuggest();
+  if (!$('#f-note').value.trim()) {
+    $('#f-note').value = composeIntro({
+      name: getLang() === 'en' ? p.en : (p.zh || p.en),
+      lat: p.lat, lng: p.lng,
+      date: $('#f-date').value, lang: getLang()
+    });
+  }
+}
+
+async function refreshSuggest() {
+  clearTimeout(suggestTimer);
+  const name = $('#f-name')?.value || '';
+  suggestTimer = setTimeout(async () => {
+    const q = name.trim();
+    if (!q || q.length < 1) { hideSuggest(); return; }
+    try { gazList = await searchPlaces(q, 7); } catch { gazList = []; }
+    gazIdx = -1;
+    if (gazList.length) renderSuggest(); else hideSuggest();
+  }, 120);
+}
+
+$('#f-name')?.addEventListener('input', refreshSuggest);
+$('#f-name')?.addEventListener('keydown', e => {
+  if (acBox?.hidden) return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    gazIdx = Math.min(gazList.length - 1, gazIdx + 1);
+    paintSuggestActive();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    gazIdx = Math.max(-1, gazIdx - 1);
+    paintSuggestActive();
+  } else if (e.key === 'Enter' && gazIdx >= 0) {
+    e.preventDefault();
+    choosePlace(gazList[gazIdx]);
+  } else if (e.key === 'Escape') {
+    hideSuggest();
+  }
+});
 $('#f-name')?.addEventListener('blur', () => {
+  /* 给点击留出时间，点击联想项会先于 blur 完成 */
+  setTimeout(hideSuggest, 150);
   if (!$('#f-coord').value.trim() && ($('#f-name').value || '').trim().length >= 2) locateFromName();
 });
 geoBtn?.addEventListener('click', locateFromName);
+
+/* 点选地球：对话框让位，点击球面回填坐标（Esc 取消并回到表单） */
+geoPickBtn?.addEventListener('click', () => {
+  hideSuggest();
+  setGlobePick(true);
+  dlg.close();
+  toast(t('geo.pickHint'));
+});
+addEventListener('keydown', e => {
+  if (e.key === 'Escape' && globePick) {
+    /* Esc 的默认行为是"取消已打开的模态框"——它会在本次 keydown 的
+       处理器全部跑完之后执行。若在这里同步重开对话框，刚打开就被
+       默认行为关掉。所以：阻断默认 + 下一帧再开。 */
+    e.preventDefault();
+    setGlobePick(false);
+    setTimeout(() => reopenPickDialog(null), 0);
+  }
+});
 
 /* ───────── 概览：虚影轮播 ───────── */
 let deckIndex = 0;
@@ -2978,6 +3143,7 @@ function setCloudState(kind, text) {
   if (!box) return;
   box.classList.toggle('is-on', kind === 'on');
   box.classList.toggle('is-busy', kind === 'busy');
+  box.classList.toggle('is-err', kind === 'error');
   const sub = $('#acct-cloud-sub');
   if (sub && text) sub.textContent = text;
 }
@@ -2989,46 +3155,68 @@ function syncSummary() {
     : t('cloud.sub');
 }
 
+/* 云登录成功后，把当前本机分区绑定到这张云身份：
+   换设备后本机账号（或访客分区）会自动认领同一张云身份，无需二次确认 */
+function bindScopeToUser() {
+  const u = currentUser();
+  const cid = cloudUser()?.id;
+  if (u && cid && cloudIdOf(u.id) !== cid) bindCloud(u.id, cid);
+  bindScope();
+}
+
 function renderCloud() {
   const box = $('#acct-cloud');
   if (!box) return;
-  /* 默认不展示跨设备同步入口：账号与作品只在本机，
-     换设备用加密备份迁移（见 config.features.cloudSync） */
+  /* 默认展示跨设备同步入口：账号与作品随 ATLAS 云账号走 */
   if (!APP.features.cloudSync) { box.hidden = true; return; }
-  /* 没绑云服务的域名（GitHub Pages / 本地预览）直接不显示这块：
-     访客看到一个"用不了"的按钮只会困惑，能力说明写进文档即可。 */
-  if (!cloudAvailable()) {
-    box.hidden = true;
-    return;
-  }
-
-  const u = cloudUser();
   box.hidden = false;
-  $('#acct-cloud-btn').hidden = !!u && scopeBound();
-  $('#acct-cloud-out').hidden = !u;
-  $('#acct-cloud-sync').hidden = !u || !scopeBound();
 
-  if (!u) {
-    $('#acct-cloud-title').textContent = t('cloud.title');
-    $('#acct-cloud-btn').textContent = t('cloud.signIn');
-    setCloudState('', t('cloud.sub'));
+  const me = $('#acct-cloud-me');
+  const form = $('#acct-cloud-form');
+  const note = $('#acct-cloud-note');
+  const u = cloudUser();
+  const r = cloudReason();
+
+  /* ① 已登录：昵称 + 同步状态 */
+  if (u) {
+    form.hidden = true;
+    note.hidden = true;
+    me.hidden = false;
+    $('#acct-cloud-title').textContent = t('cloud.connected', { name: u.name });
+    const nick = $('#acct-cloud-nick');
+    if (nick && document.activeElement !== nick) {
+      nick.value = (state.site?.profile?.nickname) || u.name || '';
+    }
+    $('#acct-cloud-sync').textContent = SYNC.phase === 'error' ? t('cloud.retry') : t('cloud.syncNow');
+    if (SYNC.phase === 'busy') setCloudState('busy', t('cloud.syncing'));
+    else if (SYNC.phase === 'error') setCloudState('error', t('cloud.failed', { msg: SYNC.error || '—' }));
+    else if (navigator.onLine === false) setCloudState('on', t('cloud.offlineMode'));
+    else setCloudState('on', syncSummary());
     return;
   }
 
-  $('#acct-cloud-title').textContent = t('cloud.connected', { name: u.name });
+  /* ② 未登录：先看降级原因，再看验证码表单 */
+  me.hidden = true;
+  $('#acct-cloud-title').textContent = t('cloud.title');
 
-  if (!scopeBound()) {
-    $('#acct-cloud-btn').hidden = false;
-    $('#acct-cloud-btn').textContent = t('cloud.enableHere');
-    setCloudState('', t('cloud.paused'));
+  if (!cloudAvailable()) {
+    form.hidden = true;
+    note.hidden = false;
+    if (r === 'sdk-missing' || r === 'init-failed') note.textContent = t('cloud.sdkFail');
+    else note.textContent = t('cloud.unbound', { host: APP.cloud.endpoint.replace(/^https?:\/\//, '') });
+    setCloudState('', t('cloud.offline'));
     return;
   }
-
-  $('#acct-cloud-btn').textContent = t('cloud.signIn');
-  $('#acct-cloud-sync').textContent = SYNC.phase === 'error' ? t('cloud.retry') : t('cloud.syncNow');
-  if (SYNC.phase === 'busy') setCloudState('busy', t('cloud.syncing'));
-  else if (SYNC.phase === 'error') setCloudState('', t('cloud.failed', { msg: SYNC.error || '—' }));
-  else setCloudState('on', syncSummary());
+  if (navigator.onLine === false) {
+    form.hidden = false;
+    note.hidden = false;
+    note.textContent = t('cloud.offlineMode');
+    setCloudState('', t('cloud.offlineMode'));
+    return;
+  }
+  note.hidden = true;
+  form.hidden = false;
+  setCloudState('', t('cloud.sub'));
 }
 
 function schedulePush(delay = 1200) {
@@ -3068,7 +3256,8 @@ async function syncPull() {
     );
 
   const localAlbums = state.landmarks.map(normalizeLM).concat(tombstoneAlbums());
-  const mergedA = mergeAlbumCollections(localAlbums, remoteAlbums).items;
+  const mergedARes = mergeAlbumCollections(localAlbums, remoteAlbums);
+  const mergedA = mergedARes.items;
   let liveAlbums = mergedA.filter(a => !a.deleted);
 
   /* 新设备首次登录云端：本机可能刚灌了三本示例册。
@@ -3203,7 +3392,13 @@ async function syncPull() {
   lastPullAt = Date.now();
   applyRemote();
 
-  return { albums: liveAlbums.length, photos: addedPhotos, removed: removedAlbums };
+  return {
+    albums: liveAlbums.length,
+    photos: addedPhotos,
+    removed: removedAlbums,
+    /* 字段级合并解决掉的冲突（云端较新的字段并入本地） */
+    merged: mergedARes.conflicts.length
+  };
 }
 
 /* 同步/跨标签刷新时，正在写的手记不能被关掉——用户手里的草稿优先 */
@@ -3332,7 +3527,8 @@ async function syncNow(reason = 'auto') {
 
   try {
     const canPull = !isEditing();
-    if (!pulledOnce && canPull) await syncPull();
+    let pulled = null;
+    if (!pulledOnce && canPull) pulled = await syncPull();
     await syncPush();
     if (canPull) pulledOnce = true;
     SYNC.phase = 'idle';
@@ -3342,15 +3538,39 @@ async function syncNow(reason = 'auto') {
     markSynced(SYNC.lastAt);
     pruneTombstones();
     renderCloud();
+    /* 手动/登录触发的同步把结果说清楚：取回多少、合并了多少 */
+    if (pulled && (reason === 'manual' || reason === 'auth' || reason === 'boot')) {
+      const n = { a: pulled.albums, p: pulled.photos };
+      if (pulled.merged) toast(t('cloud.merged', { a: pulled.merged }));
+      else toast(t('cloud.pulled', n));
+    }
   } catch (e) {
     SYNC.phase = 'error';
     SYNC.error = String(e?.message || e).slice(0, 48);
     SYNC.tries++;
     console.warn('[sync]', reason, e);
     renderCloud();
+
+    /* 令牌级失败（401/凭据错误）：先试一次强制刷新，
+       仍拿不到会话就退出登录并提示——这是配置异常的最后一道降级。 */
+    const authFlavor = e && (
+      e.status === 401 || e.status === 403 ||
+      /token|jwt|credential|sign ?in/i.test(String(e?.code || '') + ' ' + String(e?.message || ''))
+    );
+    if (authFlavor && SYNC.tries === 1) {
+      const s = await refreshCloudSession();
+      if (!s) {
+        await signOutCloud();
+        renderCloud();
+        toast(t('cloud.sessionLost'));
+        SYNC.phase = 'idle';
+        SYNC.error = '';
+      }
+    }
+
     /* 指数退避：2s / 4s / 8s … 最多 60s，最多 6 次。
        之后交给下一次编辑、上线事件或重新登录触发，不无限重试。 */
-    if (SYNC.tries <= APP.limits.syncRetryMax) {
+    if (SYNC.tries <= APP.limits.syncRetryMax && SYNC.phase === 'error') {
       clearTimeout(retryTimer);
       const wait = Math.min(
         APP.limits.syncRetryMaxMs,
@@ -3387,23 +3607,26 @@ async function initCloudSync() {
   if (!APP.features.cloudSync) return;
   await loadCloudSdk();
   initCloud().then(ok => {
-    if (ok && cloudUser()) {
-      const u = currentUser();
-      if (u && !cloudIdOf(u.id)) bindCloud(u.id, cloudUser().id);
-      if (!localStorage.getItem(LS_CLOUD_SCOPE)) bindScope();
-    }
+    if (ok && cloudUser()) bindScopeToUser();
     renderCloud();
-    if (ok && cloudUser() && scopeBound()) syncNow('boot');
+    /* 登录态由 SDK 持久化：重启后 getSession 自动恢复，近过期自动刷新。
+       这里只做一件事——有会话就立即同步（首次登录=全量拉取合并）。 */
+    if (ok && cloudUser()) syncNow('boot');
   }).catch(e => { console.warn('[cloud]', e); renderCloud(); });
 
   onCloudChange(() => {
     pulledOnce = false;
+    if (cloudUser()) bindScopeToUser();
     renderCloud();
     if (cloudUser()) syncNow('auth');
   });
 
   /* 断网重连、切回标签页：把积压的改动补推一次 */
-  addEventListener('online', () => { if (cloudUser()) syncNow('online'); });
+  addEventListener('online', () => {
+    renderCloud();
+    if (cloudUser()) syncNow('online');
+  });
+  addEventListener('offline', () => renderCloud());
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible' || !cloudUser() || running) return;
     /* 是否真的要拉，由 syncNow 里的 30s 阈值判断；
@@ -3411,25 +3634,94 @@ async function initCloudSync() {
     syncNow('visible');
   });
 
-  $('#acct-cloud-btn')?.addEventListener('click', async () => {
-    /* 已连接但换了本机账号：这一步是"在当前分区启用"，不是重新授权 */
-    if (cloudUser() && !scopeBound()) {
-      const u = currentUser();
-      if (u) bindCloud(u.id, cloudUser().id);
-      bindScope();
-      pulledOnce = false;
-      SYNC.phase = 'idle';
-      renderCloud();
-      await syncNow('bind');
-      return;
-    }
-    try { await signInCloud(); }
-    catch (e) {
-      SYNC.phase = 'error';
-      SYNC.error = String(e?.message || e).slice(0, 48);
-      renderCloud();
-    }
+  /* ── 验证码登录 / 注册 ── */
+  const emailEl = $('#acct-cloud-email');
+  const codeEl = $('#acct-cloud-code');
+  const sendBtn = $('#acct-cloud-send');
+  const goBtn = $('#acct-cloud-go');
+  const resendBtn = $('#acct-cloud-resend');
+  const codeRow = $('#acct-cloud-code-row');
+  const errBox = $('#acct-cloud-err');
+
+  if (emailEl) {
+    let cdTimer = 0;
+    const setErr = msg => { if (!errBox) return; errBox.hidden = !msg; if (msg) errBox.textContent = msg; };
+    const clearCd = () => { clearInterval(cdTimer); cdTimer = 0; };
+
+    const startCountdown = (s = 60) => {
+      let left = s;
+      clearCd();
+      resendBtn.disabled = true;
+      const tick = () => {
+        resendBtn.textContent = `${t('cloud.resend')} (${left}s)`;
+        if (--left <= 0) {
+          clearCd();
+          resendBtn.disabled = false;
+          resendBtn.textContent = t('cloud.resend');
+        }
+      };
+      tick();
+      cdTimer = setInterval(tick, 1000);
+    };
+
+    const send = async () => {
+      setErr('');
+      const email = (emailEl.value || '').trim();
+      sendBtn.disabled = true;
+      try {
+        const { isNew } = await sendEmailCode(email);
+        codeRow.hidden = false;
+        startCountdown();
+        toast(t('cloud.codeSent', { email }));
+        setTimeout(() => codeEl?.focus(), 80);
+      } catch (e) {
+        setErr(e?.message === 'bad_email' ? t('cloud.emailBad')
+          : (e?.message || t('cloud.failed', { msg: '—' })));
+      } finally {
+        sendBtn.disabled = false;
+      }
+    };
+
+    const go = async () => {
+      setErr('');
+      const email = (emailEl.value || '').trim();
+      const code = (codeEl.value || '').trim();
+      if (!/^\d{6}$/.test(code)) { setErr(t('cloud.codeBad')); return; }
+      goBtn.disabled = true;
+      try {
+        const { isNew } = await submitEmailOtp(email, code);
+        clearCd();
+        codeRow.hidden = true;
+        codeEl.value = '';
+        toast(isNew ? t('cloud.created') : t('cloud.toastLogin'));
+        /* session 变化由 onCloudChange 接住 → bindScopeToUser + syncNow('auth') */
+      } catch (e) {
+        const msg = e?.message === 'need_code' ? t('cloud.needCode')
+          : e?.message === 'bad_code' ? t('cloud.codeBad')
+          : (e?.message || t('cloud.failed', { msg: '—' }));
+        setErr(msg);
+      } finally {
+        goBtn.disabled = false;
+      }
+    };
+
+    sendBtn.addEventListener('click', send);
+    goBtn.addEventListener('click', go);
+    resendBtn.addEventListener('click', send);
+    emailEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); send(); } });
+    codeEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+    emailEl.addEventListener('input', setErr.bind(null, ''));
+    codeEl.addEventListener('input', setErr.bind(null, ''));
+  }
+
+  /* ── 昵称（账号资料随 settings 单行文档同步） ── */
+  $('#acct-cloud-nick-save')?.addEventListener('click', () => {
+    const v = ($('#acct-cloud-nick').value || '').trim().slice(0, 24);
+    saveSite({ profile: { ...(state.site?.profile || {}), nickname: v } });
+    toast(t('cloud.nickSaved'));
+    renderCloud();
   });
+
   $('#acct-cloud-sync')?.addEventListener('click', async () => {
     pulledOnce = false;
     SYNC.tries = 0;
@@ -3578,6 +3870,7 @@ function initAccounts() {
 
   const open = (m) => {
     paint();
+    renderCloud();   /* 打开面板时刷新云账号状态（登录/降级提示） */
     if (!currentUser()) setMode(m || mode);
     if (!dlg.open) dlg.showModal();
     btn.setAttribute('aria-expanded', 'true');

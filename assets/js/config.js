@@ -31,10 +31,9 @@ export const APP = {
     /* 入口门禁：关闭时 initGate 直接隐藏，代码路径保留 */
     gate: false,
     music: true,
-    /* 跨设备云同步的界面入口。
-       关掉时账号面板只呈现 ATLAS 本机账号（注册/登录/改密/恢复码），
-       作品只存本机，换设备走加密备份；引擎与数据表保留，打开即恢复。 */
-    cloudSync: false
+    /* 跨设备云同步：ATLAS 云账号（邮箱验证码）为作品与账号信息提供
+       云端存储；本机账号与离线模式保留为降级路径。 */
+    cloudSync: true
   },
 
   limits: {

@@ -68,6 +68,46 @@ async function osm(q) {
   }));
 }
 
+/* ───────── 本地地名库（懒加载，离线可用） ─────────
+   GeoNames cities5000（人口 ≥ 5 万，约 1.2 万条）：
+   新建地标时的联想与识别优先走这里，不联网、不等待；
+   查不到的再回落线上 geocode()。 */
+let gazPromise = null;
+function loadGaz() {
+  if (!gazPromise) {
+    gazPromise = import('../data/gazetteer.js')
+      .then(m => ({ rows: m.GAZETTEER, cc: m.CC_ZH }))
+      .catch(() => ({ rows: [], cc: {} }));
+  }
+  return gazPromise;
+}
+
+const CJK_RE = /[\u3400-\u9fff]/;
+
+/**
+ * 地名联想：中文查询匹配中文名，其余匹配英文名。
+ * 排序：全等 > 前缀 > 包含，同档按人口降序（大城市排前）。
+ */
+export async function searchPlaces(q, limit = 8) {
+  const s = String(q || '').trim().toLowerCase();
+  if (!s) return [];
+  const { rows, cc } = await loadGaz();
+  const cjk = CJK_RE.test(s);
+  const out = [];
+  for (const [zh, en, ccode, lat, lng, pop] of rows) {
+    const name = cjk ? (zh || '') : en.toLowerCase();
+    if (!name) continue;
+    let rank = 0;
+    if (name === s) rank = 3;
+    else if (name.startsWith(s)) rank = 2;
+    else if (name.includes(s)) rank = 1;
+    if (!rank) continue;
+    out.push({ zh, en, cc: ccode, country: cc[ccode] || ccode, lat, lng, pop, rank });
+  }
+  out.sort((a, b) => (b.rank - a.rank) || (b.pop - a.pop));
+  return out.slice(0, limit);
+}
+
 export async function geocode(name) {
   const q = String(name || '').trim();
   if (q.length < 2) return null;

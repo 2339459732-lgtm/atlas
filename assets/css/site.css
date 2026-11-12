@@ -2848,6 +2848,39 @@ html[data-gate="open"] .gate { display: none; }
 .acct-cloud__btn--ghost { background: none; border-color: var(--line-2); color: var(--ink-2); }
 .acct-cloud__btn--ghost:hover { background: var(--wash); border-color: var(--line-3); color: var(--ink); }
 
+/* 验证码表单 / 已登录面板 */
+.acct-cloud__form, .acct-cloud__me { grid-column: 1 / -1; display: grid; gap: 8px; margin-top: 6px; }
+.acct-cloud__row { display: flex; gap: 6px; align-items: center; }
+.acct-cloud__row .field__input { flex: 1; min-width: 0; }
+.acct-cloud__row .acct-cloud__btn { flex: none; padding: 8px 12px; }
+.acct-cloud__row--meta { justify-content: space-between; }
+.acct-cloud__hint {
+  font-size: var(--fs-xs); line-height: 1.55; color: var(--ink-3);
+  text-wrap: pretty;
+}
+.acct-cloud__link {
+  flex: none; border: 0; background: none; cursor: pointer;
+  font-family: var(--f-mono); font-size: var(--fs-mono); letter-spacing: .06em;
+  color: var(--ink-2); padding: 2px 0;
+}
+.acct-cloud__link:hover { color: var(--accent); }
+.acct-cloud__link:disabled { color: var(--ink-3); cursor: default; opacity: .55; }
+.acct-cloud__err {
+  margin: 0; font-size: var(--fs-xs); line-height: 1.5;
+  color: var(--err, #e0685f);
+}
+.acct-cloud__note {
+  grid-column: 1 / -1; margin: 2px 0 0; padding: 8px 10px;
+  font-size: var(--fs-xs); line-height: 1.6; color: var(--ink-2);
+  background: color-mix(in oklab, var(--ink-3) 9%, transparent);
+  border: 1px dashed var(--line-2); border-radius: var(--r);
+  text-wrap: pretty;
+}
+.acct-cloud.is-err .acct-cloud__dot {
+  background: #E0685F;
+  box-shadow: 0 0 0 3px color-mix(in oklab, #E0685F 18%, transparent);
+}
+
 .acct-dlg.is-shake { animation: acctShake .38s var(--e-out); }
 @keyframes acctShake {
   0%, 100% { transform: translateX(0); }
@@ -3045,3 +3078,38 @@ html[data-gate="open"] .gate { display: none; }
 /* 卡片打开时，同名标签先让位，避免一处两遍 */
 .nm.is-active .nm__text { opacity: 0; }
 .nm.is-active .nm__ring { opacity: 1; scale: 1.1; }
+
+/* ───────── 地名联想（新建地标对话框） ───────── */
+.field { position: relative; }
+.ac-suggest {
+  position: absolute; left: 0; right: 0; top: 100%; z-index: 40;
+  display: grid; margin-top: 4px;
+  padding: 5px;
+  background: var(--panel, var(--bg));
+  border: 1px solid var(--line-2); border-radius: var(--r);
+  box-shadow: 0 14px 40px rgba(0,0,0,.35);
+}
+.ac-item {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px;
+  padding: 7px 9px; text-align: left;
+  background: none; border: 0; border-radius: calc(var(--r) - 4px);
+  cursor: pointer;
+}
+.ac-item:hover, .ac-item[data-active="true"] { background: var(--wash); }
+.ac-item__name {
+  grid-row: 1; font-size: var(--fs-sm); color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ac-item__sub {
+  grid-row: 2; grid-column: 1; font-size: var(--fs-micro);
+  color: var(--ink-3); letter-spacing: .04em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ac-item__geo {
+  grid-row: 1 / 3; grid-column: 2; align-self: center;
+  font-family: var(--f-mono); font-size: var(--fs-micro);
+  letter-spacing: .05em; color: var(--ink-3); white-space: nowrap;
+}
+
+/* 点选地球拾取模式：光标十字准星 */
+#earth-canvas.is-picking { cursor: crosshair; }

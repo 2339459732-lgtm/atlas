@@ -1,0 +1,3 @@
+# 原始地理数据（生成器在 ref/build-gazetteer.py，产物已入库 assets/data/gazetteer.js）
+ref/cities5000.txt
+ref/cities5000.zip
