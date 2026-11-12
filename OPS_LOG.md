@@ -556,5 +556,11 @@ ALTER TABLE atlas_photos ADD COLUMN rev BIGINT NOT NULL DEFAULT 0,
 - 切换往返：地球 running false→true、iframe 同实例、挂载 canvas 正常、
   --sx-accent 计算值 #C9A96A、加载层按时收起 ✓
 - 深链接 ?mode=solar&solar-layers=… 直达且透传 ✓；390px 菜单入口 ✓
-- 剩余 404 仅三处且属预期：/api/orbits（上游后端依赖）、
+- 子路径部署适配：字符串改写被运行时 "/"+path 拼接击穿 → 改为基础路径
+  补丁（base-path-shim 内联外壳，Image.src/fetch/XHR 归一化到站点根，
+  根部署恒等）；JS 仅修 Worker 入口（document.baseURI）。
+- 大小写坑：Ara.webp/Leo.webp → 小写（Windows 不敏感、GH Pages Linux 敏感）。
+- 深空数据补齐：分层星点 l0+96 分片（4MB）、88 星座描绘图。
+- 线上验收：挂载 canvas ✓、--sx-accent=#C9A96A ✓、0 错误；
+  剩余 404/503 仅三处且属预期：/api/orbits（上游后端依赖）、
   /sky/tiles 与 /sky/dso-img 的 manifest（Tier-2 未镜像，见 SOLAR_INTEGRATION.md）。

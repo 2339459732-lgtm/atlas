@@ -81,12 +81,34 @@
 6. **更新子应用**：重新运行 `ref/vendor-solar.sh` 并覆盖目录即可；
    纹理文件名稳定（内容寻址由上游维护），缓存策略 14 天与更新节奏匹配。
 
-## 四、验收记录（2026-11-13）
+## 四、路径适配（重要实现要点）
+
+图集构建产物用**根绝对路径**引用资源（且运行时以 `"/"+相对路径` 拼出绝对
+路径）。根路径部署（应用域名）没问题；GitHub Pages 是子路径部署
+（`host/atlas/`），根绝对路径全部 404。字符串改写（`/sky/` → `../sky/`）
+被运行时的 `"/"+path` 拼接击穿，最终方案是**基础路径补丁**：
+
+- `solar/base-path-shim.js` 内联进 `solar/index.html`（先于应用脚本执行）：
+  子路径部署时把 `Image.src` / `fetch` / `XHR` 的根绝对请求归一化到站点根；
+  根部署时 `root === origin + "/"`，恒等变换、零影响；
+- `solar/index.html` 应用资源改相对路径（`assets/…`）；
+- `solar.css` 字体改 `url(../../fonts/…)`；
+- `solar.js` 仅修 Worker 入口（`new URL(…, document.baseURI)`），
+  资源前缀保持原样交给 shim；
+- 全流程封装在 `ref/patch-solar-paths.py`（vendor 后执行，幂等）。
+
+另有两处文件名大小写坑（Windows 本地不敏感、线上 Linux 敏感）：
+`Ara.webp → ara.webp`、`Leo.webp → leo.webp`。
+
+## 五、验收记录（2026-11-13）
 
 - 切换：进入图集 → 地球 `running:false`、音乐暂停；返回 → 恢复、iframe
   同一实例（状态保持）✓
-- 挂载：iframe 内 `#root` 有内容、`canvas` 存在、加载层准时收起 ✓
+- 挂载（本地 + GitHub Pages 线上）：iframe 内 `#root` 有内容、`canvas`
+  存在、加载层准时收起、0 页面错误 ✓
 - 品牌：子文档 `--sx-accent` 计算值 = `#C9A96A` ✓；悬浮条含品牌标与署名 ✓
 - 深链接：`?mode=solar&solar-layers=L03.dsn,F08.nomenclature` 直达并透传 ✓
 - 移动端：390px 下 modes 隐藏、菜单入口可用、无横向溢出 ✓
-- 已知 404：仅 `/api/orbits`（上游后端依赖，与参考站一致）与 Tier-2 资源 ✓
+- 深空模式数据补齐：分层星点二进制（l0 + 96 分片）、88+ 星座描绘图 ✓
+- 线上剩余 404/503 仅三处且属预期：`/api/orbits`（上游后端依赖，与参考站
+  一致）、`/sky/tiles/` 与 `/sky/dso-img/` 清单（Tier-2 未镜像）
