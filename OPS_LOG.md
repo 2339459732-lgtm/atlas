@@ -636,3 +636,18 @@ ALTER TABLE atlas_photos ADD COLUMN rev BIGINT NOT NULL DEFAULT 0,
   p95 383→254ms（−34%）、JS 堆 73.2→67.9MB（−7%）。
 - solar 三例回归 PASS；转场隔离测试通过（0→1 推进正常）。
 - 真机（GPU）预期各档接近 60fps；low 档收益在弱 GPU/核显最显著。
+
+## 18 图集品牌化：署名、首页与面板（v2.6.2）
+
+- ref/patch-solar-brand.py：在 bundle「原始转义空间」做定向替换
+  （先踩了整文件解码的坑：字符串内 \u0022 等被解码成真实引号破坏语法，
+  改为按转义约定生成匹配串直接替换）。
+- 作者面板 → Lee / AtlasL / 微信 lzx_O7（点击复制，clipboard+execCommand
+  双回退，「已复制 ✓」反馈）/ GitHub；声明融入 ATLAS 私人图册语境；
+  原双作者署名全清。
+- 首页 → AtlasL 图谱（en: AtlasL · SOLAR ATLAS）；左下角声明与创作者
+  展示 CSS 隐藏；副标题/版本行品牌化。
+- 宿主：iframe allow=clipboard-write、title 改 AtlasL 图谱、外壳 meta 同步、
+  debug=1 只读句柄常开（供体检）。
+- 注入 CSS：creatorpanel 品牌金描边/圆角、sp-panel 描边收拢——只调色排版。
+- 验收：面板内容/描边/圆角命中；复制反馈命中；旧署名 0 残留；回归 9 例全过。

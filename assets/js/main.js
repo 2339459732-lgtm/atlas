@@ -3873,6 +3873,9 @@ function solarSrc() {
   const params = new URLSearchParams();
   params.set('quality', 'auto');
   params.set('atlasq', tier);
+  /* debug=1 只开放只读观测句柄（__atlasStore/__atlasQuality 等），
+     供 atlasSolarPerf() 与运行时体检使用，不改变任何行为 */
+  params.set('debug', '1');
   try {
     const layers = new URLSearchParams(location.search).get('solar-layers') || '';
     if (layers) params.set('layers', layers);
@@ -3971,7 +3974,27 @@ html:root{
 .atlas-solar-badge b{display:flex;align-items:center;gap:7px;color:var(--sx-ink,#f3ede4);font-weight:600;letter-spacing:.18em;}
 .atlas-solar-badge svg{width:18px;height:18px;color:#C9A96A;}
 .atlas-solar-badge i{opacity:.55;font-style:normal;}
-.atlas-solar-badge:hover{border-color:rgba(201,169,106,.4);}`;
+.atlas-solar-badge:hover{border-color:rgba(201,169,106,.4);}
+
+/* ── ATLAS 品牌化（v2.6.2） ──
+   首页左下角：原作者的声明与创作者展示按需求移除；
+   作者面板：ATLAS 品牌金 + 圆角 + 字距，与主站设计语言一致。 */
+.creatorcredits{display:none!important}
+.creatorpanel{border-color:rgba(201,169,106,.32)!important;border-radius:14px!important;
+  box-shadow:0 30px 80px -40px rgba(0,0,0,.95),inset 0 1px rgba(255,240,220,.05)!important}
+.creatorpanel__head b{color:#C9A96A!important;letter-spacing:.34em!important}
+.creatorpanel__name{font-weight:280!important;letter-spacing:.2em!important;
+  color:color-mix(in oklab,#C9A96A 30%,#f3ede4)!important}
+.creatorpanel__note{line-height:1.9!important;color:color-mix(in oklab,#f3ede4 72%,transparent)!important}
+.creatorpanel__links a{border-radius:10px!important;border-color:rgba(201,169,106,.18)!important}
+.creatorpanel__links a:hover{border-color:rgba(201,169,106,.5)!important;background:rgba(201,169,106,.07)!important}
+.creatorpanel__links b{color:#f3ede4!important}
+.creatorpanel__links span{color:color-mix(in oklab,#C9A96A 78%,#fff)!important}
+.creatorpanel__foot{color:rgba(201,169,106,.6)!important;letter-spacing:.18em!important}
+
+/* 面板整体：圆角与描边向品牌金收拢（不影响布局，仅质感） */
+.sp-panel{border-color:rgba(201,169,106,.16)!important}
+.sp-head h3{letter-spacing:.18em!important}`;
     doc.body.appendChild(st);
 
     /* 品牌只做变量映射：徽标由父页面的悬浮条统一呈现，避免两处重复 */

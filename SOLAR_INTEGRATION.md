@@ -153,6 +153,41 @@ low 档的降幅（像素量、AA、纹理带宽）在弱 GPU/核显上最显著
 `atlasSolarPerf(n)`（iframe 内 rAF 采样：fps/帧时间/p95/掉帧比/抖动 + 应用自测
 `__atlasQuality`）；退出图集时控制台自动留一帧快照。
 
+## 五之补二、品牌化专项（v2.6.2）
+
+### 目标
+
+图集子应用完全并入 ATLAS 品牌：作者署名、首页文案、面板质感全部换成
+ATLAS 自己的内容与设计语言——不照抄原站任何署名与文案（上游 Apache-2.0
+许可与素材署名保留在 `solar/LICENSE` / `solar/ATTRIBUTION.md`，UI 层不出现）。
+
+### 落地（ref/patch-solar-brand.py，幂等，在转义空间做定向替换）
+
+- **作者面板**（设置 → 关于作者）：
+  - 主创 Lee / AtlasL；声明改为「个人创作的天文可视化作品，收录于 ATLAS
+    私人图册」；页脚 © 2026 Lee · ATLAS 图谱；
+  - 链接：微信 lzx_O7（点击复制，Async Clipboard + execCommand 双回退，
+    复制后显示「已复制 ✓」）、GitHub 在线图册；
+  - 原双作者（氕氘氚/ESSELANO + Quincy）全部移除。
+- **首页**：标题「AtlasL 图谱」（en: AtlasL · SOLAR ATLAS）；副标题
+  「一份私人坐标图谱」（en: A PRIVATE CARTOGRAPHY BY LEE）；版本行
+  「ATLAS 图谱 · 2026」；左下角原站声明与创作者展示由注入 CSS 隐藏。
+- **面板质感**（注入 CSS）：作者面板品牌金描边/圆角/字距；主图层面板
+  （.sp-panel）描边向品牌金收拢——只调色与排版，不改布局与内容。
+- **宿主**：iframe `title`/悬浮署名改「AtlasL 图谱」；`allow` 增加
+  `clipboard-write`；外壳 <title>/<description> 同步；iframe 常驻加
+  `debug=1` 只读句柄（供 atlasSolarPerf 体检）。
+
+### 验收
+
+- 面板实测：ABOUT · ATLAS 图谱 / Lee / ATLAS 图谱 / 声明文案 / 微信
+  lzx_O7 / GitHub / © 2026 Lee · ATLAS 图谱 / 品牌金描边 rgba(201,169,106,.32)
+  / 14px 圆角，全部命中 ✓
+- 微信点击复制：反馈「已复制 ✓」✓（测试环境走 execCommand 回退；
+  真机 https + 用户手势走 Async Clipboard）
+- 旧署名清零：ESSELANO/Quincy/xiaohongshu/b23.tv 在 bundle 中 0 残留 ✓
+- 回归：cloud 六例 + solar 三例全 PASS；0 页面错误。
+
 ## 五、验收记录（2026-11-13）
 
 - 切换：进入图集 → 地球 `running:false`、音乐暂停；返回 → 恢复、iframe
