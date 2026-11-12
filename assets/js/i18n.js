@@ -179,6 +179,21 @@ export const DICT = {
   'album.locate': ['在地球上查看', 'Show on globe'],
 
   /* 手记 */
+  /* 云同步 */
+  'cloud.title': ['云同步', 'Cloud sync'],
+  'cloud.sub': ['用 WorkBuddy 账号登录，作品和照片在任意设备上都能打开。',
+                'Sign in with WorkBuddy to open your albums and photos on any device.'],
+  'cloud.signIn': ['使用 WorkBuddy 登录', 'Sign in with WorkBuddy'],
+  'cloud.signOut': ['退出云同步', 'Disconnect'],
+  'cloud.connected': ['已连接 · {name}', 'Connected · {name}'],
+  'cloud.syncing': ['正在同步…', 'Syncing…'],
+  'cloud.uploading': ['正在上传照片 {i}/{n}', 'Uploading photo {i}/{n}'],
+  'cloud.synced': ['已同步 {a} 本 · {p} 张', '{a} albums · {p} photos synced'],
+  'cloud.failed': ['同步失败：{msg}', 'Sync failed: {msg}'],
+  'cloud.offline': ['当前地址未绑定云服务，作品只保存在本机', 'Cloud is not available on this address — works stay on this device'],
+  'cloud.done': ['已与云端同步', 'Synced with cloud'],
+  'cloud.signedOut': ['已断开云同步', 'Cloud disconnected'],
+
   'memoir.kicker': ['手记', 'RECOLLECTION'],
   'memoir.blank': ['写下这次的感觉', 'Write how it felt'],
   'memoir.phTitle': ['一句话', 'One line'],

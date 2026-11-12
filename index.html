@@ -674,6 +674,7 @@ try {
   </form>
 </dialog>
 
+<script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
 <script type="module" src="assets/js/main.js"></script>
 
 <div class="audio-hint" id="audio-hint" hidden>
@@ -693,6 +694,19 @@ try {
     <button type="button" class="dlg__x" id="acct-close" aria-label="关闭" data-i18n-aria="common.close">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke-linecap="round"/></svg>
     </button>
+  </div>
+
+  <!-- 云同步：跨设备保存作品与照片 -->
+  <div class="acct-cloud" id="acct-cloud" hidden>
+    <span class="acct-cloud__dot" id="acct-cloud-dot" aria-hidden="true"></span>
+    <div class="acct-cloud__txt">
+      <p class="acct-cloud__t" id="acct-cloud-title" data-i18n="cloud.title">云同步</p>
+      <p class="acct-cloud__s" id="acct-cloud-sub" data-i18n="cloud.sub">用 WorkBuddy 账号登录，作品和照片在任意设备上都能打开。</p>
+    </div>
+    <div class="acct-cloud__acts">
+      <button type="button" class="acct-cloud__btn" id="acct-cloud-btn" data-i18n="cloud.signIn">使用 WorkBuddy 登录</button>
+      <button type="button" class="acct-cloud__btn acct-cloud__btn--ghost" id="acct-cloud-out" data-i18n="cloud.signOut" hidden>退出云同步</button>
+    </div>
   </div>
 
   <!-- 已登录 -->

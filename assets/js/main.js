@@ -11,6 +11,12 @@ import { sha256Hex, VAULT_HASH, makeBackup, readBackup, photoBlob } from './vaul
 import { t, applyI18n, initLang, getLang, setLang, LANGS } from './i18n.js';
 import { createMusic } from './audio.js';
 import {
+  initCloud, cloudAvailable, cloudUser, onCloudChange, cloudReason,
+  signInCloud, signOutCloud,
+  pullAll, pushAlbums, pushPhotos, uploadPhotoBlob, downloadPhotoBlob,
+  deleteAlbum as cloudDeleteAlbum, deletePhotos as cloudDeletePhotos
+} from './cloud.js';
+import {
   key as acctKey, dbName, currentUser, accounts,
   register as acctRegister, login as acctLogin, logout as acctLogout,
   removeAccount, migrateGuestData, hasGuestData, validateName, validatePassword
@@ -343,6 +349,7 @@ function loadLandmarks() {
 }
 const saveLandmarks = () => {
   try { localStorage.setItem(acctKey(LS_LM), JSON.stringify(state.landmarks)); } catch {}
+  schedulePush();
 };
 
 /* ───────── 统计 ───────── */
@@ -904,7 +911,9 @@ function renderAlbumGrid() {
         img.decoding = 'async';
         img.loading = idx < 8 ? 'eager' : 'lazy';
         img.src = urlFor(p);
+        img.dataset.pid = p.id;
         shot.appendChild(img);
+        queueBlob(p);
         shot.appendChild(el('span', 'shot__no', pad2(idx + 1)));
 
         const del = el('button', 'shot__del');
@@ -1174,6 +1183,7 @@ async function uploadTo(landmarkId, files) {
 async function removePhoto(p) {
   await dbDel(p.id);
   dropURL(p.id);
+  if (cloudUser()) cloudDeletePhotos([p.id]).catch(e => console.warn('[sync] del', e));
   state.photos = state.photos.filter(x => x.id !== p.id);
   const lm = currentLandmark();
   if (lm && lm.coverId === p.id) { lm.coverId = null; saveLandmarks(); }
@@ -1638,8 +1648,13 @@ $('#site-form').addEventListener('submit', e => {
       await dbDel(p.id);
       dropURL(p.id);
     }
+    const gone = state.photos.filter(p => p.landmarkId === lm.id).map(p => p.id);
     state.photos = state.photos.filter(p => p.landmarkId !== lm.id);
     state.landmarks = state.landmarks.filter(x => x.id !== lm.id);
+    if (cloudUser()) {
+      cloudDeleteAlbum(lm.id).catch(e => console.warn('[sync] delAlbum', e));
+      if (gone.length) cloudDeletePhotos(gone).catch(e => console.warn('[sync] delPhotos', e));
+    }
     saveLandmarks();
     closeAlbum();
     buildMarkers();
@@ -2649,6 +2664,216 @@ function initMusic() {
 /* ───────── 账号 ───────── */
 const ACCT_OPEN = 'atlas.acct.open';
 
+/* ───────── 云同步 ─────────
+   本地账号解决"这台机器"，云同步解决"换台机器"。
+   登录云之后：任何一次落库都排队推上去，登录/换设备时先拉一次。
+   没登录时一切照旧走 localStorage + IndexedDB，不阻塞任何操作。 */
+let syncTimer = 0, syncing = false, pulling = false, lastSync = 0;
+
+function setCloudState(kind, text) {
+  const box = $('#acct-cloud');
+  if (!box) return;
+  box.classList.toggle('is-on', kind === 'on');
+  box.classList.toggle('is-busy', kind === 'busy');
+  const sub = $('#acct-cloud-sub');
+  if (sub && text) sub.textContent = text;
+}
+
+function renderCloud() {
+  const box = $('#acct-cloud');
+  if (!box) return;
+  /* 没绑云服务的域名（GitHub Pages / 本地预览）直接不显示这块：
+     访客看到一个"用不了"的按钮只会困惑，能力说明写进文档即可。 */
+  if (!cloudAvailable()) {
+    box.hidden = true;
+    return;
+  }
+  const u = cloudUser();
+  box.hidden = false;
+  $('#acct-cloud-btn').hidden = !!u;
+  $('#acct-cloud-out').hidden = !u;
+  if (u) {
+    $('#acct-cloud-title').textContent = t('cloud.connected', { name: u.name });
+    if (!box.classList.contains('is-busy')) {
+      setCloudState('on', lastSync
+        ? t('cloud.synced', { a: state.landmarks.length, p: state.photos.length })
+        : t('cloud.sub'));
+    }
+  } else {
+    $('#acct-cloud-title').textContent = t('cloud.title');
+    setCloudState('', t('cloud.sub'));
+  }
+}
+
+function schedulePush(delay = 1400) {
+  if (pulling || !cloudUser()) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => { syncPush().catch(cloudFail); }, delay);
+}
+
+function cloudFail(e) {
+  console.warn('[sync]', e);
+  const msg = (e?.message || String(e)).slice(0, 48);
+  setCloudState('', t('cloud.failed', { msg }));
+  renderCloudSoon();
+}
+
+let cloudSoon = 0;
+function renderCloudSoon() {
+  clearTimeout(cloudSoon);
+  cloudSoon = setTimeout(renderCloud, 40);
+}
+
+async function syncPush() {
+  const u = cloudUser();
+  if (!u || syncing || pulling) return;
+  syncing = true;
+  setCloudState('busy', t('cloud.syncing'));
+  try {
+    await pushAlbums(state.landmarks.map(l => ({
+      local_id: l.id,
+      payload: {
+        name: l.name, nameEn: l.nameEn, coord: l.coord, date: l.date, note: l.note,
+        memoir: l.memoir, accent: l.accent, coverId: l.coverId,
+        lat: l.lat, lng: l.lng, keyHash: l.keyHash, createdAt: l.createdAt
+      }
+    })));
+
+    /* 原图分批发：一次最多 6 张，剩下的排下一轮，避免一次把上行带宽吃满 */
+    const pending = state.photos.filter(p => !p.remote && p.blob && (p.upFail || 0) < 3);
+    const batch = pending.slice(0, 6);
+    for (let i = 0; i < batch.length; i++) {
+      const p = batch[i];
+      setCloudState('busy', t('cloud.uploading', { i: i + 1, n: batch.length }));
+      try {
+        p.remote = await uploadPhotoBlob(u.id, p.id, p.blob);
+        p.cloudAt = Date.now();
+        await dbPut(p);
+      } catch (e) {
+        p.upFail = (p.upFail || 0) + 1;
+        console.warn('[sync] upload', e);
+      }
+    }
+
+    await pushPhotos(state.photos.map(p => ({
+      local_id: p.id, album_local_id: p.landmarkId, name: p.name,
+      w: p.w, h: p.h, taken_at: p.t, thumb: p.thumb || null, remote_path: p.remote || null
+    })));
+
+    lastSync = Date.now();
+    syncing = false;
+    setCloudState('on', t('cloud.synced', { a: state.landmarks.length, p: state.photos.length }));
+    if (pending.length > batch.length) schedulePush(900);
+  } catch (e) {
+    syncing = false;
+    throw e;
+  }
+}
+
+/* 拉取：云端是跨设备的事实源。同 id 以云端为准，本地独有的保留并稍后推上去。 */
+async function syncPull(announce) {
+  if (!cloudUser() || pulling) return 0;
+  pulling = true;
+  clearTimeout(syncTimer);
+  setCloudState('busy', t('cloud.syncing'));
+  try {
+    const { albums, photos } = await pullAll();
+    let added = 0;
+
+    for (const row of albums) {
+      const payload = row.payload || {};
+      const lm = normalizeLM({ ...payload, id: row.local_id });
+      const i = state.landmarks.findIndex(x => x.id === lm.id);
+      if (i >= 0) state.landmarks[i] = lm;
+      else { state.landmarks.push(lm); added++; }
+    }
+
+    const byId = new Map(state.photos.map(p => [p.id, p]));
+    for (const row of photos) {
+      const cur = byId.get(row.local_id);
+      if (cur) {
+        if (row.remote_path) cur.remote = row.remote_path;
+        if (row.thumb && !cur.thumb) cur.thumb = row.thumb;
+        continue;
+      }
+      const rec = {
+        id: row.local_id, landmarkId: row.album_local_id, name: row.name || '',
+        w: row.w || 4, h: row.h || 3, t: row.taken_at || Date.now(),
+        thumb: row.thumb || '', remote: row.remote_path || null, blob: null
+      };
+      state.photos.push(rec);
+      byId.set(rec.id, rec);
+      try { await dbPut(rec); } catch {}
+      added++;
+    }
+
+    pulling = false;
+    lastSync = Date.now();
+    try { localStorage.setItem(acctKey(LS_LM), JSON.stringify(state.landmarks)); } catch {}
+
+    renderWall();
+    syncStats();
+    syncEarth();
+    if (state.current && albumEl.classList.contains('is-open')) {
+      albumList = photosOf(state.current);
+      renderAlbumGrid();
+    }
+    setCloudState('on', t('cloud.synced', { a: state.landmarks.length, p: state.photos.length }));
+    if (announce && added) toast(t('cloud.done'));
+    return added;
+  } catch (e) {
+    pulling = false;
+    cloudFail(e);
+    return 0;
+  }
+}
+
+/* 原图按需下载：换设备首次打开相册时，先用缩略图铺满，再逐张补原图 */
+const blobQueue = [];
+let blobActive = 0;
+function queueBlob(photo) {
+  if (!photo || photo.blob || !photo.remote) return;
+  if (blobQueue.includes(photo)) return;
+  blobQueue.push(photo);
+  pumpBlob();
+}
+function pumpBlob() {
+  while (blobActive < 3 && blobQueue.length) {
+    const p = blobQueue.shift();
+    blobActive++;
+    downloadPhotoBlob(p.remote)
+      .then(async blob => {
+        if (!blob) return;
+        p.blob = blob;
+        try { await dbPut(p); } catch {}
+        document.querySelectorAll(`img[data-pid="${p.id}"]`).forEach(img => {
+          img.src = urlFor(p);
+        });
+      })
+      .catch(e => console.warn('[sync] download', e))
+      .finally(() => { blobActive--; pumpBlob(); });
+  }
+}
+
+function initCloudSync() {
+  initCloud().then(async ok => {
+    renderCloud();
+    if (ok && cloudUser()) await syncPull(false);
+  }).catch(e => { console.warn('[cloud]', e); renderCloud(); });
+
+  onCloudChange(() => { renderCloud(); if (cloudUser()) syncPull(false); });
+
+  $('#acct-cloud-btn')?.addEventListener('click', async () => {
+    try { await signInCloud(); }
+    catch (e) { cloudFail(e); }
+  });
+  $('#acct-cloud-out')?.addEventListener('click', async () => {
+    await signOutCloud();
+    renderCloud();
+    toast(t('cloud.signedOut'));
+  });
+}
+
 function initAccounts() {
   const btn = $('#acct-btn');
   const dlg = $('#acct-dlg');
@@ -2872,6 +3097,7 @@ async function boot() {
   }
 
   initAccounts();
+  initCloudSync();
   initMusic();
   initMemoir();
 }
