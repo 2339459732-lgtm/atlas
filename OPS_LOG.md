@@ -564,3 +564,43 @@ ALTER TABLE atlas_photos ADD COLUMN rev BIGINT NOT NULL DEFAULT 0,
 - 线上验收：挂载 canvas ✓、--sx-accent=#C9A96A ✓、0 错误；
   剩余 404/503 仅三处且属预期：/api/orbits（上游后端依赖）、
   /sky/tiles 与 /sky/dso-img 的 manifest（Tier-2 未镜像，见 SOLAR_INTEGRATION.md）。
+
+## 16 配置与架构收口：运行时缓冲、缓存与错误策略（v2.6.0）
+
+### 16.1 配置集中
+
+- `config.js` 新增 `APP.runtime`：layerRailWidth / urlCacheCap / blobMemBudgetBytes(96MB) /
+  syncDebounceMs / toastMs / errToastThrottleMs / errRingSize；版本 → 2.6.0。
+- main.js 硬编码（LAYER_RAIL、URL_CAP、toast 3200、schedulePush 1200）全部改为读配置。
+
+### 16.2 Blob 内存预算（新增）
+
+- 问题：ensureBlob 把原图留在 photo.blob，导出/上传全本相册后 Blob 堆积不释放。
+- 方案：blobLRU（按最近用到记账）+ blobBytes 累计 + 96MB 预算；超限按 LRU
+  releaseBlob（dropURL 联动撤销 objectURL + 置空 blob）；正在大图展示的记入
+  hotBlobs 跳过释放（showPhoto 加/删）。
+- 释放时机：trimBlobs() 在相册关闭与备份导出后主动调用；上传完成立即 releaseBlob。
+- 观测句柄 `atlasMem()`：blobBytes / 预算 / LRU 数 / URL 池 / hot / pending。
+
+### 16.3 错误处理
+
+- 全局 error / unhandledrejection：原为 console.warn → 升级为环形缓冲（12 条，
+  `atlasErrors()`）+ 节流 toast（同信息 5s 一次）；良性网络错误（failed to fetch
+  等，各模块自会提示）不打扰；暴露 `window.atlasErrors`。
+- WebGL 上下文丢失：earth.js 新增 onContext 回调 → 主页面显示「渲染被系统挂起，
+  正在恢复…」加载层；恢复后重载贴图自动收起（此前只有 console.warn）。
+- IndexedDB 读取失败：boot 里从静默吞掉改为 reportError（日志 + 一次性提示）。
+- 缩略图 onerror：移除 img + shot.is-missing 占位（∅），读屏「原图不可用」，
+  不留浏览器碎图标。
+
+### 16.4 体验与完成度
+
+- 跳转链接（skip-link，聚焦才可见）；性能标记 atlas:boot-start / first-paint /
+  earth-ready + `atlasPerf()`；toast 时长入配置。
+- 安全头：X-Frame-Options SAMEORIGIN + Permissions-Policy（geolocation/mic/camera/payment 全关）。
+
+### 16.5 验收
+
+- polish 四例：性能标记齐全、atlasErrors/atlasMem 就绪、唯一错误 toast+环形缓冲、
+  良性错误静默、上下文丢失 UI 出现且 running=false、跳转链接与 aria-live ✓
+- 回归：cloud 六用例、solar 三用例全 PASS；375px 无横向溢出、0 页面错误。

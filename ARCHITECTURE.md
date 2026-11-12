@@ -100,14 +100,20 @@
 | 三角面 | 128×96（约 2.4 万三角） | 移动降到 72×48 |
 | 帧循环 | 仅在区块可见时 `start()`，离屏 `stop()` | IntersectionObserver + 页面隐藏 |
 | 照片 | 长边 2400 px，JPEG 0.93；缩略图 1280 px | 上传前在 Canvas 内完成，不阻塞主线程太久 |
+| 照片 Blob | 内存预算 96 MB（LRU） | `ensureBlob` 记账，超出按最久未用释放（撤销 objectURL + 置空 blob），下次按需取回 |
+| blob URL 池 | 80 个 | 超出撤销最旧；正在大图展示的记入 hot 集合，释放时跳过 |
+| 相册网格 | 每批 6 行 DOM | 哨兵 + IntersectionObserver，`content-visibility:auto` + 内定高度 |
+| 错误风暴 | 同一信息 5s 内只 toast 一次 | 环形缓冲 12 条（`atlasErrors()`），良性网络错误不打扰 |
 
 ### 异常降级
 | 失败点 | 表现 | 降级 |
 | --- | --- | --- |
-| 无 WebGL / 上下文丢失 | 地球空白 | 占位提示 + 其余功能照常；着色器编译失败自动重试 4 次 |
+| 无 WebGL / 上下文丢失 | 地球空白 | 占位提示 + 其余功能照常；着色器编译失败自动重试 4 次；上下文被驱动回收时可见提示「渲染被系统挂起」，恢复后自动重载贴图 |
 | 无 `crypto.subtle`（非 https） | 备份不可用 | 明确提示需要 https，其它功能不受影响 |
 | 无 `CompressionStream` | 备份体积大 | 跳过 gzip，直接加密 |
 | 地名解析失败 | 坐标为空 | 提示「在地球上点选」，不阻断创建 |
+| 缩略图不可用 | 浏览器碎图标 | 静默退成空位（∅ 占位），读屏给出「原图不可用」 |
+| IndexedDB 读取失败 | 照片列表为空 | 环形缓冲 + 一次性错误提示，不静默吞掉 |
 | 无 IntersectionObserver | 入场动画失效 | 直接显示（`revealObserve` 兜底加 `is-in`） |
 
 ### 私钥隔离模型
@@ -203,6 +209,22 @@ ID 是稳定地址（`/^[A-Z]\d{2}\.[a-z0-9-]+$/`），组序只影响阅读顺�
 左移半个栏宽，球与注记整体让位，而不是被面板盖住。
 
 细节与验收见 `LAYER_SYSTEM.md`。
+
+## 运行时缓冲与缓存（2.6.1）
+
+所有可调参数集中在 `config.js` 的 `APP.runtime`：面板停靠宽度、blob URL 池上限、
+照片 Blob 内存预算（96 MB LRU）、同步防抖窗口、toast 时长、错误提示节流与环形缓冲大小。
+
+- **Blob 三级生命周期**：`ensureBlob`（本地 IDB → 云端下载 → 落库）按最近用到记账；
+  预算超限按 LRU 释放（撤销 objectURL + 置空 blob），正在大图展示的记入 hot 集合跳过；
+  相册关闭、备份导出后主动 `trimBlobs()`；上传完成后立即释放。
+- **URL 池与 hot 集合**：`urlFor` 命中移到队尾（LRU），`releaseBlob` 与 `dropURL` 联动，
+  不会出现"内存已释放但 URL 还挂着"的泄漏。
+- **观测句柄**：`atlasMem()`（内存占用/池状态）、`atlasErrors()`（最近 12 条错误）、
+  `atlasPerf()`（`atlas:boot-start / first-paint / earth-ready` 性能标记），
+  控制台即可做运行时体检，无需插桩。
+- **错误策略**：全局 error / unhandledrejection → 环形缓冲 + 节流 toast（真实错误
+  对用户可见一次，良性网络错误静默）；WebGL 上下文丢失转为可见提示并自动恢复。
 
 ## 太阳系图集集成（2.7）
 

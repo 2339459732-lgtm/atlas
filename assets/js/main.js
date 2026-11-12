@@ -148,9 +148,27 @@ const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const fine = () => matchMedia('(pointer: fine)').matches;
 
 /* 兜底：任何没被接住的错误只记一条日志，不让整页白屏。
-   相册、地球、音乐都是独立模块，一个模块出错不该拖垮其余部分。 */
-addEventListener('error', e => console.warn('[atlas] error:', e.message || e.error));
-addEventListener('unhandledrejection', e => console.warn('[atlas] unhandled:', e.reason));
+   相册、地球、音乐都是独立模块，一个模块出错不该拖垮其余部分。
+   环形缓冲 + 节流 toast：真实故障对用户可见一次（不刷屏），
+   控制台 atlasErrors() 可随时翻最近 12 条。 */
+const errRing = [];
+const errToastAt = new Map();
+function reportError(source, detail) {
+  const msg = String(detail?.message || detail?.stack || detail || 'unknown').slice(0, 80);
+  console.warn('[atlas] ' + source + ':', detail);
+  const last = errToastAt.get(msg) || 0;
+  /* 已知良性的网络类错误由各模块自行提示，这里不重复打扰 */
+  const benign = /failed to fetch|network error|load failed|aborted|sdk|cloud|offline/i.test(msg);
+  if (!benign && Date.now() - last > (APP.runtime.errToastThrottleMs || 5000)) {
+    errToastAt.set(msg, Date.now());
+    toast(t('common.errorToast'), true);
+  }
+  errRing.push({ t: Date.now(), source, msg });
+  if (errRing.length > (APP.runtime.errRingSize || 12)) errRing.shift();
+}
+addEventListener('error', e => reportError('error', e.error || e.message));
+addEventListener('unhandledrejection', e => reportError('unhandled', e.reason));
+window.atlasErrors = () => errRing.slice();
 
 /* ───────── 状态 ───────── */
 const state = {
@@ -189,9 +207,9 @@ function setLock(on) {
 }
 
 /* ───────── objectURL ───────── */
-/* 上限 80 个：相册翻到几百张时，不回收的 blob URL 会一直占着内存 */
+/* 上限来自配置：相册翻到几百张时，不回收的 blob URL 会一直占着内存 */
 const urlCache = new Map();
-const URL_CAP = 80;
+const URL_CAP = APP.runtime.urlCacheCap || 80;
 function urlFor(photo) {
   if (!photo.blob) return photo.thumb || '';
   const hit = urlCache.get(photo.id);
@@ -217,6 +235,15 @@ function dropURL(id) {
   const u = urlCache.get(id);
   if (u) { try { URL.revokeObjectURL(u); } catch {} urlCache.delete(id); }
 }
+/* 运维只读句柄：内存占用与池状态，控制台 atlasMem() 可查 */
+window.atlasMem = () => ({
+  blobBytes: Math.round(blobBytes / 1024 / 1024 * 10) / 10,
+  blobBudgetMB: Math.round((APP.runtime.blobMemBudgetBytes || 96 * 1024 * 1024) / 1024 / 1024),
+  blobLRU: blobLRU.size,
+  urlPool: urlCache.size,
+  hot: hotBlobs.size,
+  pending: blobPending.size
+});
 
 /**
  * 原图按需取：本地有就读 IndexedDB，云端有就下载并落库。
@@ -224,9 +251,47 @@ function dropURL(id) {
  * 这样打开一个有几百张照片的相册不会把解码后的位图全堆进内存。
  */
 const blobPending = new Map();
+
+/* ── Blob 内存预算 ─────────────────────────────────────────────
+   ensureBlob 会把原图留在 photo.blob 上：翻几张 4K 原图没问题，
+   但一口气导出/传完整本相册后，所有 Blob 都会堆在内存里不释放。
+   这里按"最近用到"记账：超出预算就把最久没碰的释放掉
+   （撤销其 objectURL + 置空 blob），下次要看再从库/云端按需取回。 */
+const blobLRU = new Map();      /* photo.id → blob 字节数，插入序 = 最近序 */
+let blobBytes = 0;
+const hotBlobs = new Set();     /* 正在大图展示的：释放时跳过，防止画面变空 */
+
+function touchBlob(photo) {
+  if (!photo?.blob) return;
+  const id = photo.id;
+  if (blobLRU.has(id)) blobBytes -= blobLRU.get(id);
+  blobLRU.delete(id);
+  blobLRU.set(id, photo.blob.size || 0);
+  blobBytes += photo.blob.size || 0;
+  trimBlobs();
+}
+function releaseBlob(photo, { keepUrl = false } = {}) {
+  if (!photo?.blob) return;
+  if (hotBlobs.has(photo.id) && !keepUrl) return;
+  if (!keepUrl) dropURL(photo.id);
+  const sz = blobLRU.get(photo.id) || 0;
+  blobLRU.delete(photo.id);
+  blobBytes = Math.max(0, blobBytes - sz);
+  photo.blob = null;
+}
+function trimBlobs() {
+  const budget = APP.runtime.blobMemBudgetBytes || 96 * 1024 * 1024;
+  for (const id of [...blobLRU.keys()]) {
+    if (blobBytes <= budget) break;
+    const ph = state.photos.find(p => p.id === id);
+    if (ph) releaseBlob(ph);
+    else { blobLRU.delete(id); }
+  }
+}
+
 function ensureBlob(photo) {
   if (!photo) return Promise.resolve(null);
-  if (photo.blob) return Promise.resolve(photo.blob);
+  if (photo.blob) { touchBlob(photo); return Promise.resolve(photo.blob); }
   if (blobPending.has(photo.id)) return blobPending.get(photo.id);
 
   const job = (async () => {
@@ -241,6 +306,7 @@ function ensureBlob(photo) {
     if (!blob) return null;
     photo.blob = blob;
     photo.hasBlob = true;
+    touchBlob(photo);
     return blob;
   })().finally(() => blobPending.delete(photo.id));
 
@@ -252,10 +318,16 @@ function ensureBlob(photo) {
 function showPhoto(img, photo) {
   if (!img || !photo) return;
   img.src = photo.thumb || urlFor(photo);
-  if (photo.blob) { img.src = urlFor(photo); return; }
+  hotBlobs.delete(photo.id);
+  if (photo.blob) {
+    hotBlobs.add(photo.id);
+    img.src = urlFor(photo);
+    return;
+  }
   if (!photo.hasBlob && !photo.remote) return;
   ensureBlob(photo).then(blob => {
     if (!blob || !img.isConnected) return;
+    hotBlobs.add(photo.id);
     img.src = urlFor(photo);
   }).catch(() => {});
 }
@@ -574,6 +646,7 @@ function initEarth() {
       loader.classList.add('is-done');
       if (earthReady) return;
       earthReady = true;
+      try { performance.mark('atlas:earth-ready'); } catch {}
       buildMarkers();
       paintRes();
     },
@@ -584,6 +657,14 @@ function initEarth() {
         nomenclature.setZoom(earth.getZoom());
         nomenclature.update(payload.project);
       }
+    },
+    /* 驱动回收 WebGL 上下文（切显卡/系统挂起恢复）时的可见反馈 */
+    onContext: lost => {
+      if (!lost) return;   /* 恢复由 onReady 收起加载层 */
+      loader.classList.remove('is-done');
+      loader.innerHTML =
+        `<span class="planet__loader-t">${esc(t('planet.contextLost'))}</span>` +
+        `<span class="planet__loader-p">—</span>`;
     }
   });
   if (!earth) {
@@ -613,7 +694,7 @@ let overlay = null;
 let nomenclature = null;
 let layerStore = null;
 let layerPanel = null;
-const LAYER_RAIL = 336;   /* 面板 316 + 右距 18 + 缝 2 */
+const LAYER_RAIL = APP.runtime.layerRailWidth || 336;   /* 面板 316 + 右距 18 + 缝 2 */
 
 function initLayers() {
   if (layerStore || !earth) return;
@@ -991,6 +1072,9 @@ function closeAlbum() {
   albumEl.setAttribute('aria-hidden', 'true');
   setLock(lbState.open || palette.classList.contains('is-open'));
   state.current = null;
+  /* 相册已关：没有大图在展示，放掉超出预算的原图 Blob */
+  hotBlobs.clear();
+  trimBlobs();
   if (id) {
     const i = state.landmarks.findIndex(l => l.id === id);
     $$('.card')[i]?.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' });
@@ -1079,6 +1163,12 @@ function renderAlbumGrid() {
         img.loading = idx < 8 ? 'eager' : 'lazy';
         img.src = p.thumb || urlFor(p);
         img.dataset.pid = p.id;
+        /* 缩略图丢了（清理/同步竞态）也不留浏览器碎图标：静默退成空位 */
+        img.onerror = () => {
+          img.remove();
+          shot.classList.add('is-missing');
+          shot.setAttribute('aria-label', t('lb.missing', { name: p.name }));
+        };
         shot.appendChild(img);
         shot.appendChild(el('span', 'shot__no', pad2(idx + 1)));
 
@@ -1513,7 +1603,7 @@ function toast(msg, isError) {
   t.classList.toggle('is-error', !!isError);
   t.classList.add('is-on');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('is-on'), 3200);
+  toastTimer = setTimeout(() => t.classList.remove('is-on'), APP.runtime.toastMs || 3200);
 }
 
 /* ───────── 命令面板 ───────── */
@@ -2831,12 +2921,14 @@ $('#vault-export')?.addEventListener('click', async () => {
     try { localStorage.setItem(acctKey('atlas.backed.v1'), String(Date.now())); } catch {}
     btn.textContent = t('vault.exported');
     toast(t('vault.exportedToast'));
+    /* 备份读过的原图全在内存里：按预算回收 */
+    trimBlobs();
   } catch (err) {
     btn.textContent = t('vault.export');
     toast(err?.message || t('toast.exportFail'), true);
   } finally {
     btn.removeAttribute('aria-busy');
-    setTimeout(() => { btn.textContent = t('vault.export'); }, 3200);
+    setTimeout(() => { btn.textContent = t('vault.export'); }, APP.runtime.toastMs || 3200);
   }
 });
 
@@ -3224,7 +3316,7 @@ function renderCloud() {
   setCloudState('', t('cloud.sub'));
 }
 
-function schedulePush(delay = 1200) {
+function schedulePush(delay = (APP.runtime.syncDebounceMs || 1200)) {
   if (!APP.features.cloudSync) return;
   if (!cloudUser() || !cloudAvailable() || !scopeBound()) return;
   clearTimeout(syncTimer);
@@ -3472,7 +3564,7 @@ async function syncPush() {
       ph.upFail = 0;
       await dbPut(ph);
       /* 原图已经进了对象存储，本地只留元数据 */
-      ph.blob = null;
+      releaseBlob(ph);
       dirtyPhotos.add(ph.id);
     } catch (e) {
       ph.upFail = (ph.upFail || 0) + 1;
@@ -4279,6 +4371,7 @@ function initAccounts() {
 /* ───────── 启动 ───────── */
 
 async function boot() {
+  try { performance.mark('atlas:boot-start'); } catch {}
   initLang();
   /* 30 天会话：启动时校验并滑动续期；过期则回到访客 */
   touchSession();
@@ -4301,7 +4394,11 @@ async function boot() {
   if (stored) state.landmarks = stored;
 
   try { state.photos = await dbAll(); }
-  catch { state.photos = []; }
+  catch (e) {
+    /* 存储读取失败是数据风险信号：留日志 + 一次性可见提示，不静默吞掉 */
+    state.photos = [];
+    reportError('storage', e);
+  }
 
   const dustCanvas = $('#dust');
   if (dustCanvas) dust = createDust(dustCanvas);
@@ -4317,6 +4414,14 @@ async function boot() {
   initNavSpy();
   restartDeckTimer();
   onScroll();
+
+  /* 性能标记：首屏内容已就绪（Performance 面板与 atlasPerf() 可读） */
+  try {
+    performance.mark('atlas:first-paint');
+    window.atlasPerf = () => performance
+      .getEntriesByType('mark').filter(m => m.name.startsWith('atlas:'))
+      .map(m => ({ name: m.name, ms: Math.round(m.startTime) }));
+  } catch {}
 
   /* 轮播：悬停暂停 */
   const deck = $('#deck');

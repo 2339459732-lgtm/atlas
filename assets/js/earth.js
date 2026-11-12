@@ -347,6 +347,7 @@ export function createEarth(canvas, opts = {}) {
   const onHover = opts.onHover || (() => {});
   const onReady = opts.onReady || (() => {});
   const onProject = opts.onProject || (() => {});
+  const onContext = opts.onContext || (() => {});
 
   const gl = canvas.getContext('webgl2', { antialias: true, alpha: false, powerPreference: 'high-performance' })
     || canvas.getContext('webgl', { antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -358,10 +359,12 @@ export function createEarth(canvas, opts = {}) {
     state.running = false;
     state.ready = false;
     console.warn('[earth] context lost');
+    onContext(true);
   });
   canvas.addEventListener('webglcontextrestored', () => {
     console.warn('[earth] context restored');
     state.running = true;
+    onContext(false);
     load().catch(() => {});
   });
 

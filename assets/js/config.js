@@ -10,7 +10,7 @@
    ══════════════════════════════════════════════════════════════════ */
 
 export const APP = {
-  version: '2.5.0',
+  version: '2.6.0',
 
   /* 云服务：WorkBuddy Cloud（纯静态站点，没有服务端下发配置） */
   cloud: {
@@ -52,6 +52,33 @@ export const APP = {
 
     /* 数据体检里认为"照片该有原图"的阈值，用于提示而非删除 */
     quotaWarnRatio: 0.9
+  },
+
+  /* 运行时缓冲与缓存：内存预算、对象 URL 池、节流窗口。
+     都是"可调参数"——调优不用改业务代码，改这里即可。 */
+  runtime: {
+    /* 图层面板停靠宽度（CSS px）：面板 316 + 右距 18 + 缝 2 */
+    layerRailWidth: 336,
+
+    /* 照片 blob URL 池上限：超出的先撤销，正在显示的图由浏览器兜底 */
+    urlCacheCap: 80,
+
+    /* 照片 Blob 内存预算（字节）：打开过的大图留在内存里，超出预算
+       按 LRU 释放（释放会撤销其 objectURL、置空 photo.blob，下次再看
+       再从 IndexedDB/云端按需取回）。 */
+    blobMemBudgetBytes: 96 * 1024 * 1024,
+
+    /* 编辑后延迟推送的防抖窗口 */
+    syncDebounceMs: 1200,
+
+    /* toast 停留时长 */
+    toastMs: 3200,
+
+    /* 全局错误 toast 节流：同一错误信息在此窗口内只提示一次 */
+    errToastThrottleMs: 5000,
+
+    /* 错误环形缓冲条数（控制台 atlasErrors() 可读） */
+    errRingSize: 12
   }
 };
 

@@ -1534,6 +1534,13 @@ kbd {
   display: block; width: 100%; height: 100%; object-fit: cover;
   transition: scale 1.6s var(--e-out);
 }
+/* 缩略图不可用：空位保持质感，不留浏览器碎图标 */
+.shot.is-missing { cursor: default; background: linear-gradient(135deg, var(--surface), var(--wash)); }
+.shot.is-missing::after {
+  content: '∅';
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-family: var(--f-mono); font-size: 22px; color: var(--ink-3); opacity: .55;
+}
 .shot:hover img { scale: 1.04; }
 .shot__no {
   position: absolute; inset: auto auto 10px 12px;
@@ -3191,3 +3198,16 @@ html[data-gate="open"] .gate { display: none; }
   .modes { display: none; }   /* 小屏走「更多」菜单 */
   .solar__brand { display: none; }
 }
+
+/* ───────── 无障碍：跳转链接（聚焦时才可见） ───────── */
+.skip-link {
+  position: fixed; top: 10px; left: 10px; z-index: 200;
+  padding: 9px 16px;
+  background: var(--ink); color: var(--bg);
+  border-radius: var(--r);
+  font-family: var(--f-ui); font-size: var(--fs-sm);
+  text-decoration: none;
+  transform: translateY(-64px);
+  transition: transform .2s;
+}
+.skip-link:focus-visible { transform: none; }
