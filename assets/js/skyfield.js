@@ -78,13 +78,14 @@ void main() {
     boost = max(px * px, 0.04) * 0.25;
     px = 2.0;
   }
-  gl_PointSize = px;
+  /* 有星芒的星把精灵放大一点，否则芒线只能画在几像素里，等于没有 */
+  vSpike = aPack.x > 3.6 ? 1.0 : 0.0;
+  gl_PointSize = px * (vSpike > 0.5 ? 1.75 : 1.0);
 
   /* 闪烁只给亮星，幅度极小 */
   float tw = 0.96 + 0.04 * sin(uTime * 0.85 + seed * 6.283);
   vA = uStars * aPack.y * boost * tw;
   vC = palette(aPack.z);
-  vSpike = aPack.x > 4.4 ? 1.0 : 0.0;
 }`;
 
 export const FS_STAR = `
@@ -102,11 +103,12 @@ void main() {
   float halo = exp(-r * r * 3.4) * 0.16;
   float a = (core + halo) * vA;
 
-  /* 亮星十字星芒：从中心向外线性衰减 */
+  /* 亮星的四芒：望远镜点扩散函数被副镜支架切出来的衍射，真实星空照片里最典型的细节。
+     芒线只在精灵中心附近有肉，越往外越细，到边缘正好收干净。 */
   if (vSpike > 0.5) {
-    float sx = max(0.0, 1.0 - abs(d.x) * 32.0);
-    float sy = max(0.0, 1.0 - abs(d.y) * 32.0);
-    a += (sx + sy) * (1.0 - r) * 0.30 * vA;
+    float sx = pow(max(0.0, 1.0 - abs(d.x) * 4.2), 2.6);
+    float sy = pow(max(0.0, 1.0 - abs(d.y) * 4.2), 2.6);
+    a += (sx + sy) * (1.0 - r * 0.85) * 0.34 * vA;
   }
 
   gl_FragColor = vec4(vC * a, a);
@@ -157,20 +159,26 @@ void main() {
 
   float b = dot(dir, uPole);
   float l = atan(dot(dir, uE2), dot(dir, uE1));
-  float core = pow(max(dot(dir, uCore), 0.0), 22.0);
+
+  /* 核球：只占 ±8°，是整条银河里唯一偏暖的一段。
+     旧版用 pow(·,22) 又有 0.7 的权重铺满整条带，于是整条银河成了土黄色。 */
+  float bulge = pow(max(dot(dir, uCore), 0.0), 64.0);
+  /* 银盘的视角厚度：核球附近更厚（核球本身是个椭球），盘区薄 */
+  float width = 0.038 + 0.030 * bulge;
 
   /* 沿银道的亮度包络：两端渐隐，中间最亮 */
   float env = 0.26 + 0.74 * exp(-pow(abs(l) / 1.62, 3.0));
-  float spine = exp(-pow(abs(b) / 0.046, 2.0));
-  float halo = exp(-pow(abs(b) / 0.115, 2.0));
+  float spine = exp(-pow(abs(b) / width, 2.0));
+  float halo = exp(-pow(abs(b) / (width * 2.8), 2.0));
 
   float clump = 0.64 + 0.26 * sin(3.1 * l + 9.0 * b)
                      + 0.17 * sin(6.9 * l - 15.0 * b + 1.7)
                      + 0.11 * sin(13.0 * l + 26.0 * b + 3.1);
   clump = max(0.18, clump);
 
-  /* 银经包络的峰值与银心重合，两者的增益会叠乘，所以整体再压一个系数 */
-  float d = (0.100 + 0.88 * spine + 0.26 * halo) * env * clump * (1.0 + 0.50 * core) * 0.56;
+  /* 亮脊细而亮、外晕宽而淡，两者比例决定它像不像一条"带子"，
+     而不是一团摊开的雾。 */
+  float d = (0.034 + 0.86 * spine + 0.22 * halo) * env * clump * (1.0 + 0.30 * bulge) * 0.50;
 
   /* 暗带：中心线沿银经起伏，宽度内实心、边缘在 0.45–1.0 之间收住，
      强度再沿银经呼吸一次，避免出现几条等宽的直线。 */
@@ -179,19 +187,33 @@ void main() {
     float k = uLane[i].z;
     float bc = uLane[i].x + uLane[i].y * sin(k * (l - uLane[i].w));
     float t = abs(b - bc) / uLaneW[i].x;
-    float core = smoothstep(1.0, 0.55, t);
+    float laneCore = smoothstep(1.0, 0.55, t);
     /* 沿银经的「呼吸」会归零，于是每条暗带自然断成数段——
        真实的尘埃带是断续的，而不是一条通到底的缎带。 */
     float g = sin(k * 0.63 * l + uLane[i].w * 1.7) * 0.5 + 0.5;
     float breathe = pow(g, 2.1) * 1.25;
-    d *= 1.0 - uLaneW[i].y * breathe * core;
+    d *= 1.0 - uLaneW[i].y * breathe * laneCore;
   }
 
-  vec3 col = mix(uCool, uWarm, clamp(core * 0.70 + spine * 0.22, 0.0, 1.0)) * d * uGlow;
+  /* ── 色温 ──
+     银盘是 6000~7000K 的白蓝（积分星光），只有核球因为老年星密集才是 4000K 的暖黄。
+     取物理基色，再掺一点主题色（uCool/uWarm）让三套主题各留一点性格，
+     但掺量只有 22%——主题色不该改写天体的颜色。 */
+  vec3 diskCol  = mix(vec3(0.88, 0.92, 1.00), uCool,  0.22);
+  vec3 bulgeCol = mix(vec3(1.00, 0.90, 0.72), uWarm,  0.22);
+  vec3 tint = mix(diskCol, bulgeCol, clamp(bulge * 0.95, 0.0, 1.0));
+
+  /* 尘埃不仅遮光，还会让背后的星光偏红（选择性消光）：
+     暗带最强的位置把色相往暖里推一点点，这是"可信"的细节 */
+  float dust = clamp(1.0 - d / max(1e-4, (0.026 + 0.95 * spine) * env * 0.50), 0.0, 1.0);
+  tint *= mix(vec3(1.0), vec3(1.00, 0.94, 0.86), dust * 0.5);
+
+  vec3 col = tint * d * uGlow;
   col += mix(uBottom, uTop, smoothstep(0.0, 1.0, vP.y));
 
+  /* 暗角：让四角沉下去，画面才有"镜头"而不是"贴图" */
   float dd = distance(vP, vec2(0.5)) / 0.82;
-  col *= pow(clamp(1.0 - dd * dd * 0.28, 0.0, 1.0), 0.9);
+  col *= pow(clamp(1.0 - dd * dd * 0.34, 0.0, 1.0), 0.9);
 
   col += (hash(vP * 2048.0) - 0.5) * uGrain;
   gl_FragColor = vec4(max(col, 0.0), 1.0);
@@ -344,10 +366,12 @@ function mulberry32(a) {
   };
 }
 
-/* 银盘剖面：底色 + 窄亮脊 + 宽晕，三者相加后乘 cos(b) 得每单位立体角的密度 */
-const BASE = 0.100;
-const SPINE_A = 0.88, SPINE_W = 0.046;
-const HALO_A = 0.26, HALO_W = 0.115;
+/* 银盘剖面：底色 + 窄亮脊 + 宽晕，三者相加后乘 cos(b) 得每单位立体角的密度。
+   数值必须和 FS_SKY 里的 (0.026 + 0.95*spine + 0.20*halo) 一致，
+   否则星点会浮在辉光外面。 */
+const BASE = 0.034;
+const SPINE_A = 0.86, SPINE_W = 0.038;
+const HALO_A = 0.22, HALO_W = 0.108;
 const LONG_W = 1.62;
 const CORE_BOOST = 1.15;
 const PROFILE_MAX = BASE + SPINE_A + HALO_A;   /* b = 0 处 */

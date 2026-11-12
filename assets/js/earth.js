@@ -713,11 +713,25 @@ export function createEarth(canvas, opts = {}) {
     if (!r.width || !r.height) return;
     /* 画质系数由帧率自适应决定：卡了降分辨率，稳了再升回去 */
     const dpr = Math.min(maxDpr, window.devicePixelRatio || 1) * state.quality;
+    const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
+    /* 尺寸没变就不重设，canvas.width 赋值会清空整张画布 */
+    if (w === canvas.width && h === canvas.height && state.w === r.width && state.h === r.height) {
+      state.dpr = dpr;
+      return;
+    }
     state.dpr = dpr;
     state.w = r.width; state.h = r.height;
-    canvas.width = Math.round(r.width * dpr);
-    canvas.height = Math.round(r.height * dpr);
+    canvas.width = w;
+    canvas.height = h;
     fit();
+  }
+
+  /* 兜底：布局晚于 start() 时（首屏懒加载、字体回流、容器动画），
+     画布会一直停在 300×150 的默认尺寸，整块区域一片黑。
+     用 ResizeObserver 盯住 CSS 盒子，尺寸一变就重新分配绘制缓冲。 */
+  if ('ResizeObserver' in window) {
+    const ro = new ResizeObserver(() => resize());
+    ro.observe(canvas);
   }
 
   function fit() {

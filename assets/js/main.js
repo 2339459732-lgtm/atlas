@@ -1930,8 +1930,13 @@ function currentRes() {
   } catch {}
   /* 低端设备（核数/内存不足或省流量）不上 4K：首屏那 1 MB 只会拖慢出图 */
   if (earth?.caps?.().lowEnd) return '2k';
-  /* 桌面默认 4K，移动端 2K：兼顾观感与流量 */
-  return matchMedia('(max-width: 860px)').matches ? '2k' : '4k';
+  if (matchMedia('(max-width: 860px)').matches) return '2k';
+  /* 按"有效像素"而不是"是不是桌面"来选档：
+     球体在屏幕上大约占短边的 56%，2K 贴图（可见半球 1024 纹素）
+     已经能覆盖 1080p 以内的显示；只有高 DPI 或大屏才需要 4K。
+     1440×900 @1x 拉 4K 是白下 1.3 MB，看不出差别。 */
+  const px = Math.round(innerWidth * Math.min(devicePixelRatio || 1, 2));
+  return px >= 1900 ? '4k' : '2k';
 }
 
 function paintRes() {
@@ -2823,19 +2828,27 @@ async function boot() {
 
   const stage = $('#planet-stage');
   if (stage && 'IntersectionObserver' in window) {
+    /* 两个观察器之间有一个顺序竞态：如果「可见」先于「预加载 400px」回调，
+       此时 earth 还没建出来，start() 就丢了；而 IntersectionObserver 只在
+       状态变化时触发，之后不会自己补一次。表现为地球区块一片黑、画布停在 300×150。
+       所以这里不靠回调顺序，只记可见性，谁准备好了谁来启动。 */
+    let earthVisible = false;
+    const kickStart = () => { if (earth && earthVisible) earth.start(); };
+
     const loadIO = new IntersectionObserver(entries => {
       if (!entries[0].isIntersecting || earthStarted) return;
       earthStarted = true;
       initEarth();
       earth?.load(p => { if (progressEl) progressEl.textContent = Math.round(p * 100) + '%'; });
+      kickStart();
       loadIO.disconnect();
     }, { rootMargin: '400px 0px', threshold: 0 });
     loadIO.observe(stage);
 
     const runIO = new IntersectionObserver(entries => {
-      const on = entries[0].isIntersecting;
-      if (on && !earthStarted) return;
-      on ? earth?.start() : earth?.stop();
+      earthVisible = entries[0].isIntersecting;
+      if (!earthVisible) { earth?.stop(); return; }
+      kickStart();
     }, { threshold: 0 });
     runIO.observe(stage);
   } else {
