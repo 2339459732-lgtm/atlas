@@ -707,6 +707,7 @@ try {
     </div>
     <div class="acct-cloud__acts">
       <button type="button" class="acct-cloud__btn" id="acct-cloud-btn" data-i18n="cloud.signIn">使用 WorkBuddy 登录</button>
+      <button type="button" class="acct-cloud__btn acct-cloud__btn--ghost" id="acct-cloud-sync" data-i18n="cloud.syncNow" hidden>立即同步</button>
       <button type="button" class="acct-cloud__btn acct-cloud__btn--ghost" id="acct-cloud-out" data-i18n="cloud.signOut" hidden>退出云同步</button>
     </div>
   </div>
@@ -728,6 +729,11 @@ try {
       <button type="button" class="btn btn--line" id="acct-switch" data-i18n="acct.switch">切换账号</button>
       <button type="button" class="btn btn--line acct-danger" id="acct-logout" data-i18n="acct.logout">退出登录</button>
     </div>
+    <div class="acct-links">
+      <button type="button" class="acct-link" id="acct-pass-btn" data-i18n="acct.change">修改密码</button>
+      <button type="button" class="acct-link" id="acct-rec-btn" data-i18n="acct.recovery">恢复码</button>
+      <button type="button" class="acct-link acct-link--danger" id="acct-del-btn" data-i18n="acct.delete">删除账号</button>
+    </div>
   </div>
 
   <!-- 登录 / 注册 -->
@@ -742,13 +748,24 @@ try {
       <input class="field__input" id="acct-name" name="username" autocomplete="username" spellcheck="false" maxlength="24">
     </label>
     <label class="field">
-      <span class="field__k" data-i18n="acct.pass">密码</span>
+      <span class="field__k" id="acct-pass-label" data-i18n="acct.pass">密码</span>
       <input class="field__input" id="acct-pass" name="password" type="password" autocomplete="current-password" maxlength="72">
+    </label>
+    <p class="acct-strength" id="acct-strength" hidden></p>
+    <label class="field" id="acct-code-wrap" hidden>
+      <span class="field__k" data-i18n="acct.recoveryCode">恢复码</span>
+      <input class="field__input" id="acct-code" name="recovery" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX">
     </label>
     <label class="field" id="acct-pass2-wrap" hidden>
       <span class="field__k" data-i18n="acct.pass2">确认密码</span>
       <input class="field__input" id="acct-pass2" name="password2" type="password" autocomplete="new-password" maxlength="72">
     </label>
+    <div class="acct-links" id="acct-forgot-wrap">
+      <button type="button" class="acct-link" id="acct-forgot" data-i18n="acct.forgot">忘记密码？用恢复码重设</button>
+    </div>
+    <div class="acct-links" id="acct-back-wrap" hidden>
+      <button type="button" class="acct-link" id="acct-back" data-i18n="acct.backLogin">返回登录</button>
+    </div>
     <label class="acct-migrate" id="acct-migrate-wrap" hidden>
       <input type="checkbox" id="acct-migrate" checked>
       <span data-i18n="acct.migrate">把本机现有作品导入此账号</span>
@@ -756,7 +773,72 @@ try {
 
     <p class="acct-err" id="acct-err" hidden></p>
     <button type="submit" class="btn btn--solid acct-submit" id="acct-submit" data-i18n="acct.login">登录</button>
-    <p class="acct-note" data-i18n="acct.note">账号与作品只保存在本机浏览器，密码经 PBKDF2 派生后存储，明文不落盘。</p>
+    <p class="acct-note" data-i18n="acct.note">密码经 PBKDF2（21 万轮）派生后存储，明文不落盘；恢复码只在生成时显示一次。</p>
+  </form>
+
+  <!-- 修改密码 -->
+  <form class="acct-panel" id="acct-pass-form" hidden>
+    <p class="acct-note" data-i18n="acct.changeSub">修改后立即生效，其他设备上的登录状态不受影响。</p>
+    <label class="field">
+      <span class="field__k" data-i18n="acct.oldPass">当前密码</span>
+      <input class="field__input" id="acct-old" type="password" autocomplete="current-password" maxlength="72">
+    </label>
+    <label class="field">
+      <span class="field__k" data-i18n="acct.newPass">新密码</span>
+      <input class="field__input" id="acct-new" type="password" autocomplete="new-password" maxlength="72">
+    </label>
+    <label class="field">
+      <span class="field__k" data-i18n="acct.pass2">确认密码</span>
+      <input class="field__input" id="acct-new2" type="password" autocomplete="new-password" maxlength="72">
+    </label>
+    <p class="acct-strength" id="acct-new-strength" hidden></p>
+    <p class="acct-err" id="acct-pass-err" hidden></p>
+    <div class="acct-actions">
+      <button type="submit" class="btn btn--solid" data-i18n="common.save">保存</button>
+      <button type="button" class="btn btn--line" id="acct-pass-cancel" data-i18n="common.cancel">取消</button>
+    </div>
+  </form>
+
+  <!-- 恢复码：生成 / 展示 -->
+  <div class="acct-panel" id="acct-rec-panel" hidden>
+    <p class="acct-note" id="acct-rec-sub" data-i18n="acct.recoverySub">恢复码是第二把钥匙：忘记密码时用它重设。生成新码会作废旧码。</p>
+    <form id="acct-rec-form">
+      <label class="field">
+        <span class="field__k" data-i18n="acct.oldPass">当前密码</span>
+        <input class="field__input" id="acct-rec-pass" type="password" autocomplete="current-password" maxlength="72">
+      </label>
+      <p class="acct-err" id="acct-rec-err" hidden></p>
+      <div class="acct-actions">
+        <button type="submit" class="btn btn--solid" id="acct-rec-submit" data-i18n="acct.recoveryNew">生成恢复码</button>
+        <button type="button" class="btn btn--line" id="acct-rec-back" data-i18n="common.cancel">取消</button>
+      </div>
+    </form>
+    <div id="acct-rec-show" hidden>
+      <code class="acct-code" id="acct-code-view">XXXX-XXXX-XXXX-XXXX-XXXX</code>
+      <p class="acct-note" data-i18n="acct.recoveryHint">只显示这一次。请抄下来或存进密码管理器；丢失后无法找回账号。</p>
+      <div class="acct-actions">
+        <button type="button" class="btn btn--line" id="acct-code-copy" data-i18n="acct.copy">复制</button>
+        <button type="button" class="btn btn--solid" id="acct-code-done" data-i18n="acct.savedIt">我已保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 删除账号 -->
+  <form class="acct-panel" id="acct-del-panel" hidden>
+    <p class="acct-note acct-note--danger" data-i18n="acct.deleteSub">删除本机账号会同时删除这台设备上的地标与照片，不可恢复。云端副本不受影响。</p>
+    <label class="field">
+      <span class="field__k" data-i18n="acct.deleteName">输入账号名确认</span>
+      <input class="field__input" id="acct-del-name" autocomplete="off" spellcheck="false" maxlength="24">
+    </label>
+    <label class="field">
+      <span class="field__k" data-i18n="acct.pass">密码</span>
+      <input class="field__input" id="acct-del-pass" type="password" autocomplete="current-password" maxlength="72">
+    </label>
+    <p class="acct-err" id="acct-del-err" hidden></p>
+    <div class="acct-actions">
+      <button type="submit" class="btn btn--solid acct-danger" data-i18n="acct.delete">删除账号</button>
+      <button type="button" class="btn btn--line" id="acct-del-cancel" data-i18n="common.cancel">取消</button>
+    </div>
   </form>
 </dialog>
 

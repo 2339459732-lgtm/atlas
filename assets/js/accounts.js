@@ -1,9 +1,14 @@
 /* ══════════════════════════════════════════════════════════════════
-   accounts.js — 本地多账号
+   accounts.js — 本机多账号
 
    账号库：localStorage['atlas.accounts.v1']
-     { id, name, salt(b64), hash(b64), iter, createdAt }
-  口令：PBKDF2-SHA256 / 21 万轮 / 每账号独立随机盐，明文与派生结果都不落盘。
+     { id, name, salt(b64), hash(b64), iter, createdAt,
+       recovery?: { salt, hash, iter, at },   // 恢复码，等价于第二把钥匙
+       cloudId? }                              // 绑定的 WorkBuddy 云账号
+
+   口令：PBKDF2-SHA256 / 21 万轮 / 每账号独立随机盐，明文与派生结果都不落盘。
+   恢复码：20 位 base32（去易混字符），同样 PBKDF2 派生后存储；只在生成时显示一次。
+   会话：localStorage，30 天有效；每次启动滑动续期。
 
    数据隔离：登录后所有键追加 `::<id>` 后缀，IndexedDB 也换成独立库名，
    因此两个账号的相册、照片、站点文案互不可见。
@@ -14,9 +19,13 @@
 
 const LS_ACCOUNTS = 'atlas.accounts.v1';
 const LS_SESSION = 'atlas.session.v1';
+const LS_GUARD = 'atlas.guard.v1';
 export const GUEST_DB = 'atlas-plates';
 
 const ITER = 210000;
+const RECOVERY_ITER = 210000;
+const SESSION_TTL = 30 * 864e5;
+
 const enc = new TextEncoder();
 
 /* 仅本设备可见的会话：不写 cookie，不做跨域 */
@@ -41,6 +50,7 @@ function unb64(str) {
 }
 
 async function derive(password, salt, iter) {
+  if (!crypto?.subtle) throw new Error('crypto_unavailable');
   const key = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits(
     { name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' }, key, 256
@@ -56,18 +66,70 @@ function equalBytes(a, b) {
   return diff === 0;
 }
 
+/* ── 账号库 ── */
 export function accounts() {
-  return readJSON(LS_ACCOUNTS, []);
+  const raw = readJSON(LS_ACCOUNTS, []);
+  if (!Array.isArray(raw)) return [];
+  /* 单条坏记录不该让整个账号库不可用：能识别的保留，坏的丢掉 */
+  return raw.filter(a =>
+    a && typeof a === 'object' &&
+    typeof a.id === 'string' && a.id &&
+    typeof a.name === 'string' && a.name &&
+    typeof a.salt === 'string' && typeof a.hash === 'string'
+  );
 }
 function saveAccounts(list) {
   return writeJSON(LS_ACCOUNTS, list);
 }
 
+export function accountExists(name) {
+  const key = normName(name).toLowerCase();
+  return accounts().some(a => a.name.toLowerCase() === key);
+}
+
+export function hasRecovery(name) {
+  const acc = accounts().find(a => a.name.toLowerCase() === normName(name).toLowerCase());
+  return !!(acc && acc.recovery && acc.recovery.hash && acc.recovery.salt);
+}
+
+/* ── 会话 ── */
 export function currentUser() {
   const s = readJSON(LS_SESSION, null);
   if (!s || !s.id) return null;
+  if (s.exp && Date.now() > s.exp) { logout(); return null; }
   const acc = accounts().find(a => a.id === s.id);
   return acc ? { id: acc.id, name: acc.name } : null;
+}
+
+/** 每次启动/关键操作滑动续期；旧版无 exp 的会话也在这里升级 */
+export function touchSession() {
+  const s = readJSON(LS_SESSION, null);
+  if (!s || !s.id) return false;
+  /* 过期会话不能靠"续期"复活 */
+  if (s.exp && Date.now() > s.exp) { logout(); return false; }
+  const left = (s.exp || 0) - Date.now();
+  if (left > SESSION_TTL - 864e5) return false;
+  s.exp = Date.now() + SESSION_TTL;
+  s.at = Date.now();
+  return writeJSON(LS_SESSION, s);
+}
+
+export function sessionExpiresAt() {
+  const s = readJSON(LS_SESSION, null);
+  return s?.exp || 0;
+}
+
+function openSession(acc) {
+  writeJSON(LS_SESSION, {
+    id: acc.id,
+    name: acc.name,
+    at: Date.now(),
+    exp: Date.now() + SESSION_TTL
+  });
+}
+
+export function logout() {
+  try { localStorage.removeItem(LS_SESSION); } catch {}
 }
 
 /** 键名分区：未登录保持原键，登录后追加 ::<id> */
@@ -90,96 +152,327 @@ export const USER_KEYS = [
   'atlas.backed.v1'
 ];
 
-/* ── 校验 ───────────────────────────────────────────────────────── */
+/* ── 名称 / 密码规则 ── */
 const NAME_RE = /^[\w\u4e00-\u9fa5.-]{3,24}$/;
+const RESERVED = new Set(['admin', 'root', 'atlas', 'guest', 'system', 'workbuddy', 'support']);
+
+export function normName(name) {
+  return String(name ?? '').normalize('NFKC').trim();
+}
 
 export function validateName(name) {
-  if (!name) return 'name_empty';
-  if (!NAME_RE.test(name)) return 'name_invalid';
-  if (accounts().some(a => a.name.toLowerCase() === name.toLowerCase())) return 'name_taken';
+  const n = normName(name);
+  if (!n) return 'name_empty';
+  if ([...n].length < 3 || [...n].length > 24) return 'name_invalid';
+  if (!NAME_RE.test(n)) return 'name_invalid';
+  if (RESERVED.has(n.toLowerCase())) return 'name_reserved';
+  if (accounts().some(a => a.name.toLowerCase() === n.toLowerCase())) return 'name_taken';
   return null;
 }
+
+const COMMON = new Set([
+  'password', 'password1', 'password123', '12345678', '123456789', '1234567890',
+  'qwertyui', 'qwerty123', '11111111', '88888888', 'abcdefgh', 'iloveyou',
+  'atlas', 'atlas123', 'workbuddy'
+]);
+
+export function passwordIssue(pw) {
+  const s = String(pw ?? '');
+  if (!s) return 'pw_empty';
+  if ([...s].length < 8) return 'pw_short';
+  if (s.length > 72) return 'pw_long';
+  if (/^(.)\1+$/u.test(s)) return 'pw_weak';
+  if (COMMON.has(s.toLowerCase())) return 'pw_common';
+  return null;
+}
+
+/** 0 弱 / 1 一般 / 2 好 / 3 强，仅用于提示，不参与校验 */
+export function passwordStrength(pw) {
+  const s = String(pw ?? '');
+  if (!s) return 0;
+  let score = 0;
+  if ([...s].length >= 10) score++;
+  if ([...s].length >= 14) score++;
+  if (/[a-z]/.test(s) && /[A-Z]/.test(s)) score++;
+  if (/\d/.test(s)) score++;
+  if (/[^A-Za-z0-9]/.test(s)) score++;
+  return Math.max(0, Math.min(3, score - 1));
+}
+
 export function validatePassword(pw) {
-  if (!pw) return 'pw_empty';
-  if (pw.length < 8) return 'pw_short';
-  return null;
+  return passwordIssue(pw);
 }
 
-/* ── 注册 / 登录 / 退出 ─────────────────────────────────────────── */
+/* ── 恢复码 ──
+   20 位 base32（去掉 I/O/0/1），100 bit 熵；分组显示，输入时忽略大小写、
+   空格与连字符。只存 PBKDF2 派生值。 */
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const CODE_LEN = 20;
 
+function randomCode() {
+  const buf = crypto.getRandomValues(new Uint8Array(CODE_LEN));
+  let s = '';
+  for (let i = 0; i < CODE_LEN; i++) s += CODE_ALPHABET[buf[i] % CODE_ALPHABET.length];
+  return s;
+}
+function formatCode(s) {
+  return s.match(/.{1,4}/g).join('-');
+}
+export function normCode(code) {
+  return String(code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+async function makeRecovery() {
+  const raw = randomCode();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hash = await derive(normCode(raw), salt, RECOVERY_ITER);
+  return {
+    code: formatCode(raw),
+    record: { salt: b64(salt), hash: b64(hash), iter: RECOVERY_ITER, at: Date.now() }
+  };
+}
+
+/* ── 失败节流 ──
+   纯本机计数，挡的是"随手试几个"，不是有备而来的离线攻击；
+   真正的基础是 PBKDF2 的 21 万轮。 */
+const GUARD_STEPS = [[5, 30e3], [8, 300e3], [12, 900e3]];
+const GUARD_TTL = 7 * 864e5;
+
+function guardAll() {
+  const raw = readJSON(LS_GUARD, {});
+  return raw && typeof raw === 'object' ? raw : {};
+}
+function guardKey(name) {
+  return normName(name).toLowerCase();
+}
+export function guardWait(name) {
+  const g = guardAll()[guardKey(name)];
+  if (!g || !g.until) return 0;
+  return Math.max(0, g.until - Date.now());
+}
+function noteFail(name) {
+  const all = guardAll();
+  const k = guardKey(name);
+  const now = Date.now();
+  const g = all[k] && now - (all[k].last || 0) < GUARD_TTL ? all[k] : { n: 0, until: 0 };
+  g.n = (g.n || 0) + 1;
+  g.last = now;
+  const hit = GUARD_STEPS.find(([n]) => g.n >= n);
+  if (hit) g.until = now + hit[1];
+  all[k] = g;
+  /* 顺手清掉过期记录，避免无限增长 */
+  Object.keys(all).forEach(key => {
+    if (now - (all[key].last || 0) > GUARD_TTL) delete all[key];
+  });
+  writeJSON(LS_GUARD, all);
+}
+function noteSuccess(name) {
+  const all = guardAll();
+  delete all[guardKey(name)];
+  writeJSON(LS_GUARD, all);
+}
+
+/* ── 注册 / 登录 ── */
 export async function register(name, password) {
   const e1 = validateName(name);
   if (e1) throw new Error(e1);
-  const e2 = validatePassword(password);
+  const e2 = passwordIssue(password);
   if (e2) throw new Error(e2);
 
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const hash = await derive(password, salt, ITER);
   const rec = {
     id: 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    name,
+    name: normName(name),
     salt: b64(salt),
     hash: b64(hash),
     iter: ITER,
     createdAt: Date.now()
   };
+  const recovery = await makeRecovery();
+  rec.recovery = recovery.record;
+
   const list = accounts();
   list.push(rec);
   if (!saveAccounts(list)) throw new Error('storage_full');
   openSession(rec);
-  return { id: rec.id, name: rec.name };
+  return { id: rec.id, name: rec.name, recoveryCode: recovery.code };
 }
 
 export async function login(name, password) {
-  const acc = accounts().find(a => a.name.toLowerCase() === String(name || '').trim().toLowerCase());
-  if (!acc) throw new Error('bad_credentials');
+  const wait = guardWait(name);
+  if (wait > 0) throw new Error('rate_limited:' + Math.ceil(wait / 1000));
+
+  const key = normName(name).toLowerCase();
+  const list = accounts();
+  const acc = list.find(a => a.name.toLowerCase() === key);
+  if (!acc) { noteFail(name); throw new Error('bad_credentials'); }
+
   const hash = await derive(password, unb64(acc.salt), acc.iter || ITER);
-  if (!equalBytes(hash, unb64(acc.hash))) throw new Error('bad_credentials');
+  if (!equalBytes(hash, unb64(acc.hash))) {
+    noteFail(name);
+    throw new Error('bad_credentials');
+  }
+
+  noteSuccess(name);
+
+  /* 迭代轮数升级：老账号在下一次成功登录时悄悄换成当前标准 */
+  if ((acc.iter || ITER) < ITER) {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    acc.salt = b64(salt);
+    acc.hash = b64(await derive(password, salt, ITER));
+    acc.iter = ITER;
+    saveAccounts(list);
+  }
+
   openSession(acc);
   return { id: acc.id, name: acc.name };
 }
 
-function openSession(acc) {
-  writeJSON(LS_SESSION, { id: acc.id, name: acc.name, at: Date.now() });
-}
-
-export function logout() {
-  try { localStorage.removeItem(LS_SESSION); } catch {}
-}
-
+/* ── 修改密码 ── */
 export async function changePassword(name, oldPw, newPw) {
+  const wait = guardWait(name);
+  if (wait > 0) throw new Error('rate_limited:' + Math.ceil(wait / 1000));
+
+  const key = normName(name).toLowerCase();
   const list = accounts();
-  const acc = list.find(a => a.name.toLowerCase() === String(name).toLowerCase());
+  const acc = list.find(a => a.name.toLowerCase() === key);
   if (!acc) throw new Error('bad_credentials');
+
   const cur = await derive(oldPw, unb64(acc.salt), acc.iter || ITER);
-  if (!equalBytes(cur, unb64(acc.hash))) throw new Error('bad_credentials');
-  const e2 = validatePassword(newPw);
-  if (e2) throw new Error(e2);
+  if (!equalBytes(cur, unb64(acc.hash))) {
+    noteFail(name);
+    throw new Error('bad_credentials');
+  }
+  noteSuccess(name);
+
+  const e = passwordIssue(newPw);
+  if (e) throw new Error(e);
+  if (newPw === oldPw) throw new Error('pw_same');
+
   const salt = crypto.getRandomValues(new Uint8Array(16));
   acc.salt = b64(salt);
   acc.hash = b64(await derive(newPw, salt, ITER));
   acc.iter = ITER;
-  saveAccounts(list);
+  if (!saveAccounts(list)) throw new Error('storage_full');
+
+  openSession(acc);
+  return true;
 }
 
-/** 删除账号：连同它的全部数据键与照片库，不可恢复 */
-export async function removeAccount(name, password) {
+/* ── 恢复码：生成 / 重设 ── */
+export async function setRecovery(name, password) {
+  const wait = guardWait(name);
+  if (wait > 0) throw new Error('rate_limited:' + Math.ceil(wait / 1000));
+
+  const key = normName(name).toLowerCase();
   const list = accounts();
-  const acc = list.find(a => a.name.toLowerCase() === String(name).toLowerCase());
+  const acc = list.find(a => a.name.toLowerCase() === key);
   if (!acc) throw new Error('bad_credentials');
+
   const cur = await derive(password, unb64(acc.salt), acc.iter || ITER);
-  if (!equalBytes(cur, unb64(acc.hash))) throw new Error('bad_credentials');
+  if (!equalBytes(cur, unb64(acc.hash))) {
+    noteFail(name);
+    throw new Error('bad_credentials');
+  }
+  noteSuccess(name);
+
+  const recovery = await makeRecovery();
+  acc.recovery = recovery.record;
+  if (!saveAccounts(list)) throw new Error('storage_full');
+  return { code: recovery.code };
+}
+
+/** 用恢复码重设密码；成功后恢复码轮换，返回新码（只显示这一次） */
+export async function resetPassword(name, code, newPw) {
+  const wait = guardWait(name);
+  if (wait > 0) throw new Error('rate_limited:' + Math.ceil(wait / 1000));
+
+  const key = normName(name).toLowerCase();
+  const list = accounts();
+  const acc = list.find(a => a.name.toLowerCase() === key);
+  if (!acc) { noteFail(name); throw new Error('bad_credentials'); }
+  if (!acc.recovery?.salt || !acc.recovery?.hash) throw new Error('no_recovery');
+
+  const raw = normCode(code);
+  if (raw.length !== CODE_LEN) { noteFail(name); throw new Error('bad_recovery'); }
+
+  const got = await derive(raw, unb64(acc.recovery.salt), acc.recovery.iter || RECOVERY_ITER);
+  if (!equalBytes(got, unb64(acc.recovery.hash))) {
+    noteFail(name);
+    throw new Error('bad_recovery');
+  }
+
+  const e = passwordIssue(newPw);
+  if (e) throw new Error(e);
+
+  noteSuccess(name);
+
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  acc.salt = b64(salt);
+  acc.hash = b64(await derive(newPw, salt, ITER));
+  acc.iter = ITER;
+
+  const recovery = await makeRecovery();
+  acc.recovery = recovery.record;
+  if (!saveAccounts(list)) throw new Error('storage_full');
+
+  openSession(acc);
+  return { id: acc.id, name: acc.name, recoveryCode: recovery.code };
+}
+
+/* ── 云账号绑定 ──
+   只记录"这个本机账号认哪一张 WorkBuddy 身份"，用于换设备后自动恢复同步，
+   不存任何云凭证。 */
+export function bindCloud(userId, cloudId) {
+  if (!userId || !cloudId) return false;
+  const list = accounts();
+  const acc = list.find(a => a.id === userId);
+  if (!acc || acc.cloudId === cloudId) return false;
+  acc.cloudId = cloudId;
+  return saveAccounts(list);
+}
+
+export function cloudIdOf(userId) {
+  const acc = accounts().find(a => a.id === userId);
+  return acc?.cloudId || '';
+}
+
+/* ── 删除账号 ── */
+export async function removeAccount(name, password) {
+  const wait = guardWait(name);
+  if (wait > 0) throw new Error('rate_limited:' + Math.ceil(wait / 1000));
+
+  const key = normName(name).toLowerCase();
+  const list = accounts();
+  const acc = list.find(a => a.name.toLowerCase() === key);
+  if (!acc) throw new Error('bad_credentials');
+
+  const cur = await derive(password, unb64(acc.salt), acc.iter || ITER);
+  if (!equalBytes(cur, unb64(acc.hash))) {
+    noteFail(name);
+    throw new Error('bad_credentials');
+  }
 
   USER_KEYS.forEach(k => { try { localStorage.removeItem(`${k}::${acc.id}`); } catch {} });
   try { indexedDB.deleteDatabase(`${GUEST_DB}::${acc.id}`); } catch {}
   saveAccounts(list.filter(a => a.id !== acc.id));
+
+  const all = guardAll();
+  delete all[key];
+  writeJSON(LS_GUARD, all);
+
   /* 云同步作用域如果指向这个账号，一并清掉，避免下次登录误判为"同一个人" */
   try {
     if (localStorage.getItem('atlas.cloud.scope.v1') === acc.id) {
       localStorage.removeItem('atlas.cloud.scope.v1');
     }
   } catch {}
-  if (currentUser()?.id === acc.id) logout();
+  /* 用 session 里的 id 判断，而不是 currentUser()：账号记录刚被删掉，
+     currentUser() 已经查不到它，会把过期会话留在本地 */
+  const sess = readJSON(LS_SESSION, null);
+  if (sess?.id === acc.id) logout();
+  return true;
 }
 
 /* ── 访客数据迁移：注册后把当前浏览器的旧数据收进新账号 ── */

@@ -2367,6 +2367,31 @@ html[data-gate="open"] .gate { display: none; }
 }
 .acct-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .acct-actions .btn { justify-content: center; }
+.acct-links { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.acct-link {
+  padding: 0; background: none; border: 0; cursor: pointer;
+  font-family: var(--f-mono); font-size: var(--fs-micro);
+  letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3);
+  transition: color .25s;
+}
+.acct-link:hover { color: var(--ink); }
+.acct-link--danger:hover { color: #e8705f; }
+.acct-code {
+  display: block; padding: 15px 12px; margin: 2px 0 10px;
+  border: 1px solid var(--line-2); border-radius: var(--r);
+  background: var(--wash);
+  font-family: var(--f-mono); font-size: 1rem; letter-spacing: .14em;
+  text-align: center; color: var(--ink); user-select: all;
+  word-break: break-all;
+}
+.acct-strength {
+  font-family: var(--f-mono); font-size: var(--fs-micro);
+  letter-spacing: .1em; color: var(--ink-3);
+}
+.acct-strength[data-level="2"] { color: var(--accent); }
+.acct-strength[data-level="3"] { color: #5FBF8A; }
+.acct-note--danger { color: #e8705f; }
+#acct-rec-form { display: grid; gap: 14px; }
 .acct-danger { color: #e8705f; border-color: color-mix(in oklab, #e8705f 42%, var(--line-2)); }
 .acct-danger:hover { background: color-mix(in oklab, #e8705f 12%, transparent); }
 

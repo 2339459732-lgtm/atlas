@@ -47,6 +47,7 @@ function readMeta() {
   m.dirty = m.dirty && typeof m.dirty === 'object' ? m.dirty : {};
   m.dirty.albums = +m.dirty.albums || 0;
   m.dirty.photos = m.dirty.photos && typeof m.dirty.photos === 'object' ? m.dirty.photos : {};
+  m.dirty.settings = +m.dirty.settings || 0;
   m.syncedAt = +m.syncedAt || 0;
   metaCache = m;
   return m;
@@ -71,7 +72,11 @@ export function meta() {
   return {
     syncedAt: m.syncedAt,
     tombstones: { albums: { ...m.tomb.albums }, photos: { ...m.tomb.photos } },
-    pending: { albums: !!m.dirty.albums, photos: Object.keys(m.dirty.photos).length }
+    pending: {
+      albums: !!m.dirty.albums,
+      photos: Object.keys(m.dirty.photos).length,
+      settings: !!m.dirty.settings
+    }
   };
 }
 
@@ -298,6 +303,7 @@ export function pruneTombstones(ttl = TOMB_TTL) {
 export function markDirty(kind, id) {
   const m = readMeta();
   if (kind === 'album') m.dirty.albums = Date.now();
+  else if (kind === 'settings') m.dirty.settings = Date.now();
   else if (kind === 'photo' && isId(id)) m.dirty.photos[id] = Date.now();
   writeMeta();
 }
@@ -305,6 +311,7 @@ export function markDirty(kind, id) {
 export function clearDirty(kind, ids = []) {
   const m = readMeta();
   if (kind === 'album') m.dirty.albums = 0;
+  else if (kind === 'settings') m.dirty.settings = 0;
   else if (kind === 'photo') ids.forEach(id => { delete m.dirty.photos[id]; });
   writeMeta();
 }
@@ -314,6 +321,7 @@ export function pending() {
   return {
     albums: !!m.dirty.albums,
     photos: Object.keys(m.dirty.photos),
+    settings: !!m.dirty.settings,
     tombstones: {
       albums: Object.keys(m.tomb.albums),
       photos: Object.keys(m.tomb.photos)
@@ -490,7 +498,7 @@ export async function health({ albums = [], photos = [] } = {}) {
     albums: albums.length,
     photos: photos.length,
     tombstones: Object.keys(m.tomb.albums).length + Object.keys(m.tomb.photos).length,
-    pending: (m.dirty.albums ? 1 : 0) + Object.keys(m.dirty.photos).length,
+    pending: (m.dirty.albums ? 1 : 0) + Object.keys(m.dirty.photos).length + (m.dirty.settings ? 1 : 0),
     syncedAt: m.syncedAt,
     quota
   };

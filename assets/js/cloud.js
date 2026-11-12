@@ -128,6 +128,25 @@ export async function pullAll() {
   return { albums: withMs(a.data), photos: withMs(p.data) };
 }
 
+/* 站点设置：单行文档，按 rev → updated_at 合并 */
+export async function pullSettings() {
+  if (!client || !session) return null;
+  const { data, error } = await client.database.from('atlas_settings')
+    .select('payload, rev, updated_at')
+    .limit(1);
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  return { ...row, updated_at_ms: Date.parse(row.updated_at) || 0 };
+}
+
+export async function pushSettings(payload, rev) {
+  if (!client || !session) return;
+  const { error } = await client.database.from('atlas_settings')
+    .upsert([{ payload, rev: rev | 0 }], { onConflict: 'owner_id' });
+  if (error) throw error;
+}
+
 export async function pushAlbums(rows) {
   if (!client || !session || !rows.length) return;
   const { error } = await client.database

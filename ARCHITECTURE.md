@@ -2,7 +2,8 @@
 
 > 一个可离线运行的私人地理相册：WebGL 实体地球 + 册集面板 + 加密保险库。
 > 默认全部数据留在浏览器本机；可选接入 WorkBuddy 云服务，用同一账号跨设备同步。
-> 数据层的完整契约、合并规则与验证方式见 **`DATA_ARCHITECTURE.md`**。
+> 数据层的完整契约、合并规则与验证方式见 **`DATA_ARCHITECTURE.md`**；
+> 账号、跨设备同步与密码/恢复码流程见 **`ACCOUNT_SYNC.md`**。
 
 ---
 
@@ -148,7 +149,7 @@ main.js（应用编排，唯一修改 state 的地方）
  ├─ model.js    数据契约：字段/上限/默认值/id/合并（纯函数）
  ├─ store.js    本机持久化：信封版本 / IndexedDB / 墓碑 / 脏标记 / 跨标签广播 / 体检
  ├─ cloud.js    云端传输：OAuth + atlas_albums/photos + 对象存储（只传不算）
- ├─ accounts.js 本机账号与命名空间（key()/dbName()）
+ ├─ accounts.js 本机账号与命名空间：PBKDF2、恢复码、失败节流、cloudId 绑定
  ├─ earth.js    球体几何 / 5 套着色器 / 相机与拾取 / 光点
  ├─ geo.js      地名 → 坐标；25 字介绍生成
  ├─ vault.js    SHA-256 校验 / AES-GCM 备份

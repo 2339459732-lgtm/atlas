@@ -2,6 +2,7 @@
 
 > 2026-11-12 · 对应数据契约版本 `SCHEMA = 5`、IndexedDB 版本 `4`
 > 一句话结论：**所有写入都必须经过 `model.js` 的契约与 `store.js` 的落盘；云端只是同一份数据的远端副本，不拥有"谁该赢"的判断权。**
+> 账号、密码/恢复码与跨设备流程见 `ACCOUNT_SYNC.md`。
 
 ---
 
@@ -11,7 +12,8 @@
 | --- | --- | --- | --- |
 | 地标 / 相册 / 手记 | localStorage `atlas.landmarks.v4`（信封 `{v:5,at,items}`） | 本机 + 云端合并 | 是 |
 | 照片原图与元数据 | IndexedDB `atlas-plates`（每账号独立库） | 本机 Blob + 云端行 | 是（按需下载原图） |
-| 本机账号 | localStorage `atlas.accounts.v1` + `atlas.session.v1` | 本机 | 否（设备级） |
+| 站点设置（站名/标题/导语/主题色） | localStorage `atlas.site.v1` + 云端 `atlas_settings` | 本机 + 云端合并 | 是（单文档 LWW） |
+| 本机账号 | localStorage `atlas.accounts.v1` + `atlas.session.v1`（含恢复码、cloudId） | 本机 | 否（设备级） |
 | 云同步作用域 | localStorage `atlas.cloud.scope.v1` | 本机 | 否（绑定当前本机账号） |
 | 主题 / 语言 / 画质 / 音乐 | localStorage | 本机 | 否（设备偏好） |
 | 加密备份 | 用户手中的 `.atlas` 文件 | 文件本身 | 手动迁移 |
@@ -25,7 +27,7 @@
 config.js    全局配置：云端点/密钥、默认主题、功能开关、同步与保留期上限。只放参数，不放逻辑。
 model.js     数据契约：字段、上限、默认值、id 规则、合并规则。纯函数，不碰 I/O / DOM。
 store.js     本机持久化：信封版本、IndexedDB、墓碑、脏标记、跨标签广播、体检。唯一碰 localStorage/IDB 的模块。
-cloud.js     云端传输：OAuth、两张表、对象存储。只负责"送上去/拉下来"，不含业务判断。
+cloud.js     云端传输：OAuth、三张表（相册/照片/设置）、对象存储。只负责"送上去/拉下来"，不含业务判断。
 accounts.js  身份与命名空间：PBKDF2 本机账号、key()/dbName() 分区、访客数据迁移。
 vault.js     备份密码学：gzip + AES-GCM，导入导出。
 main.js      编排与视图：唯一修改 state 的地方；调用上面四层，渲染 DOM / 地球 / 统计。
@@ -92,7 +94,10 @@ syncNow
    │    ├─ 云端墓碑 → 本地删数据 + 落本地墓碑（pushed=true）
    │    ├─ 云端"活着"但本地墓碑 → 挡住 + 墓碑重新排队（pushed=false）
    │    └─ 落盘（bump=false，保留合并后的 rev）
+   │    ├─ pullSettings() → 与本地 site{rev,at} 比较，云端新则应用
+   │    └─ 本地更新则标脏，等推送
    └─ syncPush
+        ├─ 站点设置：dirty → upsert 单行
         ├─ 相册：有 dirty 或未推送墓碑 → 全量行 upsert
         ├─ 原图：每轮 ≤6 张，失败 3 次跳过
         └─ 照片元数据：只推 dirty / 无 remote 的 + 墓碑
@@ -224,6 +229,7 @@ syncNow
 | --- | --- | --- |
 | `atlas_albums` | `owner_id`(默认 `auth.uid()`)、`local_id`、`payload JSONB`、`rev`、`deleted`、`updated_at` | 唯一键 `(owner_id, local_id)`；RLS `owner_id = auth.uid()` |
 | `atlas_photos` | `owner_id`、`local_id`、`album_local_id`、`name`、`w/h`、`taken_at`、`thumb`、`remote_path`、`exif JSONB`、`rev`、`deleted` | 同上 |
+| `atlas_settings` | `owner_id` 主键、`payload JSONB`（名称/标题/导语/主题色）、`rev`、`updated_at` | 每个账号一行；RLS `owner_id = auth.uid()`；冲突键 `owner_id` |
 
 - 前端**从不发送** `owner_id`，由列默认值 + RLS 决定归属。
 - 墓碑行保留 `payload/name` 为空也能成立；拉取端只看 `deleted/rev`。
@@ -321,7 +327,7 @@ atlasData.pull()            // 强制"先拉后推"
 
 ## 10. 已知边界
 
-1. `site`（站点标题/导语）仍是设备级设置，不参与云同步；这是有意的：它属于"这台机器怎么展示"，不是作品。
+1. `site`（站点标题/导语）现在参与云同步（`atlas_settings`，单文档 LWW）；主题/语言/画质仍是设备偏好。
 2. 字段级合并只覆盖相册元数据；同一字段的并发修改仍是后写者赢；照片按整条记录合并。
 3. 墓碑 180 天后清理；超过这个窗口的离线设备仍可能推回旧副本（概率极低）。
 4. IndexedDB 中"无法识别"的旧记录不会自动删除；需要用户点「整理数据」或调用 `atlasData.repair()`。

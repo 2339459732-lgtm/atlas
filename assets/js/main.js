@@ -14,7 +14,8 @@ import { APP } from './config.js';
 import {
   initCloud, cloudAvailable, cloudUser, onCloudChange, cloudReason,
   signInCloud, signOutCloud,
-  pullAll, pushAlbums, pushPhotos, uploadPhotoBlob, downloadPhotoBlob, removePhotoBlob
+  pullAll, pushAlbums, pushPhotos, pullSettings, pushSettings,
+  uploadPhotoBlob, downloadPhotoBlob, removePhotoBlob
 } from './cloud.js';
 import {
   SCHEMA, LIMITS, normalizeAlbum, normalizePhoto, parseCoord, fmtCoord,
@@ -30,8 +31,13 @@ import {
 import {
   key as acctKey, dbName, currentUser, accounts,
   register as acctRegister, login as acctLogin, logout as acctLogout,
-  removeAccount, migrateGuestData, migrateGuestPhotos, hasGuestData, probeGuestData,
-  validateName, validatePassword
+  changePassword as acctChangePassword,
+  setRecovery as acctSetRecovery,
+  resetPassword as acctResetPassword,
+  hasRecovery, removeAccount, migrateGuestData, migrateGuestPhotos,
+  hasGuestData, probeGuestData, touchSession, sessionExpiresAt, normName,
+  bindCloud, cloudIdOf,
+  validateName, validatePassword, passwordIssue, passwordStrength
 } from './accounts.js';
 
 /* 入口私钥（SHA-256）。改口令：把新口令的 sha256 填到这里 */
@@ -41,6 +47,8 @@ const GATE_ENABLED = APP.features.gate;
 
 /* ───────── 常量 ───────── */
 const ACCENTS = ['#C9A96A', '#7FA8C9', '#C98A7F', '#9BC9A0', '#B9A0D8', '#D8C08A', '#8FA6B8', '#C97F9E'];
+/* 首次访问的示例册：换设备拉到真实数据后，没被动过的示例应当让位 */
+const DEMO_ALBUMS = new Set(['lm-kyoto', 'lm-reyk', 'lm-hk']);
 
 const LS_LM = 'atlas.landmarks.v4';
 const LS_SITE = 'atlas.site.v1';
@@ -215,9 +223,28 @@ const dbDel = id => delPhotos([id]);
 function loadSite() {
   try {
     const raw = localStorage.getItem(acctKey(LS_SITE));
-    if (raw) return { ...DEFAULT_SITE, ...JSON.parse(raw) };
+    if (raw) return { ...DEFAULT_SITE, rev: 0, at: 0, ...JSON.parse(raw) };
   } catch {}
-  return { ...DEFAULT_SITE };
+  return { ...DEFAULT_SITE, rev: 0, at: 0 };
+}
+
+const sitePayload = s => ({
+  name: s.name, cn: s.cn, title: s.title, lede: s.lede, accent: s.accent
+});
+
+/* 站点设置也是数据：写本地 + 标脏 + 排队上云。
+   touch=true 时抬 rev/at；从云端落地时用 touch=false，避免反向触发推送。 */
+function saveSite(next, { touch = true, mark = true } = {}) {
+  const base = state.site || { ...DEFAULT_SITE, rev: 0, at: 0 };
+  const site = { ...base, ...next };
+  if (touch) {
+    site.rev = (base.rev | 0) + 1;
+    site.at = Date.now();
+  }
+  state.site = site;
+  try { localStorage.setItem(acctKey(LS_SITE), JSON.stringify(site)); } catch {}
+  if (mark) { markDirty('settings'); schedulePush(600); }
+  return site;
 }
 function applySite(site) {
   state.site = site;
@@ -1557,8 +1584,8 @@ $('#site-form').addEventListener('submit', e => {
     title: ($('#s-title').value || '').trim() || DEFAULT_SITE.title,
     lede: ($('#s-lede').value || '').trim()
   };
-  applySite(next);
-  try { localStorage.setItem(acctKey(LS_SITE), JSON.stringify(next)); } catch {}
+  const site = saveSite(next);
+  applySite(site);
   $('#dlg-site').close();
 });
 
@@ -2526,8 +2553,8 @@ async function mergeBackup(payload) {
   if (added.length) clearTombstones('photo', added.map(p => p.id));
 
   if (payload.site) {
-    applySite({ ...DEFAULT_SITE, ...payload.site });
-    try { localStorage.setItem(acctKey(LS_SITE), JSON.stringify(state.site)); } catch {}
+    const site = saveSite({ ...DEFAULT_SITE, ...payload.site }, { touch: true, mark: true });
+    applySite(site);
   }
 
   syncStats();
@@ -2713,7 +2740,15 @@ const scopeId = () => currentUser()?.id || 'guest';
 function scopeBound() {
   try {
     const v = localStorage.getItem(LS_CLOUD_SCOPE);
-    return !v || v === scopeId();   /* 没有记录 = 首次连接，允许 */
+    if (!v || v === scopeId()) return true;
+    /* 本机账号已绑定同一张 WorkBuddy 身份：换设备/重新登录后自动恢复，
+       不再让用户点一次"在此账号下启用" */
+    const u = currentUser();
+    if (u && cloudUser() && cloudIdOf(u.id) === cloudUser().id) {
+      bindScope();
+      return true;
+    }
+    return false;
   } catch { return true; }
 }
 function bindScope() {
@@ -2749,7 +2784,8 @@ function renderCloud() {
   const u = cloudUser();
   box.hidden = false;
   $('#acct-cloud-btn').hidden = !!u && scopeBound();
-  $('#acct-cloud-out').hidden = !u || !scopeBound();
+  $('#acct-cloud-out').hidden = !u;
+  $('#acct-cloud-sync').hidden = !u || !scopeBound();
 
   if (!u) {
     $('#acct-cloud-title').textContent = t('cloud.title');
@@ -2768,6 +2804,7 @@ function renderCloud() {
   }
 
   $('#acct-cloud-btn').textContent = t('cloud.signIn');
+  $('#acct-cloud-sync').textContent = SYNC.phase === 'error' ? t('cloud.retry') : t('cloud.syncNow');
   if (SYNC.phase === 'busy') setCloudState('busy', t('cloud.syncing'));
   else if (SYNC.phase === 'error') setCloudState('', t('cloud.failed', { msg: SYNC.error || '—' }));
   else setCloudState('on', syncSummary());
@@ -2800,9 +2837,23 @@ async function syncPull() {
   const remotePhotos = pRows.map(photoFromRow).filter(Boolean);
 
   /* ① 相册 */
+  /* 只有"整机还是三本示例、没有任何照片"时才允许让位；
+     用户已经动过其中一本，就不能再删别的示例 */
+  const pristineGuest = state.landmarks.length > 0 &&
+    state.photos.length === 0 &&
+    state.landmarks.every(l =>
+      DEMO_ALBUMS.has(l.id) && (l.rev | 0) <= 1 && !l.memoir && !l.coverId
+    );
+
   const localAlbums = state.landmarks.map(normalizeLM).concat(tombstoneAlbums());
   const mergedA = mergeAlbumCollections(localAlbums, remoteAlbums).items;
-  const liveAlbums = mergedA.filter(a => !a.deleted);
+  let liveAlbums = mergedA.filter(a => !a.deleted);
+
+  /* 新设备首次登录云端：本机可能刚灌了三本示例册。
+     云端有真实数据时，把"没照片、没手记、没改过"的示例让位，避免混在一起。 */
+  if (pristineGuest && remoteAlbums.some(a => !a.deleted)) {
+    liveAlbums = liveAlbums.filter(a => !DEMO_ALBUMS.has(a.id));
+  }
   const deadAlbums = mergedA.filter(a => a.deleted);
   const deadAlbumIds = new Set(deadAlbums.map(a => a.id));
 
@@ -2899,6 +2950,34 @@ async function syncPull() {
   }
 
   if (pushedNeeded || Object.keys(unpushedTombstones().albums).length) markDirty('album');
+
+  /* ③ 站点设置：单行文档，LWW（rev → at） */
+  try {
+    const rs = await pullSettings();
+    const localRev = state.site?.rev | 0;
+    const localAt = state.site?.at | 0;
+    if (rs) {
+      const remote = {
+        ...DEFAULT_SITE,
+        ...(rs.payload || {}),
+        rev: rs.rev | 0,
+        at: rs.updated_at_ms | 0
+      };
+      const newer = remote.rev > localRev || (remote.rev === localRev && remote.at > localAt);
+      if (newer) {
+        const site = saveSite(remote, { touch: false, mark: false });
+        applySite(site);
+      } else if (localRev > remote.rev || (localRev === remote.rev && localAt > remote.at)) {
+        markDirty('settings');
+      }
+    } else if (localRev > 0) {
+      /* 第一次上云：本地已有自定义设置，排队推上去 */
+      markDirty('settings');
+    }
+  } catch (e) {
+    console.warn('[sync] settings', e);
+  }
+
   lastPullAt = Date.now();
   applyRemote();
 
@@ -2936,6 +3015,12 @@ async function syncPush() {
 
   const p = pending();
   const todoTomb = unpushedTombstones();
+
+  /* ⓪ 站点设置：单行文档 */
+  if (p.settings) {
+    await pushSettings(sitePayload(state.site || DEFAULT_SITE), state.site?.rev | 0);
+    clearDirty('settings');
+  }
 
   /* ① 相册：只有真的有改动（或还有没送出去的墓碑）才推 */
   if (p.albums || Object.keys(todoTomb.albums).length) {
@@ -3069,7 +3154,11 @@ function pumpBlob() {
 
 function initCloudSync() {
   initCloud().then(ok => {
-    if (ok && cloudUser() && !localStorage.getItem(LS_CLOUD_SCOPE)) bindScope();
+    if (ok && cloudUser()) {
+      const u = currentUser();
+      if (u && !cloudIdOf(u.id)) bindCloud(u.id, cloudUser().id);
+      if (!localStorage.getItem(LS_CLOUD_SCOPE)) bindScope();
+    }
     renderCloud();
     if (ok && cloudUser() && scopeBound()) syncNow('boot');
   }).catch(e => { console.warn('[cloud]', e); renderCloud(); });
@@ -3092,6 +3181,8 @@ function initCloudSync() {
   $('#acct-cloud-btn')?.addEventListener('click', async () => {
     /* 已连接但换了本机账号：这一步是"在当前分区启用"，不是重新授权 */
     if (cloudUser() && !scopeBound()) {
+      const u = currentUser();
+      if (u) bindCloud(u.id, cloudUser().id);
       bindScope();
       pulledOnce = false;
       SYNC.phase = 'idle';
@@ -3106,6 +3197,12 @@ function initCloudSync() {
       renderCloud();
     }
   });
+  $('#acct-cloud-sync')?.addEventListener('click', async () => {
+    pulledOnce = false;
+    SYNC.tries = 0;
+    await syncNow('manual');
+  });
+
   $('#acct-cloud-out')?.addEventListener('click', async () => {
     await signOutCloud();
     renderCloud();
@@ -3120,45 +3217,64 @@ function initAccounts() {
 
   const me = $('#acct-me');
   const form = $('#acct-form');
+  const tabsWrap = $('.acct-tabs', dlg);
   const tabs = $$('.acct-tabs button');
   const errBox = $('#acct-err');
   const submit = $('#acct-submit');
+  const passForm = $('#acct-pass-form');
+  const recPanel = $('#acct-rec-panel');
+  const delPanel = $('#acct-del-panel');
+
   let mode = 'login';
+  let afterCode = 'reload';
+  let pendingToast = '';
+  let needsReload = false;
 
   const ERR = {
     name_empty: 'acct.e.nameEmpty',
     name_invalid: 'acct.e.nameInvalid',
     name_taken: 'acct.e.nameTaken',
+    name_reserved: 'acct.e.nameReserved',
     pw_empty: 'acct.e.pwEmpty',
     pw_short: 'acct.e.pwShort',
+    pw_long: 'acct.e.pwLong',
+    pw_weak: 'acct.e.pwWeak',
+    pw_common: 'acct.e.pwCommon',
     pw_mismatch: 'acct.e.pwMismatch',
+    pw_same: 'acct.e.pwSame',
     bad_credentials: 'acct.e.bad',
-    storage_full: 'acct.e.storage'
+    bad_recovery: 'acct.e.badRecovery',
+    no_recovery: 'acct.e.noRecovery',
+    storage_full: 'acct.e.storage',
+    crypto_unavailable: 'acct.e.crypto',
+    delete_name: 'acct.e.deleteName'
   };
 
-  const showErr = (code) => {
-    errBox.textContent = t(ERR[code] || 'acct.e.generic');
-    errBox.hidden = false;
+  const shake = () => {
     dlg.classList.remove('is-shake');
     void dlg.offsetWidth;
     dlg.classList.add('is-shake');
   };
 
-  const setMode = (m) => {
-    mode = m;
-    tabs.forEach(b => b.setAttribute('aria-selected', String(b.dataset.mode === m)));
-    $('#acct-pass2-wrap').hidden = m !== 'register';
-    /* 每次切到注册都重新探一次：用户可能刚刚才上传了照片 */
-    $('#acct-migrate-wrap').hidden = true;
-    if (m === 'register') {
-      probeGuestData(true).then(v => {
-        if (mode === 'register') $('#acct-migrate-wrap').hidden = !v;
-      }).catch(() => {});
-    }
-    submit.setAttribute('data-i18n', m === 'login' ? 'acct.login' : 'acct.create');
-    submit.textContent = t(m === 'login' ? 'acct.login' : 'acct.create');
-    $('#acct-pass').setAttribute('autocomplete', m === 'login' ? 'current-password' : 'new-password');
-    errBox.hidden = true;
+  const clearErr = box => { if (box) { box.hidden = true; box.textContent = ''; } };
+
+  const showErr = (box, code) => {
+    if (!box) return;
+    const raw = String(code || '');
+    const m = /^rate_limited:(\d+)$/.exec(raw);
+    const key = m ? 'acct.e.rate' : (ERR[raw] || 'acct.e.generic');
+    box.textContent = t(key, m ? { s: m[1] } : undefined);
+    box.hidden = false;
+    shake();
+  };
+
+  const setHead = (kicker, title) => {
+    $('#acct-kicker').textContent = kicker;
+    $('#acct-title').textContent = title;
+  };
+
+  const hidePanels = () => {
+    [passForm, recPanel, delPanel].forEach(n => { if (n) n.hidden = true; });
   };
 
   const paint = () => {
@@ -3169,19 +3285,61 @@ function initAccounts() {
     btn.setAttribute('aria-pressed', String(!!u));
     btn.classList.toggle('is-on', !!u);
 
+    hidePanels();
     me.hidden = !u;
     form.hidden = !!u;
+
     if (u) {
       $('#acct-me-avatar').textContent = initial;
       $('#acct-me-name').textContent = u.name;
       $('#acct-me-meta').textContent = t('acct.signedIn');
       $('#acct-stat-lm').textContent = state.landmarks.length;
       $('#acct-stat-ph').textContent = state.photos.length;
-      $('#acct-kicker').textContent = 'SIGNED IN';
-      $('#acct-title').textContent = t('acct.me');
+      setHead('SIGNED IN', t('acct.me'));
     } else {
-      $('#acct-kicker').textContent = 'ACCOUNT';
-      $('#acct-title').textContent = t('acct.title');
+      setHead('ACCOUNT', t('acct.title'));
+      clearErr(errBox);
+    }
+  };
+
+  const setMode = (m) => {
+    mode = m;
+    const isLogin = m === 'login';
+    const isReg = m === 'register';
+    const isReset = m === 'reset';
+
+    me.hidden = true;
+    form.hidden = false;
+    hidePanels();
+
+    tabsWrap.hidden = isReset;
+    tabs.forEach(b => b.setAttribute('aria-selected', String(b.dataset.mode === m)));
+
+    $('#acct-pass2-wrap').hidden = isLogin;
+    $('#acct-code-wrap').hidden = !isReset;
+    $('#acct-forgot-wrap').hidden = !isLogin;
+    $('#acct-back-wrap').hidden = !isReset;
+    $('#acct-strength').hidden = true;
+
+    $('#acct-pass-label').textContent = isReset ? t('acct.newPass') : t('acct.pass');
+    $('#acct-pass').value = '';
+    $('#acct-pass2').value = '';
+    $('#acct-code').value = '';
+    $('#acct-pass').setAttribute('autocomplete', isLogin ? 'current-password' : 'new-password');
+
+    const key = isReg ? 'acct.create' : isReset ? 'acct.reset' : 'acct.login';
+    submit.setAttribute('data-i18n', key);
+    submit.textContent = t(key);
+
+    setHead(isReset ? 'RESET' : 'ACCOUNT', isReset ? t('acct.reset') : t('acct.title'));
+    clearErr(errBox);
+
+    /* 每次切到注册都重新探一次：用户可能刚刚才上传了照片 */
+    $('#acct-migrate-wrap').hidden = true;
+    if (isReg) {
+      probeGuestData(true).then(v => {
+        if (mode === 'register') $('#acct-migrate-wrap').hidden = !v;
+      }).catch(() => {});
     }
   };
 
@@ -3203,17 +3361,97 @@ function initAccounts() {
     setTimeout(() => location.reload(), 460);
   };
 
+  const bindStrength = (input, out) => {
+    input?.addEventListener('input', () => {
+      const v = input.value;
+      if (!v) { out.hidden = true; return; }
+      const lv = passwordStrength(v);
+      out.hidden = false;
+      out.dataset.level = String(lv);
+      out.textContent = t('acct.strength' + lv);
+    });
+  };
+  bindStrength($('#acct-pass'), $('#acct-strength'));
+  bindStrength($('#acct-new'), $('#acct-new-strength'));
+
+  const showRecovery = (code, after, msg) => {
+    afterCode = after || 'panel';
+    pendingToast = msg || '';
+    /* 弹窗是模态的；只要用户还没点"我已保存"就关掉，也要落到新账号，
+       不能让页面继续以访客状态写入新账号的命名空间 */
+    needsReload = afterCode === 'reload';
+    me.hidden = true;
+    form.hidden = true;
+    passForm.hidden = true;
+    delPanel.hidden = true;
+    recPanel.hidden = false;
+    $('#acct-rec-form').hidden = true;
+    $('#acct-rec-show').hidden = false;
+    $('#acct-code-view').textContent = code;
+    setHead('RECOVERY', t('acct.recovery'));
+  };
+
+  const openRecovery = () => {
+    const u = currentUser();
+    if (!u) return;
+    me.hidden = true;
+    form.hidden = true;
+    passForm.hidden = true;
+    delPanel.hidden = true;
+    recPanel.hidden = false;
+    $('#acct-rec-form').hidden = false;
+    $('#acct-rec-show').hidden = true;
+    $('#acct-rec-pass').value = '';
+    clearErr($('#acct-rec-err'));
+    $('#acct-rec-sub').textContent = hasRecovery(u.name)
+      ? t('acct.recoveryRegen')
+      : t('acct.recoverySub');
+    setHead('RECOVERY', t('acct.recovery'));
+    setTimeout(() => $('#acct-rec-pass').focus(), 60);
+  };
+
+  const openPass = () => {
+    if (!currentUser()) return;
+    me.hidden = true;
+    form.hidden = true;
+    recPanel.hidden = true;
+    delPanel.hidden = true;
+    passForm.hidden = false;
+    passForm.reset();
+    clearErr($('#acct-pass-err'));
+    $('#acct-new-strength').hidden = true;
+    setHead('SECURITY', t('acct.change'));
+    setTimeout(() => $('#acct-old').focus(), 60);
+  };
+
+  const openDelete = () => {
+    if (!currentUser()) return;
+    me.hidden = true;
+    form.hidden = true;
+    passForm.hidden = true;
+    recPanel.hidden = true;
+    delPanel.hidden = false;
+    delPanel.reset();
+    clearErr($('#acct-del-err'));
+    setHead('DANGER', t('acct.delete'));
+    setTimeout(() => $('#acct-del-name').focus(), 60);
+  };
+
   btn.addEventListener('click', () => (dlg.open ? close() : open()));
   $('#acct-close').addEventListener('click', close);
   dlg.addEventListener('click', e => { if (e.target === dlg) close(); });
-  dlg.addEventListener('close', () => btn.setAttribute('aria-expanded', 'false'));
+  dlg.addEventListener('close', () => {
+    btn.setAttribute('aria-expanded', 'false');
+    if (needsReload) { needsReload = false; location.reload(); }
+  });
 
   tabs.forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
 
+  /* ── 登录 / 注册 / 重设 ── */
   form.addEventListener('submit', async e => {
     e.preventDefault();
-    errBox.hidden = true;
-    const name = ($('#acct-name').value || '').trim();
+    clearErr(errBox);
+    const name = $('#acct-name').value;
     const pw = $('#acct-pass').value || '';
     submit.disabled = true;
 
@@ -3222,20 +3460,138 @@ function initAccounts() {
         if (pw !== ($('#acct-pass2').value || '')) throw new Error('pw_mismatch');
         const u = await acctRegister(name, pw);
         const want = !$('#acct-migrate-wrap').hidden && $('#acct-migrate').checked;
-        let moved = 0;
         if (want) {
-          moved = migrateGuestData(u.id);
+          migrateGuestData(u.id);
           /* 地标搬完还要搬照片：两套存储，缺一边相册就是空壳 */
           try { await migrateGuestPhotos(u.id); } catch (e) { console.warn('[acct] photo migrate', e); }
         }
-        finish(t('acct.hello', { name: u.name }) + (moved ? ' · ' + t('acct.moved') : ''));
-      } else {
-        const u = await acctLogin(name, pw);
-        finish(t('acct.back', { name: u.name }));
+        showRecovery(u.recoveryCode, 'reload', t('acct.hello', { name: u.name }));
+        return;
       }
+
+      if (mode === 'reset') {
+        if (pw !== ($('#acct-pass2').value || '')) throw new Error('pw_mismatch');
+        const u = await acctResetPassword(name, $('#acct-code').value, pw);
+        showRecovery(u.recoveryCode, 'reload', t('acct.back', { name: u.name }));
+        return;
+      }
+
+      const u = await acctLogin(name, pw);
+      finish(t('acct.back', { name: u.name }));
     } catch (ex) {
-      showErr(ex && ex.message);
+      const raw = ex?.message || '';
+      showErr(errBox, mode === 'reset' && raw === 'bad_credentials' ? 'bad_recovery' : raw);
       submit.disabled = false;
+    }
+  });
+
+  $('#acct-forgot').addEventListener('click', () => setMode('reset'));
+  $('#acct-back').addEventListener('click', () => setMode('login'));
+
+  /* ── 恢复码 ── */
+  $('#acct-rec-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const u = currentUser();
+    if (!u) return;
+    const box = $('#acct-rec-err');
+    clearErr(box);
+    const pass = $('#acct-rec-pass').value || '';
+    const b = $('#acct-rec-submit');
+    b.disabled = true;
+    try {
+      const r = await acctSetRecovery(u.name, pass);
+      showRecovery(r.code, 'panel');
+    } catch (ex) {
+      showErr(box, ex?.message || '');
+    } finally {
+      b.disabled = false;
+    }
+  });
+
+  $('#acct-rec-back').addEventListener('click', paint);
+
+  $('#acct-code-copy')?.addEventListener('click', async () => {
+    const code = $('#acct-code-view').textContent;
+    try {
+      await navigator.clipboard.writeText(code);
+      toast(t('acct.copied'));
+    } catch {
+      const range = document.createRange();
+      range.selectNodeContents($('#acct-code-view'));
+      const sel = getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  });
+
+  $('#acct-code-done').addEventListener('click', () => {
+    if (afterCode === 'reload') {
+      needsReload = false;
+      if (pendingToast) toast(pendingToast);
+      setTimeout(() => location.reload(), 320);
+    } else {
+      paint();
+    }
+  });
+
+  /* ── 恢复码（已登录时生成新码） ── */
+  $('#acct-rec-btn').addEventListener('click', openRecovery);
+
+  /* ── 修改密码 ── */
+  $('#acct-pass-btn').addEventListener('click', openPass);
+  $('#acct-pass-cancel').addEventListener('click', paint);
+
+  passForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    const u = currentUser();
+    if (!u) return;
+    const box = $('#acct-pass-err');
+    clearErr(box);
+    const oldPw = $('#acct-old').value || '';
+    const np = $('#acct-new').value || '';
+    const np2 = $('#acct-new2').value || '';
+    if (!oldPw) { showErr(box, 'pw_empty'); return; }
+    if (np !== np2) { showErr(box, 'pw_mismatch'); return; }
+    const bad = passwordIssue(np);
+    if (bad) { showErr(box, bad); return; }
+
+    const b = passForm.querySelector('button[type=submit]');
+    b.disabled = true;
+    try {
+      await acctChangePassword(u.name, oldPw, np);
+      toast(t('acct.passChanged'));
+      paint();
+    } catch (ex) {
+      showErr(box, ex?.message || '');
+    } finally {
+      b.disabled = false;
+    }
+  });
+
+  /* ── 删除账号 ── */
+  $('#acct-del-btn').addEventListener('click', openDelete);
+  $('#acct-del-cancel').addEventListener('click', paint);
+
+  delPanel.addEventListener('submit', async e => {
+    e.preventDefault();
+    const u = currentUser();
+    if (!u) return;
+    const box = $('#acct-del-err');
+    clearErr(box);
+    const typed = normName($('#acct-del-name').value);
+    if (typed.toLowerCase() !== u.name.toLowerCase()) {
+      showErr(box, 'delete_name');
+      return;
+    }
+    const b = delPanel.querySelector('button[type=submit]');
+    b.disabled = true;
+    try {
+      await removeAccount(u.name, $('#acct-del-pass').value || '');
+      toast(t('acct.deleteDone'));
+      setTimeout(() => location.reload(), 360);
+    } catch (ex) {
+      showErr(box, ex?.message || '');
+      b.disabled = false;
     }
   });
 
@@ -3268,6 +3624,17 @@ function initAccounts() {
 
 async function boot() {
   initLang();
+  /* 30 天会话：启动时校验并滑动续期；过期则回到访客 */
+  touchSession();
+  const sessionGuard = () => {
+    const exp = sessionExpiresAt();
+    if (exp && exp < Date.now()) { location.reload(); return true; }
+    return false;
+  };
+  setInterval(sessionGuard, 60 * 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && !sessionGuard()) touchSession();
+  });
   initGate();
   state.site = loadSite();
   applySite(state.site);
