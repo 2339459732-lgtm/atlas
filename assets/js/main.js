@@ -3175,7 +3175,6 @@ function renderCloud() {
   const form = $('#acct-cloud-form');
   const note = $('#acct-cloud-note');
   const u = cloudUser();
-  const r = cloudReason();
 
   /* ① 已登录：昵称 + 同步状态 */
   if (u) {
@@ -3202,8 +3201,13 @@ function renderCloud() {
   if (!cloudAvailable()) {
     form.hidden = true;
     note.hidden = false;
-    if (r === 'sdk-missing' || r === 'init-failed') note.textContent = t('cloud.sdkFail');
-    else note.textContent = t('cloud.unbound', { host: APP.cloud.endpoint.replace(/^https?:\/\//, '') });
+    /* 区分两类原因：域名没绑定（GitHub Pages/本地预览）说"去应用域名"；
+       域名对了但组件没加载成功，才说"组件失败、刷新重试"。 */
+    const host = location.hostname;
+    const onCloudHost = APP.cloud.hosts.some(s => host === s || host.endsWith('.' + s))
+      || (APP.cloud.allowLocalhost && (host === 'localhost' || host === '127.0.0.1'));
+    if (!onCloudHost) note.textContent = t('cloud.unbound', { host: APP.cloud.endpoint.replace(/^https?:\/\//, '') });
+    else note.textContent = t('cloud.sdkFail');
     setCloudState('', t('cloud.offline'));
     return;
   }
