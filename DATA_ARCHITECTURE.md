@@ -331,5 +331,6 @@ atlasData.pull()            // 强制"先拉后推"
 2. 字段级合并只覆盖相册元数据；同一字段的并发修改仍是后写者赢；照片按整条记录合并。
 3. 墓碑 180 天后清理；超过这个窗口的离线设备仍可能推回旧副本（概率极低）。
 4. IndexedDB 中"无法识别"的旧记录不会自动删除；需要用户点「整理数据」或调用 `atlasData.repair()`。
-5. 云同步依赖 `*.workbuddy.host` 域；GitHub Pages 上仅本地能力。
+5. 云同步依赖 `*.workbuddy.host` 域：应用域名 `atlas-gallery.app.workbuddy.host` 已启用；
+   GitHub Pages 上仅本地能力。
 6. 真实 OAuth 往返与跨设备拉取尚未做真人验证（域名未发布）。

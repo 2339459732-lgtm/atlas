@@ -260,8 +260,10 @@ ALTER TABLE atlas_photos ADD COLUMN rev BIGINT NOT NULL DEFAULT 0,
 
 ## 8.4 仍遗留
 
-1. **云同步必须发布到 `*.workbuddy.host`**：GitHub Pages 的 Origin 不在数据面白名单；
-   当前未发布前，线上链接只有本地账号与备份，跨设备不能生效。
+1. ~~云同步必须发布到 `*.workbuddy.host`~~ → 已发布：
+   `https://atlas-gallery.app.workbuddy.host/?sharecode=C7DL4AWHLA`。
+   GitHub Pages 仍是纯本地模式；跨设备请用应用域名。
+   真实 OAuth 往返仍需真人在该域名完成一次授权（代码与域名已就绪）。
 2. 本机账号不可跨设备（密码不参与同步），跨设备身份只有 WorkBuddy OAuth。
 3. 无邮箱/短信找回；恢复码是本机账号的唯一找回手段，丢失且忘密则本机账号不可恢复。
 4. 无服务端会话吊销；改密不会踢掉其他设备（也没有跨设备本机会话）。
