@@ -604,3 +604,35 @@ ALTER TABLE atlas_photos ADD COLUMN rev BIGINT NOT NULL DEFAULT 0,
 - polish 四例：性能标记齐全、atlasErrors/atlasMem 就绪、唯一错误 toast+环形缓冲、
   良性错误静默、上下文丢失 UI 出现且 running=false、跳转链接与 aria-live ✓
 - 回归：cloud 六用例、solar 三用例全 PASS；375px 无横向溢出、0 页面错误。
+
+## 17 太阳系场景性能专项（v2.6.1）
+
+### 17.1 图集内部机制（反解确认）
+
+- 自带质量调节器：60fps 目标（Vee=1000/60）、1000ms 采样窗、帧时间 >20.8ms
+  连续 2 窗降档、<13.3ms 连续 5 窗升档、冷却 1800ms；`?quality=auto|low|…`
+  参数可直接定档；阶梯 ULTRA→HIGH→MEDIUM→LOW→SAFE（预设叠加数 0/1/4/8/全）。
+- 默认起点：桌面 ULTRA、移动 HIGH——桌面前几秒过冲是卡顿来源之一。
+
+### 17.2 落地
+
+- 宿主按设备算层级（low/med/high），传 `?quality=auto&atlasq=<tier>`；
+  shim 扩展：DPR 覆盖（1.25/1.5/2）+ 纹理 URL 降级映射（太阳科学波段除外）；
+  渲染器两处 antialias 打补丁（low 关 MSAA）；宿主 URL ?atlasq= 可手动固定。
+- 转场：0.45s 交叉淡入淡出；预热 = 悬停切换钮即拉 iframe（display:none 挂起
+  其 rAF，只花内存不花 GPU；≤3GB 内存不预热）。
+- 修两个 bug：① 退出淡出期间 solarActive 陈旧 → 再次进入被挡（改以 DOM 状态
+  为准）；② iframe loading="lazy" 使预热完全不加载（移除）。淡入起点改强制
+  回流（双 rAF 在重载下可能几百毫秒不补帧）。
+- 观测：atlasSolarTiming() / atlasSolarPerf(n)（rAF 采样 + __atlasQuality 自测），
+  退出时控制台自动留快照。
+- 新增补丁脚本 ref/patch-solar-perf.py（幂等）；补拉 moon_normal-4k.png（10.7MB，
+  med/low 档月球法线的降级目标）。
+
+### 17.3 验收（SwiftShader 软件渲染压测，绝对值为下限）
+
+- 预热后进入 7ms（基准无此机制，冷进入 3000ms）；再次进入 6ms。
+- 静止帧时间 306→226ms（−26%）、拖动 244→200ms（−18%）、缩放 252→203ms（−19%）、
+  p95 383→254ms（−34%）、JS 堆 73.2→67.9MB（−7%）。
+- solar 三例回归 PASS；转场隔离测试通过（0→1 推进正常）。
+- 真机（GPU）预期各档接近 60fps；low 档收益在弱 GPU/核显最显著。

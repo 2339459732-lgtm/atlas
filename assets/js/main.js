@@ -3843,6 +3843,89 @@ let solarLoaded = false;
 let musicResume = false;
 let music = null;   /* initMusic() 里赋值；进入图集视图时暂停、返回时恢复 */
 
+/* ── 图集画质层级 ─────────────────────────────────────────────
+   atlasq 由宿主按设备算：low 关抗锯齿 + 纹理降 2K + DPR 1.25；
+   med 纹理降 4K + DPR 1.5；high 全开。图集自身还带一个 60fps
+   自适应调节器（quality=auto：帧时间 >20.8ms 连续两窗降档，
+   <13.3ms 连续五窗升档，冷却 1.8s），两层叠加，谁先触发算谁的。 */
+function solarTier() {
+  try {
+    if (new URLSearchParams(location.search).get('atlasq')) return 'forced';
+  } catch {}
+  const conn = navigator.connection || {};
+  const low = (navigator.hardwareConcurrency || 8) <= 4
+    || (navigator.deviceMemory || 8) <= 4
+    || !!conn.saveData
+    || /(^|-)2g$/.test(conn.effectiveType || '');
+  if (low) return 'low';
+  const med = (navigator.hardwareConcurrency || 8) <= 6
+    || (navigator.deviceMemory || 8) <= 6
+    || (matchMedia('(max-width: 860px)').matches);
+  return med ? 'med' : 'high';
+}
+function solarSrc() {
+  let tier = solarTier();
+  /* 宿主 URL 显式指定时直接透传（验收/手动降级入口） */
+  try {
+    const q = new URLSearchParams(location.search).get('atlasq');
+    if (q === 'low' || q === 'med' || q === 'high') tier = q;
+  } catch {}
+  const params = new URLSearchParams();
+  params.set('quality', 'auto');
+  params.set('atlasq', tier);
+  try {
+    const layers = new URLSearchParams(location.search).get('solar-layers') || '';
+    if (layers) params.set('layers', layers);
+  } catch {}
+  return SOLAR_SRC + '?' + params.toString();
+}
+
+/* ── 图集性能观测 ─────────────────────────────────────────────
+   atlasSolarTiming()：进入 → 挂载完成的等待耗时（含预热命中）；
+   atlasSolarPerf()：在子文档里做一轮 rAF 采样 + 官方自测数据。 */
+const solarTimings = { enterMs: null, warmed: false, clickAt: 0, readyAt: 0 };
+function recordSolarReady() {
+  if (!solarTimings.clickAt) return;
+  solarTimings.enterMs = Math.round(Date.now() - solarTimings.clickAt);
+  solarTimings.readyAt = Date.now();
+  console.info('[solar] ready in', solarTimings.enterMs + 'ms', solarTimings.warmed ? '(预热命中)' : '(冷启动)');
+}
+const solarChild = () => $('#solar-frame')?.contentWindow || null;
+window.atlasSolarTiming = () => ({ ...solarTimings });
+window.atlasSolarPerf = async (frames = 90) => {
+  const w = solarChild();
+  if (!w) return { error: 'solar-not-mounted' };
+  const app = (() => { try { return w.__atlasQuality?.() || null; } catch { return null; } })();
+  const ts = await new Promise(res => {
+    const arr = []; let id = 0;
+    const tick = t => {
+      arr.push(t);
+      if (arr.length >= frames) { w.cancelAnimationFrame(id); res(arr); }
+      else id = w.requestAnimationFrame(tick);
+    };
+    id = w.requestAnimationFrame(tick);
+  });
+  const dts = [];
+  for (let i = 1; i < ts.length; i++) dts.push(ts[i] - ts[i - 1]);
+  const mean = dts.reduce((a, b) => a + b, 0) / Math.max(1, dts.length);
+  const sorted = [...dts].sort((a, b) => a - b);
+  const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))];
+  const drops = dts.filter(d => d > 25).length / Math.max(1, dts.length);
+  const jitter = (() => {
+    const v = dts.reduce((a, b) => a + (b - mean) * (b - mean), 0) / Math.max(1, dts.length);
+    return Math.round(Math.sqrt(v) * 10) / 10;
+  })();
+  return {
+    fps: Math.round(1000 / mean * 10) / 10,
+    frameTimeMs: Math.round(mean * 100) / 100,
+    p95FrameTimeMs: Math.round(p95 * 100) / 100,
+    dropRatio: Math.round(drops * 1000) / 1000,
+    jitterMs: jitter,
+    tier: (() => { try { return w.__atlasQ || null; } catch { return null; } })(),
+    app
+  };
+};
+
 function currentMode() {
   try {
     const q = new URLSearchParams(location.search);
@@ -3895,42 +3978,66 @@ html:root{
   } catch (e) { console.warn('[solar] brand inject', e); }
 }
 
+/* 预热：图集 2.6MB 的包 + React 挂载 + 首轮纹理通常要 1.5–3s。
+   在用户"想进去"的意图信号（悬停切换钮）出现时就把它拉起来，
+   点下去那一刻几乎零等待。iframe 平时 display:none，浏览器会挂起
+   它的 rAF，预热只花内存不花 GPU。低内存设备不预热。 */
+function warmSolar() {
+  if (solarLoaded) return;
+  if ((navigator.deviceMemory || 8) <= 3) return;
+  const frame = $('#solar-frame');
+  if (!frame || frame.src) return;
+  solarTimings.warmed = true;
+  launchSolar();
+}
+
+/* 真正开始装载子应用：设置 src 并等挂载完成（只做一次） */
+function launchSolar() {
+  if (solarLoaded) return;
+  solarLoaded = true;
+  const frame = $('#solar-frame');
+  if (!frame) return;
+  $('#solar-loading').hidden = false;
+  /* HTML load 只是开始：等 React 把场景挂进 #root 再收加载层 */
+  const watchMount = () => {
+    let tries = 0;
+    const t = setInterval(() => {
+      tries++;
+      const doc = frame.contentDocument;
+      const mounted = doc && doc.querySelector('#root')?.childElementCount > 0;
+      if (mounted || tries > 120) {
+        clearInterval(t);
+        $('#solar-loading').hidden = true;
+        injectSolarBrand(frame);
+        recordSolarReady();
+      }
+    }, 250);
+  };
+  frame.addEventListener('load', watchMount, { once: true });
+  frame.src = solarSrc();
+}
+
+let solarHideTimer = 0;
 function enterSolar() {
   const view = $('#solar-view');
-  const frame = $('#solar-frame');
-  if (!view) return;
+  if (!view || !view.hidden) return;   /* 已在场：状态以 DOM 为准，不依赖缓存变量 */
 
   /* 地球渲染与音乐让位：省 GPU，也避免两套背景音叠加 */
   earth?.stop();
   if (music?.isPlaying()) { musicResume = true; music.stop(); }
 
-  view.hidden = false;
+  solarTimings.clickAt = Date.now();
+  delete view.dataset.closing;
+  launchSolar();
 
-  /* 懒加载：第一次进入才真正拉 2.6MB 的图集包 */
-  if (!solarLoaded && frame) {
-    solarLoaded = true;
-    let src = SOLAR_SRC;
-    try {
-      const layers = new URLSearchParams(location.search).get('solar-layers') || '';
-      if (layers) src += '?layers=' + encodeURIComponent(layers);
-    } catch {}
-    $('#solar-loading').hidden = false;
-    /* HTML load 只是开始：等 React 把场景挂进 #root 再收加载层 */
-    const watchMount = () => {
-      let tries = 0;
-      const t = setInterval(() => {
-        tries++;
-        const doc = frame.contentDocument;
-        const mounted = doc && doc.querySelector('#root')?.childElementCount > 0;
-        if (mounted || tries > 60) {
-          clearInterval(t);
-          $('#solar-loading').hidden = true;
-          injectSolarBrand(frame);
-        }
-      }, 250);
-    };
-    frame.addEventListener('load', watchMount, { once: true });
-    frame.src = src;
+  /* 交叉淡入：解除 display:none 后强制一次回流，让 opacity:0 的起点
+     先落盘，再同步加 is-in——转场即刻生效，不依赖 rAF 调度（重载下
+     rAF 可能被拖到几百毫秒后才补一帧） */
+  view.hidden = false;
+  if (reduced()) view.classList.add('is-in');
+  else {
+    void view.offsetWidth;
+    view.classList.add('is-in');
   }
 
   try { sessionStorage.setItem(MODE_KEY, 'solar'); } catch {}
@@ -3939,8 +4046,25 @@ function enterSolar() {
 
 function exitSolar() {
   const view = $('#solar-view');
-  if (!view) return;
-  view.hidden = true;               /* iframe 不销毁：相机与图层状态原样保留 */
+  if (!view || view.hidden) return;
+
+  /* 离开时留一份帧率快照在控制台，便于随时核对 */
+  if (!reduced()) window.atlasSolarPerf?.(60).then(p => console.info('[solar] 离开快照', p)).catch(() => {});
+
+  if (reduced()) {
+    view.classList.remove('is-in');
+    view.hidden = true;               /* iframe 不销毁：相机与图层状态原样保留 */
+  } else {
+    view.classList.remove('is-in');
+    view.dataset.closing = 'yes';
+    clearTimeout(solarHideTimer);
+    /* 淡出完成后真正收起；期间若用户又切回来，closing 会被删掉 */
+    solarHideTimer = setTimeout(() => {
+      if (view.dataset.closing !== 'yes') return;
+      view.hidden = true;
+      delete view.dataset.closing;
+    }, 480);
+  }
   earth?.start();
   if (musicResume) { musicResume = false; music?.start(); }
   try { sessionStorage.setItem(MODE_KEY, 'planet'); } catch {}
@@ -3951,6 +4075,8 @@ function initSolarIntegration() {
   $('#mode-solar')?.addEventListener('click', enterSolar);
   $('#mode-planet')?.addEventListener('click', exitSolar);
   $('#solar-back')?.addEventListener('click', exitSolar);
+  /* 预热：桌面悬停切换钮 = 明确的进入意图，点下去零等待 */
+  $('#mode-solar')?.addEventListener('pointerenter', warmSolar);
   /* 深链接：?mode=solar 直接落在图集视图，?solar-layers= 透传给子应用 */
   if (currentMode() === 'solar') enterSolar();
 }
