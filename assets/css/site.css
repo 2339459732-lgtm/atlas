@@ -1882,7 +1882,8 @@ html[data-lang="en"] .slide__empty span {
   letter-spacing: .1em; line-height: 1.8; color: var(--ink-3);
 }
 .vault__stats {
-  display: grid; grid-template-columns: repeat(3, 1fr);
+  display: grid; grid-template-columns: repeat(2, 1fr);
+  gap: 14px 0;
   margin-top: 22px; padding: 14px 0;
   border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
 }
@@ -1892,8 +1893,11 @@ html[data-lang="en"] .slide__empty span {
 }
 .vault__stats dd {
   margin: 4px 0 0;
-  font-family: var(--f-disp); font-size: 1.3rem; line-height: 1.1;
+  font-family: var(--f-disp); font-size: 1.15rem; line-height: 1.1;
 }
+#vault-health[data-state="ok"] { color: #5FBF8A; }
+#vault-health[data-state="warn"] { color: var(--accent); }
+#vault-health[data-state="bad"] { color: #C97F7F; }
 .vault__field { display: grid; gap: 6px; margin-top: 18px; text-align: left; }
 .vault__field span {
   font-family: var(--f-mono); font-size: var(--fs-micro);

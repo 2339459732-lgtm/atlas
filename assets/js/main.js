@@ -13,13 +13,24 @@ import { createMusic } from './audio.js';
 import {
   initCloud, cloudAvailable, cloudUser, onCloudChange, cloudReason,
   signInCloud, signOutCloud,
-  pullAll, pushAlbums, pushPhotos, uploadPhotoBlob, downloadPhotoBlob,
-  deleteAlbum as cloudDeleteAlbum, deletePhotos as cloudDeletePhotos
+  pullAll, pushAlbums, pushPhotos, uploadPhotoBlob, downloadPhotoBlob
 } from './cloud.js';
+import {
+  SCHEMA, LIMITS, normalizeAlbum, normalizePhoto, parseCoord, fmtCoord,
+  albumIssues, photoIssues, mergeCollections,
+  albumFromRow, photoFromRow, albumToRow, photoToRow
+} from './model.js';
+import {
+  loadAlbums, saveAlbums, allPhotos, putPhoto, delPhotos, delPhotosOfAlbum,
+  tombstone, clearTombstones, unpushedTombstones, markTombstonesPushed,
+  pruneTombstones, markDirty, clearDirty, pending,
+  meta as storeMeta, markSynced, onExternalChange, health as storeHealth
+} from './store.js';
 import {
   key as acctKey, dbName, currentUser, accounts,
   register as acctRegister, login as acctLogin, logout as acctLogout,
-  removeAccount, migrateGuestData, hasGuestData, validateName, validatePassword
+  removeAccount, migrateGuestData, migrateGuestPhotos, hasGuestData, probeGuestData,
+  validateName, validatePassword
 } from './accounts.js';
 
 /* 入口私钥（SHA-256）。改口令：把新口令的 sha256 填到这里 */
@@ -196,76 +207,11 @@ function dropURL(id) {
   if (u) { try { URL.revokeObjectURL(u); } catch {} urlCache.delete(id); }
 }
 
-/* ───────── IndexedDB ───────── */
-let dbp = null;
-function db() {
-  if (!dbp) dbp = new Promise((res, rej) => {
-    const req = indexedDB.open(dbName(), 3);
-    req.onupgradeneeded = () => {
-      const d = req.result;
-      if (!d.objectStoreNames.contains(DB_STORE)) {
-        const s = d.createObjectStore(DB_STORE, { keyPath: 'id' });
-        s.createIndex('landmarkId', 'landmarkId', { unique: false });
-      } else if (!req.transaction.objectStore(DB_STORE).indexNames.contains('landmarkId')) {
-        req.transaction.objectStore(DB_STORE).createIndex('landmarkId', 'landmarkId', { unique: false });
-      }
-    };
-    req.onsuccess = () => res(req.result);
-    req.onerror = () => rej(req.error);
-  });
-  return dbp;
-}
-async function dbAll() {
-  const d = await db();
-  return new Promise((res, rej) => {
-    const q = d.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).getAll();
-    q.onsuccess = () => res((q.result || []).map(p => {
-      if (!p.landmarkId && p.chapterId) p.landmarkId = p.chapterId;
-      return p;
-    }));
-    q.onerror = () => rej(q.error);
-  });
-}
-async function dbPut(rec) {
-  const d = await db();
-  return new Promise((res, rej) => {
-    const t = d.transaction(DB_STORE, 'readwrite');
-    t.objectStore(DB_STORE).put(rec);
-    t.oncomplete = () => res(true);
-    t.onerror = () => rej(t.error);
-  });
-}
-async function dbDel(id) {
-  const d = await db();
-  return new Promise((res, rej) => {
-    const t = d.transaction(DB_STORE, 'readwrite');
-    t.objectStore(DB_STORE).delete(id);
-    t.oncomplete = () => res(true);
-    t.onerror = () => rej(t.error);
-  });
-}
-
-/* ───────── 坐标 ───────── */
-function parseCoord(s) {
-  if (!s) return null;
-  const t = String(s).trim();
-  let m = /([\d.]+)\s*°?\s*([NS])\s*[, ]*\s*([\d.]+)\s*°?\s*([EW])/i.exec(t);
-  if (m) {
-    const lat = parseFloat(m[1]) * (m[2].toUpperCase() === 'S' ? -1 : 1);
-    const lng = parseFloat(m[3]) * (m[4].toUpperCase() === 'W' ? -1 : 1);
-    return isFinite(lat) && isFinite(lng) ? { lat, lng } : null;
-  }
-  m = /(-?[\d.]+)\s*[, ]\s*(-?[\d.]+)/.exec(t);
-  if (m) {
-    const lat = parseFloat(m[1]), lng = parseFloat(m[2]);
-    if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) return { lat, lng };
-  }
-  return null;
-}
-function fmtCoord(lat, lng) {
-  if (lat == null || lng == null) return '';
-  return `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lng).toFixed(2)}°${lng >= 0 ? 'E' : 'W'}`;
-}
+/* ───────── 照片存储（委托 store.js） ─────────
+   上层仍然叫 dbAll/dbPut/dbDel，但实现只有一个，且带契约校验。 */
+const dbAll = () => allPhotos();
+const dbPut = rec => putPhoto(rec);
+const dbDel = id => delPhotos([id]);
 
 /* ───────── 站点 ───────── */
 function loadSite() {
@@ -309,46 +255,28 @@ function cycleTheme() {
 
 /* ───────── 地标 ───────── */
 function normalizeLM(l) {
-  const geo = (l.lat != null && l.lng != null && isFinite(l.lat) && isFinite(l.lng))
-    ? { lat: +l.lat, lng: +l.lng }
-    : parseCoord(l.coord || '');
-  return {
-    id: l.id || 'lm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-    name: l.name || (getLang() === 'en' ? 'Untitled' : '未命名'),
-    nameEn: l.nameEn || '',
-    coord: l.coord || (geo ? fmtCoord(geo.lat, geo.lng) : ''),
-    date: l.date || '',
-    note: l.note || '',
-    /* 手记：{ t: 标题, b: 正文, m: 余味 0-3, at: 保存时间 } */
-    memoir: (l.memoir && (l.memoir.b || l.memoir.t))
-      ? {
-          t: String(l.memoir.t || '').slice(0, 60),
-          b: String(l.memoir.b || '').slice(0, 900),
-          /* null = 没选余味，和「平常」区分开 */
-          m: l.memoir.m == null ? null : clamp(+l.memoir.m || 0, 0, 3),
-          at: +l.memoir.at || 0
-        }
-      : null,
-    accent: l.accent || ACCENTS[0],
-    coverId: l.coverId || null,
-    lat: geo ? geo.lat : null,
-    lng: geo ? geo.lng : null,
-    keyHash: l.keyHash || '',
-    createdAt: l.createdAt || 0
-  };
+  return normalizeAlbum(l, {
+    untitled: getLang() === 'en' ? 'Untitled' : '未命名',
+    accent: ACCENTS[0]
+  });
 }
 function loadLandmarks() {
-  try {
-    const raw = localStorage.getItem(acctKey(LS_LM));
-    if (raw) {
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) return arr.map(normalizeLM);
-    }
-  } catch {}
-  return null;
+  const env = loadAlbums();
+  /* exists=false 才是「这台机器上还没有这个账号的数据」，
+     空数组代表用户把相册删光了，不能重新灌示例。 */
+  if (!env.exists) return null;
+  if (env.corrupted) toast(t('toast.corrupt'), true);
+  return env.items.map(normalizeLM);
 }
+
 const saveLandmarks = () => {
-  try { localStorage.setItem(acctKey(LS_LM), JSON.stringify(state.landmarks)); } catch {}
+  const res = saveAlbums(state.landmarks);
+  if (!res.ok) {
+    checkQuota(res.error);
+    toast(t('toast.noSpace'), true);
+    return;
+  }
+  state.landmarks = res.items;
   schedulePush();
 };
 
@@ -1151,15 +1079,24 @@ async function uploadTo(landmarkId, files) {
     const thumb = makeThumb(full);
     const exif = await readExif(f).catch(() => null);
 
-    const rec = {
-      id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7),
+    /* 入库前统一过契约：尺寸、名称、缩略图前缀、EXIF 白名单都在
+       model.js 里判一次，避免坏字段流到布局和云同步里。 */
+    const rec = normalizePhoto({
+      id: 'ph-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7),
       landmarkId,
-      name: (f.name.replace(/\.[^.]+$/, '') || t('common.untitled')).slice(0, 46),
-      blob, thumb, exif,
+      name: f.name.replace(/\.[^.]+$/, '') || t('common.untitled'),
       w: full.width, h: full.height,
-      t: Date.now() + i
-    };
+      /* 有拍摄时间就用拍摄时间：相册按 t 倒序，用上传时间会把
+         一次旅行里不同日子的片子打乱。 */
+      t: exif?.ts || (Date.now() + i),
+      thumb, exif
+    }, { untitled: t('common.untitled') });
+    rec.blob = blob;
+    rec.rev = 1;
+    rec.at = Date.now();
+
     try { await dbPut(rec); } catch (err) { checkQuota(err); skip++; continue; }
+    markDirty('photo', rec.id);
     state.photos.unshift(rec);
     ok++;
   }
@@ -1183,8 +1120,11 @@ async function uploadTo(landmarkId, files) {
 async function removePhoto(p) {
   await dbDel(p.id);
   dropURL(p.id);
-  if (cloudUser()) cloudDeletePhotos([p.id]).catch(e => console.warn('[sync] del', e));
+  /* 墓碑 + 脏标记：登出状态或断网时删掉的照片，下次同步仍然会删云端，
+     否则另一台设备的旧副本会把它推回来。 */
+  tombstone('photo', p.id, p.rev | 0);
   state.photos = state.photos.filter(x => x.id !== p.id);
+  schedulePush(600);
   const lm = currentLandmark();
   if (lm && lm.coverId === p.id) { lm.coverId = null; saveLandmarks(); }
   albumList = lm ? photosOf(lm.id) : [];
@@ -1644,17 +1584,13 @@ $('#site-form').addEventListener('submit', e => {
     clearTimeout(armed); armed = 0;
     del.textContent = t('common.delete');
     del.classList.remove('is-armed');
-    for (const p of photosOf(lm.id)) {
-      await dbDel(p.id);
-      dropURL(p.id);
-    }
     const gone = state.photos.filter(p => p.landmarkId === lm.id).map(p => p.id);
+    for (const p of photosOf(lm.id)) dropURL(p.id);
+    await delPhotosOfAlbum(lm.id);
+    tombstone('album', lm.id, lm.rev | 0);
+    gone.forEach(id => tombstone('photo', id));
     state.photos = state.photos.filter(p => p.landmarkId !== lm.id);
     state.landmarks = state.landmarks.filter(x => x.id !== lm.id);
-    if (cloudUser()) {
-      cloudDeleteAlbum(lm.id).catch(e => console.warn('[sync] delAlbum', e));
-      if (gone.length) cloudDeletePhotos(gone).catch(e => console.warn('[sync] delPhotos', e));
-    }
     saveLandmarks();
     closeAlbum();
     buildMarkers();
@@ -2404,6 +2340,23 @@ async function updateVaultStats() {
   $('#vault-size').textContent = size > 1048576
     ? (size / 1048576).toFixed(1) + ' MB'
     : Math.max(0, Math.round(size / 1024)) + ' KB';
+
+  /* 数据体检：把「有记录但打不开」的情况摆在明面上，
+     而不是等用户发现照片少了几张。 */
+  const el = $('#vault-health');
+  if (!el) return;
+  try {
+    const h = await storeHealth({ albums: state.landmarks, photos: state.photos });
+    const errs = h.issues.filter(i => i.level === 'error').reduce((a, i) => a + (i.n || 0), 0);
+    /* info 级（比如"原图还没下载"）是正常状态，不计入提示数 */
+    const warns = h.issues.filter(i => i.level === 'warn').reduce((a, i) => a + (i.n || 0), 0);
+    el.textContent = errs ? t('vault.bad', { n: errs })
+      : warns ? t('vault.warn', { n: warns })
+        : t('vault.ok');
+    el.dataset.state = errs ? 'bad' : warns ? 'warn' : 'ok';
+  } catch {
+    el.textContent = '—';
+  }
 }
 
 $('#vault-open')?.addEventListener('click', openVault);
@@ -2472,37 +2425,93 @@ $('#vault-file')?.addEventListener('change', async e => {
   const pass = $('#vault-pass2').value || '';
   try {
     const payload = await readBackup(await file.text(), pass);
-    await mergeBackup(payload);
-    toast(`已恢复 ${payload.landmarks?.length || 0} 处地标`);
+    const r = await mergeBackup(payload);
+    const bits = [`${r.albums} 处地标`, `${r.photos} 张照片`];
+    if (r.fixed) bits.push(`修正 ${r.fixed} 项`);
+    if (r.skipped) bits.push(`跳过 ${r.skipped} 条无效记录`);
+    toast('已恢复 ' + bits.join(' · '), r.skipped > 0 && !r.albums && !r.photos);
   } catch (err) {
     toast(err?.message || '导入失败', true);
   }
 });
 
+/* 导入备份：外部文件是最不可信的数据源，逐条过契约。
+   修掉字段就计一次 fixed，整条无法成立（没有 id / 找不到所属相册）就跳过。
+   与本地已有条目合并时把 rev 抬到两者之上——用户是主动导入，
+   这次导入必须赢过本地旧副本，也必须赢过云端旧副本。 */
 async function mergeBackup(payload) {
+  const now = Date.now();
+  let fixed = 0, skipped = 0, addedAlbums = 0, addedPhotos = 0;
+
   const byId = new Map(state.landmarks.map(l => [l.id, l]));
-  (payload.landmarks || []).forEach(raw => {
-    const next = normalizeLM(raw);
+  for (const raw of payload.landmarks || []) {
+    const issues = albumIssues(raw);
+    const next = normalizeAlbum(raw, {
+      untitled: t('common.untitled'),
+      accent: ACCENTS[0]
+    });
+    if (!next) { skipped++; continue; }
+    fixed += issues.length;
+
     const cur = byId.get(next.id);
-    if (cur) Object.assign(cur, next, { coverId: cur.coverId || next.coverId });
-    else { state.landmarks.push(next); byId.set(next.id, next); }
-  });
+    if (cur) {
+      const rev = Math.max(cur.rev | 0, next.rev | 0) + 1;
+      Object.assign(cur, next, {
+        coverId: cur.coverId || next.coverId,
+        rev,
+        at: now,
+        deleted: false
+      });
+    } else {
+      next.rev = Math.max(1, next.rev | 0);
+      next.at = next.at || now;
+      state.landmarks.push(next);
+      byId.set(next.id, next);
+      addedAlbums++;
+    }
+  }
   saveLandmarks();
 
+  /* 导入是明确的"恢复"意图：清掉这些条目的墓碑，否则云端的删除记录
+     会在下一次同步时把它们再删一遍。 */
+  clearTombstones('album', state.landmarks.map(l => l.id));
+  markDirty('album');
+
+  /* 照片必须挂在已存在的相册上，否则会变成统计里有、界面里永远看不到的孤儿 */
+  const albumIds = new Set(state.landmarks.map(l => l.id));
   const have = new Set(state.photos.map(p => p.id));
   const added = [];
-  for (const p of payload.photos || []) {
-    if (have.has(p.id)) continue;
-    const blob = photoBlob(p.data);
-    if (!blob) continue;
-    const rec = {
-      id: p.id, landmarkId: p.landmarkId, name: p.name,
-      blob, thumb: p.thumb, exif: p.exif || null,
-      w: p.w, h: p.h, t: p.t || Date.now()
-    };
-    try { await dbPut(rec); added.push(rec); } catch (err) { checkQuota(err); }
+
+  for (const raw of payload.photos || []) {
+    const issues = photoIssues(raw, albumIds);
+    if (issues.includes('orphan') || issues.includes('no_album') || issues.includes('not_object')) {
+      skipped++;
+      continue;
+    }
+    const p = normalizePhoto(raw, { untitled: t('common.untitled') });
+    if (!p || have.has(p.id)) { if (!p) skipped++; continue; }
+
+    const blob = photoBlob(raw.data);
+    if (!blob) { skipped++; continue; }
+
+    p.blob = blob;
+    p.rev = Math.max(1, p.rev | 0);
+    p.at = now;
+    fixed += issues.length;
+
+    try {
+      await dbPut(p);
+      markDirty('photo', p.id);
+      added.push(p);
+      have.add(p.id);
+    } catch (err) {
+      checkQuota(err);
+      skipped++;
+    }
   }
   state.photos.push(...added);
+  addedPhotos = added.length;
+  if (added.length) clearTombstones('photo', added.map(p => p.id));
 
   if (payload.site) {
     applySite({ ...DEFAULT_SITE, ...payload.site });
@@ -2514,7 +2523,8 @@ async function mergeBackup(payload) {
   renderOverview();
   buildMarkers();
   updateVaultStats();
-  return added.length;
+  schedulePush(400);
+  return { albums: addedAlbums, photos: addedPhotos, fixed, skipped };
 }
 
 /* ───────── 语言 ───────── */
@@ -2527,6 +2537,9 @@ function applyLang() {
   document.documentElement.setAttribute('lang', getLang() === 'zh' ? 'zh-CN' : 'en');
   /* 站点标题与导语跟随语言（未自定义时） */
   applySite(state.site || loadSite());
+  /* 云同步条的文字是运行时算的，applyI18n 会把它重置成默认词条，
+     所以这里再画一次（未连接时它自己会隐藏） */
+  renderCloud();
   /* 动态区域重绘，保证切换后不残留旧语言 */
   renderWall();
   renderOverview();
@@ -2666,9 +2679,33 @@ const ACCT_OPEN = 'atlas.acct.open';
 
 /* ───────── 云同步 ─────────
    本地账号解决"这台机器"，云同步解决"换台机器"。
-   登录云之后：任何一次落库都排队推上去，登录/换设备时先拉一次。
-   没登录时一切照旧走 localStorage + IndexedDB，不阻塞任何操作。 */
-let syncTimer = 0, syncing = false, pulling = false, lastSync = 0;
+
+   分工：
+     store.js  记住哪些改动还没上云、哪些条目被删了（墓碑）
+     cloud.js  只做传输，不含任何"谁该赢"的判断
+     这里      编排：先拉后推 → 合并 → 退避重试 → 更新界面
+
+   一致性规则（与 model.pickNewer 一致）：
+     rev 大者赢；rev 相同看时间；再相同保留本地。
+     删除是一条"更新更晚的墓碑"，所以旧设备的副本顶不回来。
+   ─────────────────────────────── */
+const SYNC = { phase: 'idle', error: '', lastAt: 0, tries: 0 };
+let syncTimer = 0, retryTimer = 0, running = false, pulledOnce = false, queued = false;
+
+/* 云同步的作用域 = 当前本机账号（未登录时是 guest）。
+   同一个浏览器里换本机账号，不能把上一个账号的云端数据静默灌进新分区；
+   要么在当前账号下重新启用（会走一次合并），要么保持暂停。 */
+const LS_CLOUD_SCOPE = 'atlas.cloud.scope.v1';
+const scopeId = () => currentUser()?.id || 'guest';
+function scopeBound() {
+  try {
+    const v = localStorage.getItem(LS_CLOUD_SCOPE);
+    return !v || v === scopeId();   /* 没有记录 = 首次连接，允许 */
+  } catch { return true; }
+}
+function bindScope() {
+  try { localStorage.setItem(LS_CLOUD_SCOPE, scopeId()); } catch {}
+}
 
 function setCloudState(kind, text) {
   const box = $('#acct-cloud');
@@ -2677,6 +2714,13 @@ function setCloudState(kind, text) {
   box.classList.toggle('is-busy', kind === 'busy');
   const sub = $('#acct-cloud-sub');
   if (sub && text) sub.textContent = text;
+}
+
+function syncSummary() {
+  const m = storeMeta();
+  return m.syncedAt
+    ? t('cloud.synced', { a: state.landmarks.length, p: state.photos.length })
+    : t('cloud.sub');
 }
 
 function renderCloud() {
@@ -2688,143 +2732,284 @@ function renderCloud() {
     box.hidden = true;
     return;
   }
+
   const u = cloudUser();
   box.hidden = false;
-  $('#acct-cloud-btn').hidden = !!u;
-  $('#acct-cloud-out').hidden = !u;
-  if (u) {
-    $('#acct-cloud-title').textContent = t('cloud.connected', { name: u.name });
-    if (!box.classList.contains('is-busy')) {
-      setCloudState('on', lastSync
-        ? t('cloud.synced', { a: state.landmarks.length, p: state.photos.length })
-        : t('cloud.sub'));
-    }
-  } else {
+  $('#acct-cloud-btn').hidden = !!u && scopeBound();
+  $('#acct-cloud-out').hidden = !u || !scopeBound();
+
+  if (!u) {
     $('#acct-cloud-title').textContent = t('cloud.title');
+    $('#acct-cloud-btn').textContent = t('cloud.signIn');
     setCloudState('', t('cloud.sub'));
+    return;
   }
+
+  $('#acct-cloud-title').textContent = t('cloud.connected', { name: u.name });
+
+  if (!scopeBound()) {
+    $('#acct-cloud-btn').hidden = false;
+    $('#acct-cloud-btn').textContent = t('cloud.enableHere');
+    setCloudState('', t('cloud.paused'));
+    return;
+  }
+
+  $('#acct-cloud-btn').textContent = t('cloud.signIn');
+  if (SYNC.phase === 'busy') setCloudState('busy', t('cloud.syncing'));
+  else if (SYNC.phase === 'error') setCloudState('', t('cloud.failed', { msg: SYNC.error || '—' }));
+  else setCloudState('on', syncSummary());
 }
 
-function schedulePush(delay = 1400) {
-  if (pulling || !cloudUser()) return;
+function schedulePush(delay = 1200) {
+  if (!cloudUser() || !cloudAvailable() || !scopeBound()) return;
   clearTimeout(syncTimer);
-  syncTimer = setTimeout(() => { syncPush().catch(cloudFail); }, delay);
+  syncTimer = setTimeout(() => {
+    if (running) { queued = true; return; }
+    syncNow('edit');
+  }, delay);
 }
 
-function cloudFail(e) {
-  console.warn('[sync]', e);
-  const msg = (e?.message || String(e)).slice(0, 48);
-  setCloudState('', t('cloud.failed', { msg }));
-  renderCloudSoon();
+/* 墓碑也要作为记录参与合并：它们不是"不存在"，而是"更晚的删除" */
+function tombstoneAlbums() {
+  const { tombstones } = storeMeta();
+  return Object.entries(tombstones.albums).map(([id, t]) => ({
+    id, name: '', nameEn: '', coord: '', date: '', note: '', memoir: null,
+    accent: ACCENTS[0], coverId: null, lat: null, lng: null, keyHash: '',
+    createdAt: 0, rev: t.rev | 0, at: t.at | 0, deleted: true
+  }));
 }
 
-let cloudSoon = 0;
-function renderCloudSoon() {
-  clearTimeout(cloudSoon);
-  cloudSoon = setTimeout(renderCloud, 40);
+async function syncPull() {
+  setCloudState('busy', t('cloud.syncing'));
+
+  const { albums: aRows, photos: pRows } = await pullAll();
+  const remoteAlbums = aRows.map(albumFromRow).filter(Boolean);
+  const remotePhotos = pRows.map(photoFromRow).filter(Boolean);
+
+  /* ① 相册 */
+  const localAlbums = state.landmarks.map(normalizeLM).concat(tombstoneAlbums());
+  const mergedA = mergeCollections(localAlbums, remoteAlbums).items;
+  const liveAlbums = mergedA.filter(a => !a.deleted);
+  const deadAlbums = mergedA.filter(a => a.deleted);
+  const deadAlbumIds = new Set(deadAlbums.map(a => a.id));
+
+  let pushedNeeded = false;
+  const remoteAById = new Map(remoteAlbums.map(a => [a.id, a]));
+  for (const l of localAlbums) {
+    /* 墓碑是否需要重推，看 pushedAt；不在这里一律当成"有改动"，
+       否则每次打开页面都会把全部相册再写一遍云端 */
+    if (l.deleted) continue;
+    const r = remoteAById.get(l.id);
+    if (!r || (l.rev | 0) > (r.rev | 0)) pushedNeeded = true;
+    else if ((l.rev | 0) === (r.rev | 0) && (l.at | 0) > (r.at | 0)) pushedNeeded = true;
+  }
+
+  /* 云端删掉的相册：本地连照片一起删，并给照片留墓碑，
+     避免下次从第三台设备把它们推回来 */
+  let removedAlbums = 0;
+  /* 云端还"活着"、本地却是墓碑：说明有设备推了旧副本回来。
+     本地挡住它，同时把墓碑重新标记为待推送，让云端也回到删除状态。 */
+  const liveOnRemote = new Set(remoteAlbums.filter(a => !a.deleted).map(a => a.id));
+
+  for (const dead of deadAlbums) {
+    const id = dead.id;
+
+    if (liveOnRemote.has(id)) {
+      tombstone('album', id, dead.rev | 0, { pushed: false });
+      continue;
+    }
+    /* 云端删掉的条目也要在本地留墓碑：否则第三台设备再推一次旧副本，
+       本地没有"这是删除"的记忆，就跟着复活了。 */
+    if (state.landmarks.some(l => l.id === id)) tombstone('album', id, dead.rev | 0, { pushed: true });
+    if (!state.landmarks.some(l => l.id === id)) continue;
+    state.photos.filter(p => p.landmarkId === id).forEach(p => tombstone('photo', p.id, p.rev | 0));
+    await delPhotosOfAlbum(id);
+    state.photos = state.photos.filter(p => p.landmarkId !== id);
+    removedAlbums++;
+  }
+  if (removedAlbums) state.landmarks = state.landmarks.filter(l => !deadAlbumIds.has(l.id));
+
+  state.landmarks = liveAlbums.map(normalizeLM);
+  const savedA = saveAlbums(state.landmarks, { bump: false });
+  if (!savedA.ok) throw savedA.error || new Error('album_write_failed');
+
+  /* ② 照片 */
+  const localPhotos = state.photos.map(p => ({ ...p, deleted: false })).concat(
+    Object.entries(storeMeta().tombstones.photos).map(([id, t]) => ({
+      id, landmarkId: '', name: '', w: 4, h: 3, t: 0,
+      thumb: '', remote: null, exif: null, rev: t.rev | 0, at: t.at | 0, deleted: true
+    }))
+  );
+  const mergedP = mergeCollections(localPhotos, remotePhotos).items;
+
+  const deadPhotoRecords = mergedP.filter(p => p.deleted);
+  const deadPhotos = deadPhotoRecords.map(p => p.id);
+  if (deadPhotos.length) {
+    /* 同理：远端删除在本地落成墓碑；如果云端反而"活着"，重新排队推送 */
+    const livePhotoOnRemote = new Set(remotePhotos.filter(x => !x.deleted).map(x => x.id));
+    deadPhotoRecords.forEach(p => tombstone('photo', p.id, p.rev | 0, {
+      pushed: !livePhotoOnRemote.has(p.id)
+    }));
+    await delPhotos(deadPhotos);
+    const dead = new Set(deadPhotos);
+    state.photos = state.photos.filter(p => !dead.has(p.id));
+  }
+
+  const albumIds = new Set(state.landmarks.map(l => l.id));
+  const byId = new Map(state.photos.map(p => [p.id, p]));
+  let addedPhotos = 0;
+
+  for (const rp of mergedP) {
+    if (rp.deleted) continue;
+    if (!albumIds.has(rp.landmarkId)) continue;   /* 孤儿：宁可不上屏也不制造幽灵卡片 */
+    const cur = byId.get(rp.id);
+
+    if (cur) {
+      const newer = (rp.rev | 0) > (cur.rev | 0)
+        || ((rp.rev | 0) === (cur.rev | 0) && (rp.at | 0) > (cur.at | 0));
+      if (newer) {
+        const blob = cur.blob;
+        Object.assign(cur, rp, {
+          blob,
+          /* 远端这一行可能没带缩略图/原图路径（旧行或上传失败），
+             不要用它覆盖本地已有的那份 */
+          thumb: rp.thumb || cur.thumb,
+          remote: rp.remote || cur.remote
+        });
+        try { await dbPut(cur); } catch (e) { console.warn('[sync] photo meta', e); }
+      }
+    } else {
+      const rec = { ...rp, blob: null };
+      state.photos.push(rec);
+      byId.set(rec.id, rec);
+      try { await dbPut(rec); } catch (e) { console.warn('[sync] photo add', e); }
+      addedPhotos++;
+    }
+  }
+
+  if (pushedNeeded || Object.keys(unpushedTombstones().albums).length) markDirty('album');
+  applyRemote();
+
+  return { albums: liveAlbums.length, photos: addedPhotos, removed: removedAlbums };
+}
+
+/* 同步/跨标签刷新时，正在写的手记不能被关掉——用户手里的草稿优先 */
+function refreshMemoirIfIdle() {
+  const form = $('#memoir-form');
+  if (form && !form.hidden) return;
+  renderMemoir();
+}
+
+/* 拉取之后统一刷新视图，避免每个分支各写一遍 */
+function applyRemote() {
+  renderWall();
+  syncStats();
+  syncEarth();
+  if (state.current && albumEl.classList.contains('is-open')) {
+    albumList = photosOf(state.current);
+    renderAlbumGrid();
+    refreshMemoirIfIdle();
+    const lm = currentLandmark();
+    if (lm) {
+      $('#album-meta').innerHTML = [lm.coord, lm.date, t('ov.count', { n: albumList.length })]
+        .filter(Boolean).map(v => `<span>${esc(v)}</span>`).join('');
+    }
+  }
+  updateVaultStats();
 }
 
 async function syncPush() {
   const u = cloudUser();
-  if (!u || syncing || pulling) return;
-  syncing = true;
-  setCloudState('busy', t('cloud.syncing'));
-  try {
-    await pushAlbums(state.landmarks.map(l => ({
-      local_id: l.id,
-      payload: {
-        name: l.name, nameEn: l.nameEn, coord: l.coord, date: l.date, note: l.note,
-        memoir: l.memoir, accent: l.accent, coverId: l.coverId,
-        lat: l.lat, lng: l.lng, keyHash: l.keyHash, createdAt: l.createdAt
-      }
-    })));
+  if (!u) return;
 
-    /* 原图分批发：一次最多 6 张，剩下的排下一轮，避免一次把上行带宽吃满 */
-    const pending = state.photos.filter(p => !p.remote && p.blob && (p.upFail || 0) < 3);
-    const batch = pending.slice(0, 6);
-    for (let i = 0; i < batch.length; i++) {
-      const p = batch[i];
-      setCloudState('busy', t('cloud.uploading', { i: i + 1, n: batch.length }));
-      try {
-        p.remote = await uploadPhotoBlob(u.id, p.id, p.blob);
-        p.cloudAt = Date.now();
-        await dbPut(p);
-      } catch (e) {
-        p.upFail = (p.upFail || 0) + 1;
-        console.warn('[sync] upload', e);
-      }
+  const p = pending();
+  const todoTomb = unpushedTombstones();
+
+  /* ① 相册：只有真的有改动（或还有没送出去的墓碑）才推 */
+  if (p.albums || Object.keys(todoTomb.albums).length) {
+    const rows = state.landmarks.map(albumToRow);
+    for (const [id, tb] of Object.entries(todoTomb.albums)) {
+      rows.push({ local_id: id, payload: {}, rev: tb.rev | 0, deleted: true });
     }
-
-    await pushPhotos(state.photos.map(p => ({
-      local_id: p.id, album_local_id: p.landmarkId, name: p.name,
-      w: p.w, h: p.h, taken_at: p.t, thumb: p.thumb || null, remote_path: p.remote || null
-    })));
-
-    lastSync = Date.now();
-    syncing = false;
-    setCloudState('on', t('cloud.synced', { a: state.landmarks.length, p: state.photos.length }));
-    if (pending.length > batch.length) schedulePush(900);
-  } catch (e) {
-    syncing = false;
-    throw e;
+    await pushAlbums(rows);
+    clearDirty('album');
+    markTombstonesPushed('album', Object.keys(todoTomb.albums));
   }
+
+  /* ② 原图：每轮最多 6 张，失败累计 3 次就跳过（不阻塞其他条目） */
+  const dirtyPhotos = new Set(p.photos);
+  const todo = state.photos.filter(x => !x.remote && x.blob && (x.upFail || 0) < 3);
+  const batch = todo.slice(0, 6);
+
+  for (let i = 0; i < batch.length; i++) {
+    const ph = batch[i];
+    setCloudState('busy', t('cloud.uploading', { i: i + 1, n: batch.length }));
+    try {
+      ph.remote = await uploadPhotoBlob(u.id, ph.id, ph.blob);
+      ph.rev = (ph.rev | 0) + 1;
+      ph.at = Date.now();
+      ph.upFail = 0;
+      await dbPut(ph);
+      dirtyPhotos.add(ph.id);
+    } catch (e) {
+      ph.upFail = (ph.upFail || 0) + 1;
+      console.warn('[sync] upload', e);
+    }
+  }
+
+  /* ③ 元数据：只推行有变化的 + 墓碑，缩略图不再每次全量上传 */
+  const changed = state.photos.filter(x => dirtyPhotos.has(x.id) || !x.remote);
+  if (changed.length || Object.keys(todoTomb.photos).length) {
+    const rows = changed.map(photoToRow);
+    for (const [id, tb] of Object.entries(todoTomb.photos)) {
+      rows.push({
+        local_id: id, album_local_id: '', name: '', w: 1, h: 1, taken_at: 0,
+        thumb: null, remote_path: null, rev: tb.rev | 0, deleted: true
+      });
+    }
+    await pushPhotos(rows);
+    clearDirty('photo', [...dirtyPhotos, ...changed.map(x => x.id)]);
+    markTombstonesPushed('photo', Object.keys(todoTomb.photos));
+  }
+
+  if (todo.length > batch.length) schedulePush(700);
 }
 
-/* 拉取：云端是跨设备的事实源。同 id 以云端为准，本地独有的保留并稍后推上去。 */
-async function syncPull(announce) {
-  if (!cloudUser() || pulling) return 0;
-  pulling = true;
+async function syncNow(reason = 'auto') {
+  if (running || !cloudUser() || !cloudAvailable() || !scopeBound()) return;
+  if (navigator.onLine === false) { renderCloud(); return; }
+
+  running = true;
   clearTimeout(syncTimer);
-  setCloudState('busy', t('cloud.syncing'));
+  SYNC.phase = 'busy';
+  renderCloud();
+
   try {
-    const { albums, photos } = await pullAll();
-    let added = 0;
-
-    for (const row of albums) {
-      const payload = row.payload || {};
-      const lm = normalizeLM({ ...payload, id: row.local_id });
-      const i = state.landmarks.findIndex(x => x.id === lm.id);
-      if (i >= 0) state.landmarks[i] = lm;
-      else { state.landmarks.push(lm); added++; }
-    }
-
-    const byId = new Map(state.photos.map(p => [p.id, p]));
-    for (const row of photos) {
-      const cur = byId.get(row.local_id);
-      if (cur) {
-        if (row.remote_path) cur.remote = row.remote_path;
-        if (row.thumb && !cur.thumb) cur.thumb = row.thumb;
-        continue;
-      }
-      const rec = {
-        id: row.local_id, landmarkId: row.album_local_id, name: row.name || '',
-        w: row.w || 4, h: row.h || 3, t: row.taken_at || Date.now(),
-        thumb: row.thumb || '', remote: row.remote_path || null, blob: null
-      };
-      state.photos.push(rec);
-      byId.set(rec.id, rec);
-      try { await dbPut(rec); } catch {}
-      added++;
-    }
-
-    pulling = false;
-    lastSync = Date.now();
-    try { localStorage.setItem(acctKey(LS_LM), JSON.stringify(state.landmarks)); } catch {}
-
-    renderWall();
-    syncStats();
-    syncEarth();
-    if (state.current && albumEl.classList.contains('is-open')) {
-      albumList = photosOf(state.current);
-      renderAlbumGrid();
-    }
-    setCloudState('on', t('cloud.synced', { a: state.landmarks.length, p: state.photos.length }));
-    if (announce && added) toast(t('cloud.done'));
-    return added;
+    if (!pulledOnce) await syncPull();
+    await syncPush();
+    pulledOnce = true;
+    SYNC.phase = 'idle';
+    SYNC.error = '';
+    SYNC.tries = 0;
+    SYNC.lastAt = Date.now();
+    markSynced(SYNC.lastAt);
+    pruneTombstones();
+    renderCloud();
   } catch (e) {
-    pulling = false;
-    cloudFail(e);
-    return 0;
+    SYNC.phase = 'error';
+    SYNC.error = String(e?.message || e).slice(0, 48);
+    SYNC.tries++;
+    console.warn('[sync]', reason, e);
+    renderCloud();
+    /* 指数退避：2s / 4s / 8s … 最多 60s，最多 6 次。
+       之后交给下一次编辑、上线事件或重新登录触发，不无限重试。 */
+    if (SYNC.tries <= 6) {
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(() => syncNow('retry'), Math.min(60000, 2000 * 2 ** (SYNC.tries - 1)));
+    }
+  } finally {
+    running = false;
+    if (queued) { queued = false; schedulePush(400); }
   }
 }
 
@@ -2856,16 +3041,47 @@ function pumpBlob() {
 }
 
 function initCloudSync() {
-  initCloud().then(async ok => {
+  initCloud().then(ok => {
+    if (ok && cloudUser() && !localStorage.getItem(LS_CLOUD_SCOPE)) bindScope();
     renderCloud();
-    if (ok && cloudUser()) await syncPull(false);
+    if (ok && cloudUser() && scopeBound()) syncNow('boot');
   }).catch(e => { console.warn('[cloud]', e); renderCloud(); });
 
-  onCloudChange(() => { renderCloud(); if (cloudUser()) syncPull(false); });
+  onCloudChange(() => {
+    pulledOnce = false;
+    renderCloud();
+    if (cloudUser()) syncNow('auth');
+  });
+
+  /* 断网重连、切回标签页：把积压的改动补推一次 */
+  addEventListener('online', () => { if (cloudUser()) syncNow('online'); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !cloudUser() || running) return;
+    const p = pending();
+    const tu = unpushedTombstones();
+    if (p.albums || p.photos.length || Object.keys(tu.albums).length || Object.keys(tu.photos).length) {
+      schedulePush(600);
+    } else if (!pulledOnce) {
+      syncNow('visible');
+    }
+  });
 
   $('#acct-cloud-btn')?.addEventListener('click', async () => {
+    /* 已连接但换了本机账号：这一步是"在当前分区启用"，不是重新授权 */
+    if (cloudUser() && !scopeBound()) {
+      bindScope();
+      pulledOnce = false;
+      SYNC.phase = 'idle';
+      renderCloud();
+      await syncNow('bind');
+      return;
+    }
     try { await signInCloud(); }
-    catch (e) { cloudFail(e); }
+    catch (e) {
+      SYNC.phase = 'error';
+      SYNC.error = String(e?.message || e).slice(0, 48);
+      renderCloud();
+    }
   });
   $('#acct-cloud-out')?.addEventListener('click', async () => {
     await signOutCloud();
@@ -2909,7 +3125,13 @@ function initAccounts() {
     mode = m;
     tabs.forEach(b => b.setAttribute('aria-selected', String(b.dataset.mode === m)));
     $('#acct-pass2-wrap').hidden = m !== 'register';
-    $('#acct-migrate-wrap').hidden = !(m === 'register' && hasGuestData());
+    /* 每次切到注册都重新探一次：用户可能刚刚才上传了照片 */
+    $('#acct-migrate-wrap').hidden = true;
+    if (m === 'register') {
+      probeGuestData(true).then(v => {
+        if (mode === 'register') $('#acct-migrate-wrap').hidden = !v;
+      }).catch(() => {});
+    }
     submit.setAttribute('data-i18n', m === 'login' ? 'acct.login' : 'acct.create');
     submit.textContent = t(m === 'login' ? 'acct.login' : 'acct.create');
     $('#acct-pass').setAttribute('autocomplete', m === 'login' ? 'current-password' : 'new-password');
@@ -2977,7 +3199,12 @@ function initAccounts() {
         if (pw !== ($('#acct-pass2').value || '')) throw new Error('pw_mismatch');
         const u = await acctRegister(name, pw);
         const want = !$('#acct-migrate-wrap').hidden && $('#acct-migrate').checked;
-        const moved = want ? migrateGuestData(u.id) : 0;
+        let moved = 0;
+        if (want) {
+          moved = migrateGuestData(u.id);
+          /* 地标搬完还要搬照片：两套存储，缺一边相册就是空壳 */
+          try { await migrateGuestPhotos(u.id); } catch (e) { console.warn('[acct] photo migrate', e); }
+        }
         finish(t('acct.hello', { name: u.name }) + (moved ? ' · ' + t('acct.moved') : ''));
       } else {
         const u = await acctLogin(name, pw);
@@ -3096,6 +3323,63 @@ async function boot() {
     syncEarth();
   }
 
+  /* 数据自检：不阻塞首屏，异常只写控制台 */
+  pruneTombstones();
+  storeHealth({ albums: state.landmarks, photos: state.photos })
+    .then(h => { if (!h.ok || h.issues.length) console.info('[atlas] 数据体检', h); })
+    .catch(() => {});
+  updateVaultStats();
+
+  /* 多标签页：另一个标签写了数据，这边跟着重读。
+     正在编辑地标的弹窗不打断——用户手里的表单优先。 */
+  let reloadTimer = 0;
+  onExternalChange(msg => {
+    if (!msg || !['albums', 'photos', 'meta'].includes(msg.kind)) return;
+    if (document.getElementById('dlg')?.open) return;
+    clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(async () => {
+      if (msg.kind !== 'photos') {
+        const env = loadAlbums();
+        if (env.exists) {
+          state.landmarks = env.items.map(normalizeLM);
+          renderWall();
+          syncStats();
+          syncEarth();
+        }
+      }
+      if (msg.kind !== 'albums') {
+        try { state.photos = await allPhotos(); } catch {}
+      }
+      if (state.current && albumEl.classList.contains('is-open')) {
+        albumList = photosOf(state.current);
+        renderAlbumGrid();
+        refreshMemoirIfIdle();
+      }
+      updateVaultStats();
+    }, 180);
+  });
+
+  /* 验证入口：控制台 atlasData.health() / atlasData.pending() / atlasData.sync() */
+  window.atlasData = {
+    schema: SCHEMA,
+    limits: LIMITS,
+    health: () => storeHealth({ albums: state.landmarks, photos: state.photos }),
+    pending,
+    meta: storeMeta,
+    sync: () => syncNow('manual'),
+    /* 强制重新走一次"先拉后推"，用于验证跨设备合并 */
+    pull: () => { pulledOnce = false; return syncNow('manual'); },
+    reload: async () => {
+      const env = loadAlbums();
+      state.landmarks = env.exists ? env.items.map(normalizeLM) : [];
+      state.photos = await allPhotos();
+      renderWall(); syncStats(); syncEarth();
+      return { albums: state.landmarks.length, photos: state.photos.length };
+    }
+  };
+
+  /* 先探一下访客库里有没有照片：注册弹窗的"迁移"开关要用 */
+  probeGuestData().catch(() => {});
   initAccounts();
   initCloudSync();
   initMusic();

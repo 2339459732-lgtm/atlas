@@ -70,7 +70,9 @@ function parseTiff(dv, base) {
     date: (t1[EXIF_TAG.DATE] || t0[TAG.DATE] || '').trim()
   };
 
-  if (!raw.model && !raw.make && !raw.f && !raw.fl) return null;
+  /* 只有拍摄时间也算有用的 EXIF：它决定照片在相册里的排序，
+     没有理由因为缺相机型号就把整条丢掉。 */
+  if (!raw.model && !raw.make && !raw.f && !raw.fl && !raw.date) return null;
 
   /* make 常常已经包含在 model 里（"NIKON CORPORATION" + "NIKON Z 6"）。
      保留厂商原本的大小写，别把 EOS 改成 Eos。 */
@@ -85,7 +87,10 @@ function parseTiff(dv, base) {
     ss: fmtShutter(raw.ss),
     iso: raw.iso ? `ISO ${raw.iso}` : '',
     fl: raw.fl ? `${Math.round(raw.fl)}mm` : '',
-    date: fmtDate(raw.date)
+    date: fmtDate(raw.date),
+    /* 排序用的时间戳。EXIF 的 DateTimeOriginal 是「拍摄地当地时间」
+       且不带时区，这里按本机时区解释——只用于排序，不用于展示绝对值。 */
+    ts: parseTime(raw.date)
   };
 
   Object.keys(out).forEach(k => { if (!out[k]) delete out[k]; });
@@ -97,6 +102,13 @@ function fmtShutter(v) {
   if (v >= 1) return `${Number(v.toFixed(1))}s`;
   const d = Math.round(1 / v);
   return `1/${d}s`;
+}
+
+function parseTime(s) {
+  const m = /^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(s || '');
+  if (!m) return 0;
+  const t = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
+  return Number.isFinite(t) ? t : 0;
 }
 
 function fmtDate(s) {

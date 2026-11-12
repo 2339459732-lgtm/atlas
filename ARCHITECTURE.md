@@ -1,7 +1,8 @@
 # ATLAS 图册 — 架构说明
 
-> 一个纯静态、无后端依赖的私人地理相册：WebGL 实体地球 + 册集面板 + 加密保险库。
-> 全部数据留在浏览器本机；跨设备通过加密备份文件迁移。
+> 一个可离线运行的私人地理相册：WebGL 实体地球 + 册集面板 + 加密保险库。
+> 默认全部数据留在浏览器本机；可选接入 WorkBuddy 云服务，用同一账号跨设备同步。
+> 数据层的完整契约、合并规则与验证方式见 **`DATA_ARCHITECTURE.md`**。
 
 ---
 
@@ -91,8 +92,8 @@
 ### 性能边界（实测与设计值）
 | 项 | 边界 | 处置 |
 | --- | --- | --- |
-| 纹理 | 桌面 2048²（约 1.37 MB）、移动 1024²（约 0.36 MB） | 按 `matchMedia` 选档，进入地球前 400 px 才加载 |
-| DPR | 桌面 ≤ 1.75，移动 ≤ 2 | 避免 4K 屏下 3 倍过度绘制 |
+| 纹理 | 1K / 2K / 4K 三档（白昼、夜面、云层），4K 合计约 2.4 MB | 默认按 `innerWidth × dpr` 选档；云层空闲时再补，不占首屏 |
+| DPR | 上限 2（低端设备 1.5） | 帧率不足时 `state.quality` 自动降，不硬撑 |
 | 三角面 | 128×96（约 2.4 万三角） | 移动降到 72×48 |
 | 帧循环 | 仅在区块可见时 `start()`，离屏 `stop()` | IntersectionObserver + 页面隐藏 |
 | 照片 | 长边 2400 px，JPEG 0.93；缩略图 1280 px | 上传前在 Canvas 内完成，不阻塞主线程太久 |
@@ -115,7 +116,12 @@
 `JSON → gzip → AES-GCM(PBKDF2-SHA256, 18 万轮)`，导出 `.atlas` 文件；导入按 id 合并，不覆盖已有照片。
 换设备或清缓存后，用同一文件与口令即可完整恢复；口令遗失不可解密。
 
-**阶段产出**：可上线版本、`ARCHITECTURE.md`、自动化验证脚本（`ref/*.mjs`）。
+### 云同步（可选）
+登录 WorkBuddy 账号后，相册、手记、照片元数据与缩略图自动上云，原图按需下载。
+合并规则、墓碑、作用域与验证方式见 `DATA_ARCHITECTURE.md`；未登录或域名未绑定时完全走本地路径。
+注意：备份是"整包快照"，云同步是"逐条合并"，两者互补，不互相替代。
+
+**阶段产出**：可上线版本、`ARCHITECTURE.md`、`DATA_ARCHITECTURE.md`、自动化验证脚本（`tmp/*.test.mjs`）。
 
 ---
 
@@ -137,31 +143,46 @@
 ## 模块与数据流
 
 ```
-main.js（应用编排）
- ├─ earth.js   球体几何 / 5 套着色器 / 相机与拾取 / 光点
- ├─ geo.js     地名 → 坐标；25 字介绍生成
- ├─ vault.js   SHA-256 校验 / AES-GCM 备份
- ├─ drift.js   首屏微尘
- └─ exif.js    拍摄参数解析
+main.js（应用编排，唯一修改 state 的地方）
+ ├─ model.js    数据契约：字段/上限/默认值/id/合并（纯函数）
+ ├─ store.js    本机持久化：信封版本 / IndexedDB / 墓碑 / 脏标记 / 跨标签广播 / 体检
+ ├─ cloud.js    云端传输：OAuth + atlas_albums/photos + 对象存储（只传不算）
+ ├─ accounts.js 本机账号与命名空间（key()/dbName()）
+ ├─ earth.js    球体几何 / 5 套着色器 / 相机与拾取 / 光点
+ ├─ geo.js      地名 → 坐标；25 字介绍生成
+ ├─ vault.js    SHA-256 校验 / AES-GCM 备份
+ ├─ drift.js    首屏微尘
+ ├─ audio.js    程序化配乐
+ └─ exif.js     拍摄参数解析（含拍摄时间戳）
 ```
 
-数据流：
+数据流（详见 `DATA_ARCHITECTURE.md` 第 2 节）：
 ```
-表单 → geocode() → (lat,lng) → landmark{keyHash}
-     → localStorage + IndexedDB
-     → renderWall() / buildMarkers() / renderOverview()
-     → Earth.setMarkers() → 每帧 project(lat,lng) → DOM 标记
+表单 / 照片
+  → model.normalizeAlbum / normalizePhoto     唯一校验点
+  → store.saveAlbums / putPhoto               唯一落盘点（rev+1、脏标记、广播）
+  → renderWall() / buildMarkers() / renderOverview()
+  → Earth.setMarkers() → 每帧 project(lat,lng) → DOM 标记
+
+云同步：本地 + 本地墓碑 ⇄ 云端行，按 rev/at 合并；删除优先，墓碑保留 45 天
+备份：相册 + 照片 Blob → gzip → AES-GCM；导入逐条过契约并清墓碑
 ```
+
+**边界规则**：`main.js` 之外不直接调用 IndexedDB，也不自己拼 `atlas.*` 键；
+`cloud.js` 不判断"本地新还是云端新"，合并只在 `model.pickNewer` 里做一次。
 
 ## 技术选型一览
 - 无框架、无构建步骤：原生 ES Modules，GitHub Pages 直接托管。
 - 3D：手写 WebGL1/2 兼容着色器（GLSL ES 1.00），不引入引擎。
 - 加密：Web Crypto（PBKDF2 + AES-GCM），压缩用 CompressionStream。
+- 云（可选）：WorkBuddy Cloud SDK（OAuth + Postgres 行级安全 + 对象存储），不引入自建服务端。
 - 地理：维基百科坐标 API + OpenStreetMap Nominatim（均为公开数据，需注明来源）。
 - 字体：Archivo Variable（自托管 woff2）＋ 系统宋体。
 
 ## 已知限制
-1. 地球纹理为 2048，贴近屏幕极限放大时会软；提高分辨率需付下载与显存代价。
-2. 地名解析依赖外部服务，离线时只能手动落点。
-3. 前端私钥可被绕过，不构成安全边界。
+1. 地球贴图分 1K/2K/4K 三档（白昼 4096×2048、云层 4096×2048、夜面 4096×2048）；再放大仍会软，且 4K 首屏多约 2 MB。
+2. 地名解析依赖外部服务（维基百科坐标 + Nominatim），离线时只能手动落点。
+3. 前端私钥可被绕过，不构成安全边界；相册口令只保护"界面入口"，不加密照片。
 4. 备份文件包含原始照片，体积随照片数线性增长。
+5. 云同步只在 `*.workbuddy.host` 域生效；GitHub Pages 上是纯本地模式。
+6. 冲突以整条记录合并（rev → at → 本地优先），不做字段级 diff；删除在 45 天墓碑窗口内优先于编辑。

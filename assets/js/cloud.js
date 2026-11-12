@@ -8,7 +8,10 @@
    设计取舍：
    · 只在这台机器上用过的人，本地账号（assets/accounts.js）照旧可用；
      云同步是叠加层，不是替换——没登录云也能离线用。
-   · 拉取时以云端为准（跨设备的事实源），本地独有的条目推上去。
+   · 拉取不是「云端覆盖本地」，而是按 rev/updated_at 合并：
+     本地改得更晚的留在本地并在下一轮推上去，云端更晚的才落地。
+   · 删除是墓碑（deleted=true + rev+1），不是物理删——否则旧设备
+     一推就把条目复活了。墓碑保留 45 天后由 store 清理。
    · 缩略图随元数据一起拉，原图按需下载，避免首次登录就下几百张。
    ══════════════════════════════════════════════════════════════════ */
 
@@ -106,16 +109,26 @@ export async function signOutCloud() {
 
 /* ── 数据 ── */
 
+/* updated_at 是服务端的 timestamptz，比较新旧时用毫秒整数更稳。
+   rev 由客户端维护，updated_at_ms 只作为同 rev 时的次序依据。 */
+const withMs = rows => (rows || []).map(r => ({
+  ...r,
+  updated_at_ms: Date.parse(r.updated_at) || 0
+}));
+
 export async function pullAll() {
   if (!client || !session) return { albums: [], photos: [] };
   const [a, p] = await Promise.all([
-    client.database.from('atlas_albums').select('local_id, payload, updated_at').order('updated_at', { ascending: true }),
-    client.database.from('atlas_photos').select('local_id, album_local_id, name, w, h, taken_at, thumb, remote_path, updated_at')
+    client.database.from('atlas_albums')
+      .select('local_id, payload, rev, deleted, updated_at')
+      .order('updated_at', { ascending: true }),
+    client.database.from('atlas_photos')
+      .select('local_id, album_local_id, name, w, h, taken_at, thumb, remote_path, exif, rev, deleted, updated_at')
       .order('taken_at', { ascending: true })
   ]);
   if (a.error) throw a.error;
   if (p.error) throw p.error;
-  return { albums: a.data || [], photos: p.data || [] };
+  return { albums: withMs(a.data), photos: withMs(p.data) };
 }
 
 export async function pushAlbums(rows) {
@@ -134,15 +147,21 @@ export async function pushPhotos(rows) {
   if (error) throw error;
 }
 
+/* 删除一律走「墓碑」：把行标记成 deleted 并抬 rev，而不是物理删。
+   物理删的话，另一台设备下次把自己的旧副本推上来，条目就复活了。 */
 export async function deletePhotos(ids) {
   if (!client || !session || !ids.length) return;
-  const { error } = await client.database.from('atlas_photos').delete().in('local_id', ids);
+  const { error } = await client.database.from('atlas_photos')
+    .update({ deleted: true })
+    .in('local_id', ids);
   if (error) throw error;
 }
 
 export async function deleteAlbum(localId) {
   if (!client || !session) return;
-  const { error } = await client.database.from('atlas_albums').delete().eq('local_id', localId);
+  const { error } = await client.database.from('atlas_albums')
+    .update({ deleted: true })
+    .eq('local_id', localId);
   if (error) throw error;
 }
 

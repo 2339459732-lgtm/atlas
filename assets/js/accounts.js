@@ -14,7 +14,7 @@
 
 const LS_ACCOUNTS = 'atlas.accounts.v1';
 const LS_SESSION = 'atlas.session.v1';
-const GUEST_DB = 'atlas-plates';
+export const GUEST_DB = 'atlas-plates';
 
 const ITER = 210000;
 const enc = new TextEncoder();
@@ -84,6 +84,7 @@ export function dbName() {
 
 export const USER_KEYS = [
   'atlas.landmarks.v4',
+  'atlas.meta.v1',      /* 墓碑与未上云的脏标记：不搬的话，换账号后删除记录会丢 */
   'atlas.site.v1',
   'atlas.seeded.v1',
   'atlas.backed.v1'
@@ -172,6 +173,12 @@ export async function removeAccount(name, password) {
   USER_KEYS.forEach(k => { try { localStorage.removeItem(`${k}::${acc.id}`); } catch {} });
   try { indexedDB.deleteDatabase(`${GUEST_DB}::${acc.id}`); } catch {}
   saveAccounts(list.filter(a => a.id !== acc.id));
+  /* 云同步作用域如果指向这个账号，一并清掉，避免下次登录误判为"同一个人" */
+  try {
+    if (localStorage.getItem('atlas.cloud.scope.v1') === acc.id) {
+      localStorage.removeItem('atlas.cloud.scope.v1');
+    }
+  } catch {}
   if (currentUser()?.id === acc.id) logout();
 }
 
@@ -191,14 +198,90 @@ export function migrateGuestData(userId) {
   return moved;
 }
 
+/* 照片库是按账号分库的，localStorage 迁移管不到它。
+   注册时如果勾了「迁移本机作品」，必须连照片一起搬，否则相册会变成空壳。
+   这里做的是复制而不是移动：退出登录后访客数据仍在，不算破坏性操作。 */
+export async function migrateGuestPhotos(userId) {
+  if (!userId) return 0;
+  const openNamed = name => new Promise((res, rej) => {
+    const req = indexedDB.open(name, 4);
+    req.onupgradeneeded = () => {
+      const d = req.result;
+      if (!d.objectStoreNames.contains('plates')) {
+        d.createObjectStore('plates', { keyPath: 'id' }).createIndex('landmarkId', 'landmarkId');
+      }
+    };
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+
+  const src = await openNamed(GUEST_DB);
+  const rows = await new Promise((res, rej) => {
+    const q = src.transaction('plates', 'readonly').objectStore('plates').getAll();
+    q.onsuccess = () => res(q.result || []);
+    q.onerror = () => rej(q.error);
+  });
+  src.close();
+  if (!rows.length) return 0;
+
+  const dst = await openNamed(`${GUEST_DB}::${userId}`);
+  await new Promise((res, rej) => {
+    const t = dst.transaction('plates', 'readwrite');
+    const st = t.objectStore('plates');
+    rows.forEach(r => st.put(r));
+    t.oncomplete = () => res(true);
+    t.onerror = () => rej(t.error);
+  });
+  dst.close();
+  return rows.length;
+}
+
 /* 首次访问自动生成的示例地标：它们不算「用户作品」，不该被导入新账号 */
 const DEMO_IDS = new Set(['lm-kyoto', 'lm-reyk', 'lm-hk']);
 
-/** 本机是否有「真正属于用户」的未登录作品 */
-export function hasGuestData() {
+/** 只看地标：是否只是那三处示例 */
+function hasGuestLandmarks() {
   let lm = null;
   try { lm = JSON.parse(localStorage.getItem('atlas.landmarks.v4') || 'null'); } catch { return false; }
-  if (!Array.isArray(lm) || !lm.length) return false;
-  const pristine = lm.length === DEMO_IDS.size && lm.every(l => DEMO_IDS.has(l.id));
+  const list = Array.isArray(lm) ? lm : Array.isArray(lm?.items) ? lm.items : [];
+  if (!list.length) return false;
+  const pristine = list.length === DEMO_IDS.size && list.every(l => DEMO_IDS.has(l.id));
   return !pristine;
+}
+
+/* 只传过照片、没动过地标的人也算「有作品」。
+   旧实现只看地标，于是"上传了一张照片但没新建相册"的访客
+   会被判成空手，注册时迁移开关不出现，照片全留在访客库里。 */
+let guestWork = null;
+
+export async function probeGuestData(force = false) {
+  if (!force && guestWork != null) return guestWork;
+  let photos = 0;
+  try {
+    const db = await new Promise((res, rej) => {
+      const req = indexedDB.open(GUEST_DB, 4);
+      req.onupgradeneeded = () => {
+        const d = req.result;
+        if (!d.objectStoreNames.contains('plates')) {
+          d.createObjectStore('plates', { keyPath: 'id' }).createIndex('landmarkId', 'landmarkId');
+        }
+      };
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+    photos = await new Promise((res, rej) => {
+      const q = db.transaction('plates', 'readonly').objectStore('plates').count();
+      q.onsuccess = () => res(q.result || 0);
+      q.onerror = () => rej(q.error);
+    });
+    db.close();
+  } catch {}
+  guestWork = hasGuestLandmarks() || photos > 0;
+  return guestWork;
+}
+
+/** 本机是否有「真正属于用户」的未登录作品 */
+export function hasGuestData() {
+  if (guestWork != null) return guestWork;
+  return hasGuestLandmarks();
 }

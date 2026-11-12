@@ -135,3 +135,66 @@ killed 17056 SystemSettings 4.5MB — 窗口无响应
    后续可加一个「清理未引用文件」的维护动作。
 4. **冲突策略**：同 id 以云端为准；两台设备离线各自编辑同一条会以后写者覆盖先写者，
    目前没有做字段级合并。
+
+---
+
+# 六、数据链条梳理与架构收口 · 2026-11-12 下午
+
+> 目标：让「表单 / 照片 → 本机 → 云端 → 备份」四条路径共用一套契约，
+> 并给删除、离线、换设备、换账号这些真实场景一个可解释的结果。
+> 完整说明见 **`DATA_ARCHITECTURE.md`**；这里只记问题与结论。
+
+## 6.1 梳理时发现并修掉的断路
+
+| # | 现象 | 根因 | 处理 |
+| --- | --- | --- | --- |
+| 1 | 注册时勾了「迁移本机作品」，相册搬过去了，照片却全空 | `migrateGuestData` 只搬 localStorage；照片在按账号分库的 IndexedDB 里 | 新增 `migrateGuestPhotos()`，复制访客库到新账号库；`probeGuestData()` 把照片也算作访客作品 |
+| 2 | 删掉的相册过一会儿又回来了（换设备/重登后） | 删除是物理删/内存过滤，没有"删除记录" | 墓碑 + `deleted` 列；删除优先于任何存活副本；墓碑保留 45 天 |
+| 3 | 离线改的相册，一登录就被云端旧版覆盖 | 拉取逻辑是"云端为准" | `rev → at → 本地优先` 的合并；本地更新的条目留在本地并回头推上去 |
+| 4 | 同步进行中保存的改动不会上传 | `schedulePush` 在 `pulling` 时直接 return，丢掉这次调用 | 改为 `queued` 标记，本轮结束后补排；脏标记持久化，刷新不丢 |
+| 5 | 导入一份旧备份，出现统计里有、界面里没有的"幽灵照片" | 导入不校验归属/类型 | 逐条过 `albumIssues` / `photoIssues`；孤儿跳过并计数；导入即恢复（清墓碑） |
+| 6 | 两个标签页同时开着，后保存的会把前一个的改动盖掉 | 各写各的 localStorage | `BroadcastChannel` + `storage` 双通道，180ms 防抖重读；正在编辑的表单不打断 |
+| 7 | 换本机账号后，云同步把上一个账号的数据拉进新分区 | 云身份与本机分区没有绑定 | `atlas.cloud.scope.v1`：换账号即暂停，需显式"在此账号下启用" |
+| 8 | 照片排序按上传时间，一次旅行里不同日子的片子被打乱；换设备后 EXIF 丢失 | EXIF 的 `DateTimeOriginal` 只格式化成 `YYYY.MM`，没进 `t`；`exif` 没上云 | `readExif` 增加 `ts`；入库优先用它；`atlas_photos.exif` 列随行同步 |
+| 9 | 本地数据损坏时整页空白 | `JSON.parse` 抛错直接冒泡 | 返回 `{corrupted:true}`；页面继续，体检标 `store_corrupt`，toast 提示 |
+
+## 6.2 新增的两层
+
+- `assets/js/model.js` — 数据契约：字段、上限、默认值、id 规则、`rev/at` 合并、行 ↔ 记录映射。
+  纯函数，不碰 DOM / 存储；四条写入路径共用。
+- `assets/js/store.js` — 持久化适配：信封 `{v:5,at,items}`（旧裸数组自动升级）、
+  IndexedDB v4（每账号独立库）、墓碑、脏标记、跨标签广播、体检。
+
+边界：`main.js` 之外不碰 IndexedDB；`cloud.js` 不判断谁新谁旧；合并只在 `model.pickNewer` 一处。
+
+## 6.3 云端结构变更
+
+```sql
+ALTER TABLE atlas_albums ADD COLUMN rev BIGINT NOT NULL DEFAULT 0,
+                          ADD COLUMN deleted BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE atlas_photos ADD COLUMN rev BIGINT NOT NULL DEFAULT 0,
+                          ADD COLUMN deleted BOOLEAN NOT NULL DEFAULT false,
+                          ADD COLUMN exif JSONB;
+```
+
+已核对：两表 `relrowsecurity = true`，策略 `owner_id = auth.uid()` 均存在。
+
+## 6.4 验证
+
+| 层 | 方式 | 结果 |
+| --- | --- | --- |
+| 契约 | `tmp/model.test.mjs`，13 项（含删除优先、往返不丢字段） | 13/13 通过 |
+| 本机链路 | Playwright：上传 / 删除 / 刷新 / 旧格式迁移 / 损坏 JSON | 通过；删除后 IDB 归零、墓碑留存、刷新不复活 |
+| 多标签 | 两个 page 同 context，A 写手记，B 300ms 内同步 | 通过 |
+| 注册迁移 | 3 地标 + 1 照片，迁移后 `health.issues = []` | 通过 |
+| 同步引擎 | 内存云客户端：首推 / 本地编辑 / 远端编辑 / 远端删除 / 复活攻击 | 全部通过；复活被挡且云端被推回 `deleted:true` |
+| 作用域 | 换本机账号后云同步暂停，点启用后绑定新分区 | 通过 |
+| 真实 OAuth | 需发布到 `*.workbuddy.host` 并人工授权 | **未验证** |
+
+## 6.5 遗留
+
+1. 真实 OAuth 往返与跨设备拉取仍未做真人验证（域名未发布）。
+2. 冲突以整条记录为单位，没有字段级合并。
+3. 删除照片只打墓碑，不清理对象存储文件。
+4. 墓碑 45 天后清理，超窗口的极旧离线设备仍可能推回副本。
+5. `site` 标题/导语仍是设备级设置，不参与云同步。
